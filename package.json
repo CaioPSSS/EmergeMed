@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "index-pdf": "node scripts/index-pdf.mjs"
+    "index-pdf": "node scripts/index-pdf.mjs",
+    "insert-chapter": "node scripts/insert-chapter-manual.mjs",
+    "upload-db": "node scripts/upload-to-supabase.mjs",
+    "preview-chapter-tails": "node scripts/preview-chapter-tails.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

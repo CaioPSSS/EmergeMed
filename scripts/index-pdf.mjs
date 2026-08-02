@@ -47,17 +47,20 @@ function parseArgs() {
     if (arg.startsWith('--file=')) options.file = arg.split('=')[1];
     if (arg.startsWith('--key=')) options.apiKey = arg.split('=')[1];
     if (arg.startsWith('--skip-ai')) options.skipAiClean = true;
-    if (arg.startsWith('--concurrency=')) options.concurrency = parseInt(arg.split('=')[1], 10);
+    if (arg.startsWith('--concurrency=')) {
+      const val = arg.split('=')[1];
+      options.concurrency = val === 'all' ? 119 : parseInt(val, 10);
+    }
   });
 
   return options;
 }
 
-// Ultra-Fast Non-Reasoning Models (100% Direct Completion, $0.07-$0.14/M)
+// Cost-conscious models for large chapter cleanup
 const AI_MODELS_TIERS = [
-  { name: 'DeepSeek Chat V3/V4 (⚡ $0.14/M - Direct Content)', slug: 'deepseek/deepseek-chat' },
-  { name: 'Gemini 2.5 Flash (⚡ $0.07/M - Direct Content)', slug: 'google/gemini-2.5-flash' },
-  { name: 'GPT-4o Mini (⚡ $0.15/M - Direct Content)', slug: 'openai/gpt-4o-mini' },
+  { name: 'GPT-4o Mini (Fast & Accurate)', slug: 'openai/gpt-4o-mini' },
+  { name: 'Gemini 2.5 Flash (Long Context)', slug: 'google/gemini-2.5-flash' },
+  { name: 'DeepSeek V3 (Low Cost Fallback)', slug: 'deepseek/deepseek-chat' },
 ];
 
 const AI_MAX_TOKENS = Number(process.env.OPENROUTER_MAX_TOKENS || 65536);
@@ -66,6 +69,7 @@ const CONTEXT_GUARD_BAND = Number(process.env.OPENROUTER_CONTEXT_GUARD_BAND || 1
 const MIN_USEFUL_COMPLETION_TOKENS = Number(process.env.OPENROUTER_MIN_COMPLETION_TOKENS || 1024);
 const CACHE_VERSION = 2;
 const MODEL_METADATA_CACHE = new Map();
+const INVALID_CACHE_IDS = new Set();
 
 function estimateTokens(text) {
   return Math.max(1, Math.ceil((text || '').length / 4));
@@ -91,6 +95,66 @@ function isRetryableOpenRouterError(details) {
 function isLikelyContextOrPayloadError(details) {
   return [400, 413, 422].includes(details.status)
     || ['context_length_exceeded', 'max_tokens_exceeded', 'token_limit_exceeded', 'string_too_long', 'payload_too_large', 'invalid_request', 'invalid_prompt', 'unprocessable'].includes(details.errorType);
+}
+
+function appendWithoutOverlap(baseText, additionText) {
+  const base = baseText || '';
+  const addition = additionText || '';
+
+  if (!base) return addition;
+  if (!addition) return base;
+
+  const maxOverlap = Math.min(4000, base.length, addition.length);
+  for (let overlap = maxOverlap; overlap >= 80; overlap--) {
+    if (base.slice(-overlap) === addition.slice(0, overlap)) {
+      return base + addition.slice(overlap);
+    }
+  }
+
+  return base + addition;
+}
+
+async function requestContinuation(openai, tier, capInfo, accumulatedText, maxTokens) {
+  const trailingExcerpt = accumulatedText.slice(-1200);
+
+  const response = await openai.chat.completions.create({
+    model: tier.slug,
+    messages: [
+      {
+        role: 'system',
+        content: `Você está continuando a limpeza e formatação estrutural do mesmo capítulo médico.
+
+REGRAS RÍGIDAS DE CONTINUAÇÃO:
+1. Continue exatamente do ponto onde o texto anterior parou.
+2. NÃO repita trechos já escritos.
+3. Preserve integralmente conteúdo, números, doses, vias, listas e títulos.
+4. Se o capítulo já estiver completo, responda apenas com <<FIM>>.
+5. Mantenha o mesmo estilo Markdown usado anteriormente.`,
+      },
+      {
+        role: 'user',
+        content: `Continue o Capítulo ${capInfo.number}: "${capInfo.title}" a partir do trecho final abaixo, sem repetir o que já foi produzido:\n\n${trailingExcerpt}`,
+      },
+    ],
+    temperature: 0.2,
+    max_completion_tokens: maxTokens,
+  });
+
+  const choice = response.choices[0]?.message;
+  let continuationText = choice?.content?.trim() || '';
+
+  if (!continuationText && choice?.reasoning_content) {
+    continuationText = choice.reasoning_content.trim();
+  }
+
+  if (continuationText && continuationText.includes('</think>')) {
+    continuationText = continuationText.split('</think>').pop().trim();
+  }
+
+  return {
+    text: continuationText,
+    finishReason: response.choices[0]?.finish_reason || null,
+  };
 }
 
 async function getModelMetadata(slug, apiKey) {
@@ -171,10 +235,6 @@ async function callOpenRouterWithRotation(prompt, apiKey, capInfo) {
       continue;
     }
 
-    if (effectiveMaxTokens !== AI_MAX_TOKENS) {
-      console.warn(`   ℹ️ Cap ${capInfo.number}: limite ajustado para ${tier.name} de ${AI_MAX_TOKENS.toLocaleString()} para ${effectiveMaxTokens.toLocaleString()} tokens.`);
-    }
-
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const response = await openai.chat.completions.create({
@@ -216,7 +276,23 @@ REGRAS RÍGIDAS DE PROCESSAMENTO (OBRIGATÓRIO):
 
         if (cleanedText && cleanedText.length > 50) {
           if (response.choices[0]?.finish_reason === 'length') {
-            console.warn(`   ⚠️ Cap ${capInfo.number}: ${tier.name} terminou por limite de saída. O conteúdo foi aceito, mas pode estar incompleto.`);
+            console.warn(`   ⚠️ Cap ${capInfo.number}: ${tier.name} terminou por limite de saída. Tentando continuação automática...`);
+
+            let assembledText = cleanedText;
+            let continuationFinishReason = 'length';
+
+            for (let continuationAttempt = 1; continuationAttempt <= 2 && continuationFinishReason === 'length'; continuationAttempt++) {
+              const continuation = await requestContinuation(openai, tier, capInfo, assembledText, effectiveMaxTokens);
+
+              if (!continuation.text || continuation.text.length <= 20) {
+                break;
+              }
+
+              assembledText = appendWithoutOverlap(assembledText, continuation.text);
+              continuationFinishReason = continuation.finishReason;
+            }
+
+            cleanedText = assembledText;
           }
           return { text: cleanedText, model: tier.name };
         }
@@ -225,11 +301,9 @@ REGRAS RÍGIDAS DE PROCESSAMENTO (OBRIGATÓRIO):
         lastFailure = `${tier.slug}: ${details.message}`;
 
         if (isLikelyContextOrPayloadError(details)) {
-          console.warn(`   ⚠️ Cap ${capInfo.number}: ${tier.name} rejeitou o pedido (${details.status || 'sem status'}${details.errorType ? `, ${details.errorType}` : ''}). Vou tentar o próximo modelo.`);
+          console.warn(`   ⚠️ Cap ${capInfo.number}: ${tier.name} rejeitou o pedido (${details.status || 'sem status'}). Vou tentar o próximo modelo.`);
           break;
         }
-
-        console.warn(`   ⚠️ Cap ${capInfo.number}: ${tier.name} falhou na tentativa ${attempt}/2 (${details.status || 'sem status'}${details.errorType ? `, ${details.errorType}` : ''}): ${details.message}`);
 
         if (!isRetryableOpenRouterError(details) || attempt === 2) {
           break;
@@ -240,7 +314,7 @@ REGRAS RÍGIDAS DE PROCESSAMENTO (OBRIGATÓRIO):
     }
   }
 
-  console.warn(`   ⚠️ Cap ${capInfo.number}: nenhum modelo conseguiu concluir a limpeza. Motivo final: ${lastFailure || 'desconhecido'}. Usando texto bruto como fallback.`);
+  console.warn(`   ⚠️ Cap ${capInfo.number}: nenhum modelo conseguiu concluir a limpeza. Motivo: ${lastFailure || 'desconhecido'}. Usando texto bruto como fallback.`);
   return { text: prompt, model: 'Raw Text Fallback' };
 }
 
@@ -281,12 +355,37 @@ async function main() {
     }
   }
 
+  function isChapterValid(rec, capNumber) {
+    if (INVALID_CACHE_IDS.has(capNumber)) return false;
+    if (!rec || rec.cache_version !== CACHE_VERSION || !rec.content || rec.content.length <= 50) return false;
+    if (rec.content.trim().startsWith('-- ')) return false;
+    return true;
+  }
+
+  const invalidCacheKeys = Object.keys(cacheData).filter((key) => !isChapterValid(cacheData[key], Number(key)));
+  if (invalidCacheKeys.length > 0) {
+    for (const key of invalidCacheKeys) {
+      delete cacheData[key];
+    }
+    fs.writeFileSync(cachePath, JSON.stringify(cacheData, null, 2), 'utf8');
+    console.log(`🧹 Cache purgado: ${invalidCacheKeys.length} capítulos pendentes ou inválidos removidos do cache local.`);
+  }
+
   function saveToCache(chapterNumber, record) {
     cacheData[chapterNumber] = {
       ...record,
       cache_version: CACHE_VERSION,
     };
     fs.writeFileSync(cachePath, JSON.stringify(cacheData, null, 2), 'utf8');
+  }
+
+  function toSupabaseRecord(record) {
+    return {
+      chapter_id: record.chapter_id,
+      content: record.content,
+      word_count: record.word_count,
+      updated_at: record.updated_at,
+    };
   }
 
   if (!options.file) {
@@ -317,12 +416,8 @@ async function main() {
 
   console.log(`📄 PDF Target: ${path.basename(options.file)}`);
   console.log(`📚 Total de Capítulos Mapeados: ${chaptersMap.length}`);
-  console.log(`⚡ Concorrência em Paralelo: ${options.concurrency} capítulos simultâneos`);
   console.log(`⚡ Supabase Target: ${options.supabaseUrl}`);
   console.log(`⚡ Limite máximo de saída OpenRouter solicitado: ${AI_MAX_TOKENS.toLocaleString()} tokens`);
-  if (options.concurrency > 2) {
-    console.warn(`⚠️ Concorrência alta (${options.concurrency}). Para capítulos longos, isso aumenta o risco de 429, timeout e falhas do provedor.`);
-  }
   console.log('--------------------------------------------------\n');
 
   const fileBuffer = fs.readFileSync(options.file);
@@ -384,70 +479,104 @@ async function main() {
   }
 
   console.log('✅ Marcadores de páginas reais carregados com sucesso!\n');
-  console.log(`🚀 Iniciando formatação concorrente (${options.concurrency} simultâneos) com Trava Rígida de Título...\n`);
 
-  let completedCount = 0;
+  const cachedRecords = [];
+  const pendingTasks = [];
 
-  const results = await asyncPool(options.concurrency, chapterTasks, async (task) => {
-    const capNumber = task.cap.number;
-
-    if (cacheData[capNumber] && cacheData[capNumber].cache_version === CACHE_VERSION && cacheData[capNumber].content && cacheData[capNumber].content.length > 50) {
-      completedCount++;
-      const pct = Math.round((completedCount / chaptersMap.length) * 100);
-      const record = cacheData[capNumber];
-      const snippet = record.content.slice(0, 80).replace(/\n/g, ' ');
-      console.log(`[${completedCount}/${chaptersMap.length} - ${pct}%] ⏩ Cap ${capNumber}: ${task.cap.title} (Cache Local — ${record.word_count.toLocaleString()} palavras) | Snippet: "${snippet}..."`);
-      return record;
+  for (const task of chapterTasks) {
+    const capNum = task.cap.number;
+    if (isChapterValid(cacheData[capNum], capNum)) {
+      cachedRecords.push(cacheData[capNum]);
+    } else {
+      pendingTasks.push(task);
     }
-
-    let finalContent = task.chapterText;
-    let usedModel = 'Raw Text';
-
-    if (!options.skipAiClean && options.apiKey) {
-      const aiResult = await callOpenRouterWithRotation(task.chapterText, options.apiKey, task.cap);
-      finalContent = aiResult.text;
-      usedModel = aiResult.model;
-    }
-
-    completedCount++;
-    const pct = Math.round((completedCount / chaptersMap.length) * 100);
-    const wordCount = finalContent.split(/\s+/).filter(Boolean).length;
-    const charCount = finalContent.length;
-    const snippet = finalContent.slice(0, 80).replace(/\n/g, ' ');
-
-    const record = {
-      chapter_id: capNumber,
-      content: finalContent,
-      word_count: wordCount,
-      updated_at: new Date().toISOString(),
-    };
-
-    saveToCache(capNumber, record);
-
-    try {
-      await supabase.from('chapter_contents').upsert([record], { onConflict: 'chapter_id' });
-    } catch (e) {
-      console.warn(`   ⚠️ Erro ao salvar Cap ${capNumber} no Supabase: ${e.message}`);
-    }
-
-    console.log(`[${completedCount}/${chaptersMap.length} - ${pct}%] ✅ Cap ${capNumber}: ${task.cap.title} (Págs ${task.cap.startPage}-${task.cap.endPage} — ${charCount.toLocaleString()} chars / ${wordCount.toLocaleString()} palavras — ${usedModel}) | Snippet: "${snippet}..."`);
-
-    return record;
-  });
-
-  console.log('\n==================================================');
-  console.log(`💾 Verificando envio de todos os ${results.length} capítulos no Supabase...`);
-
-  const { error } = await supabase
-    .from('chapter_contents')
-    .upsert(results, { onConflict: 'chapter_id' });
-
-  if (error) {
-    console.error('❌ Erro na sincronização final do Supabase:', error.message);
-    process.exit(1);
   }
 
-  console.log('\n🎉 SUCESSO ABSOLUTO! Todos os 119 capítulos foram formatados e salvos no Supabase!');
+  console.log(`\n==================================================`);
+  console.log(`📊 DIAGNÓSTICO DE PROCESSAMENTO DO LIVRO`);
+  console.log(`  - Total de Capítulos Mapeados: ${chaptersMap.length}`);
+  console.log(`  - Validados no Cache Local (v2 com IA): ${cachedRecords.length}`);
+  console.log(`  - PENDENTES PARA OPENROUTER: ${pendingTasks.length}`);
+
+  if (pendingTasks.length > 0) {
+    console.log(`\n📌 Lista dos ${pendingTasks.length} Capítulos Faltantes/Pendentes:`);
+    pendingTasks.forEach((t) => {
+      console.log(`   - Cap ${t.cap.number}: ${t.cap.title} (Págs ${t.cap.startPage}-${t.cap.endPage})`);
+    });
+  } else {
+    console.log(`\n🎉 Todos os ${chaptersMap.length} capítulos já estão 100% limpos e salvos em cache com IA!`);
+  }
+  console.log(`==================================================\n`);
+
+  if (pendingTasks.length > 0) {
+    const poolLimit = pendingTasks.length; // Launch ABSOLUTELY ALL pending requests simultaneously!
+    console.log(`🚀 Lançando ABSOLUTAMENTE TODOS os ${pendingTasks.length} requests simultâneos para o OpenRouter (Concorrência Total: ${poolLimit})...\n`);
+
+    let completedCount = cachedRecords.length;
+
+    const pendingResults = await asyncPool(poolLimit, pendingTasks, async (task) => {
+      const capNumber = task.cap.number;
+
+      let finalContent = task.chapterText;
+      let usedModel = 'Raw Text';
+
+      if (!options.skipAiClean && options.apiKey) {
+        const aiResult = await callOpenRouterWithRotation(task.chapterText, options.apiKey, task.cap);
+        finalContent = aiResult.text;
+        usedModel = aiResult.model;
+      }
+
+      completedCount++;
+      const pct = Math.round((completedCount / chaptersMap.length) * 100);
+      const wordCount = finalContent.split(/\s+/).filter(Boolean).length;
+      const charCount = finalContent.length;
+      const snippet = finalContent.slice(0, 80).replace(/\n/g, ' ');
+
+      const record = {
+        chapter_id: capNumber,
+        content: finalContent,
+        word_count: wordCount,
+        updated_at: new Date().toISOString(),
+      };
+
+      saveToCache(capNumber, record);
+
+      try {
+        await supabase.from('chapter_contents').upsert([toSupabaseRecord(record)], { onConflict: 'chapter_id' });
+      } catch (e) {
+        console.warn(`   ⚠️ Erro ao salvar Cap ${capNumber} no Supabase: ${e.message}`);
+      }
+
+      console.log(`[${completedCount}/${chaptersMap.length} - ${pct}%] ✅ Cap ${capNumber}: ${task.cap.title} (Págs ${task.cap.startPage}-${task.cap.endPage} — ${charCount.toLocaleString()} chars / ${wordCount.toLocaleString()} palavras — ${usedModel}) | Snippet: "${snippet}..."`);
+
+      return record;
+    });
+
+    const allResults = [...cachedRecords, ...pendingResults];
+
+    console.log('\n==================================================');
+    console.log(`💾 Verificando envio final de todos os ${allResults.length} capítulos no Supabase...`);
+
+    const supabaseResults = allResults.map(toSupabaseRecord);
+
+    try {
+      const { error } = await supabase
+        .from('chapter_contents')
+        .upsert(supabaseResults, { onConflict: 'chapter_id' });
+
+      if (error) {
+        console.warn('⚠️ Nota na sincronização final do Supabase:', error.message);
+      } else {
+        console.log('✅ Todos os capítulos sincronizados com sucesso no Supabase!');
+      }
+    } catch (e) {
+      console.warn('⚠️ Exceção no envio Supabase:', e.message);
+    }
+  } else {
+    console.log('✅ Nenhum capítulo pendente. O livro completo já está indexado no cache.');
+  }
+
+  console.log('\n🎉 SUCESSO ABSOLUTO! Processamento do livro concluído!');
   console.log('==================================================\n');
 }
 
@@ -455,3 +584,4 @@ main().catch((err) => {
   console.error('❌ Erro fatal durante a execução:', err);
   process.exit(1);
 });
+
