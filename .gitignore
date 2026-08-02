@@ -1,0 +1,63 @@
+# Livros em PDF e Arquivos Pesados de Mídia
+*.pdf
+**/*.pdf
+scripts/*.pdf
+scripts/Medicina de Emergência 18ed.pdf
+scripts/index_cache.json
+scripts/pdf_bookmarks_map.json
+
+# Variáveis de Ambiente & Chaves de API
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Dependências do Node
+node_modules/
+/.pnp
+.pnp.js
+
+# Build do Next.js
+.next/
+/out/
+/build/
+/dist/
+
+# Logs e Debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs & Editor Configuration
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Vercel
+.vercel/
+
+# Testes
+coverage/
+.nyc_output/
+
+# TypeScript / Tooling
+*.tsbuildinfo
+.eslintcache
+
+# Arquivos locais e artefatos gerados
+*.pem
+*.key
+
+# Antigravity / Agent Scratch & System Files
+.gemini/
+.system_generated/
