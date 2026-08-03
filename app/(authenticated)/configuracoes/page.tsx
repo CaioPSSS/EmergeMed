@@ -67,30 +67,40 @@ export default function ConfiguracoesPage() {
     loadSettings();
   }, []);
 
+  const [savingSettings, setSavingSettings] = useState<boolean>(false);
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSavedSuccess(false);
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    setSavingSettings(true);
 
     try {
-      const { error: upsertErr } = await supabase.from('user_settings').upsert({
-        user_id: user.id,
-        openrouter_api_key: openrouterKey,
-        question_model: questionModel,
-        prescription_model: prescriptionModel,
-        fallback_model: fallbackModel,
-        updated_at: new Date().toISOString(),
-      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Sessão expirada. Por favor, recarregue a página ou faça login novamente.');
+      }
+
+      const { error: upsertErr } = await supabase.from('user_settings').upsert(
+        {
+          user_id: user.id,
+          openrouter_api_key: openrouterKey,
+          question_model: questionModel,
+          prescription_model: prescriptionModel,
+          fallback_model: fallbackModel,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      );
 
       if (upsertErr) throw upsertErr;
 
       setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 3000);
+      setTimeout(() => setSavedSuccess(false), 4000);
     } catch (err: any) {
       setError(err.message || 'Erro ao salvar configurações.');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -365,9 +375,58 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        <button type="submit" className="btn-primary" style={{ alignSelf: 'flex-start', padding: '12px 24px' }}>
-          <Save size={18} /> Salvar Preferências de IA
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <button
+            type="submit"
+            disabled={savingSettings}
+            className="btn-primary"
+            style={{ padding: '12px 24px' }}
+          >
+            {savingSettings ? (
+              <>
+                <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> Salvando...
+              </>
+            ) : (
+              <>
+                <Save size={18} /> Salvar Preferências de IA
+              </>
+            )}
+          </button>
+
+          {savedSuccess && (
+            <span style={{
+              fontSize: '0.88rem',
+              fontWeight: 700,
+              color: '#34d399',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(16, 185, 129, 0.1)',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+            }}>
+              <CheckCircle2 size={18} /> Configurações salvas com sucesso!
+            </span>
+          )}
+
+          {error && (
+            <span style={{
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              color: '#f43f5e',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(244, 63, 94, 0.1)',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              border: '1px solid rgba(244, 63, 94, 0.3)',
+            }}>
+              <AlertCircle size={18} /> {error}
+            </span>
+          )}
+        </div>
       </form>
 
       {/* Form 2: PDF Upload & Book Indexing */}
