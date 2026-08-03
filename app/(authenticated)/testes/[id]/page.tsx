@@ -330,6 +330,45 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         })
         .eq('id', testId);
 
+      // Generate AI preceptor general feedback
+      const evaluationsSummary = questions.map((q) => {
+        const evalObj = evaluations[q.id];
+        let answerStr = '';
+        if (q.type === 'multiple_choice') {
+          const userOptionIdx = userAnswers[q.id];
+          answerStr = typeof userOptionIdx === 'number' && q.options ? q.options[userOptionIdx] : 'Sem resposta';
+        } else if (q.type === 'ventilator') {
+          const vData = userAnswers[q.id] || {};
+          answerStr = Object.entries(vData).map(([k, v]) => `${k}: ${v}`).join(', ');
+        } else {
+          answerStr = userAnswers[q.id] || 'Sem resposta';
+        }
+
+        return {
+          questionTitle: q.chapterTitle || `Questão ${q.id}`,
+          vignette: q.vignette || '',
+          userAnswer: answerStr,
+          score: evalObj?.score || 0,
+          verdict: evalObj?.evaluation?.verdict,
+          strengths: evalObj?.evaluation?.strengths,
+          idealAnswer: q.idealPrescription || q.explanation,
+        };
+      });
+
+      try {
+        await fetch('/api/generate-feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            testId,
+            overallScore: finalScore,
+            evaluationsSummary,
+          }),
+        });
+      } catch (fbErr) {
+        console.warn('Failed to generate general feedback:', fbErr);
+      }
+
       router.push(`/testes/${testId}/resultado`);
     } catch (err: any) {
       setError(err.message || 'Erro ao submeter e avaliar o teste.');

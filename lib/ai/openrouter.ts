@@ -4,6 +4,7 @@ import {
   SYSTEM_PROMPT_PRESCRIPTION_EVALUATOR,
   SYSTEM_PROMPT_PLANTAO_GENERATOR,
   SYSTEM_PROMPT_ADVERSE_EVOLUTION,
+  SYSTEM_PROMPT_GENERAL_FEEDBACK,
 } from './prompts';
 
 export interface QuestionOption {
@@ -384,6 +385,81 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
     return await runCompletion(model);
   } catch (err) {
     console.warn(`Adverse evolution generator failed on ${model}, trying fallback ${fallbackModel}`, err);
+    return await runCompletion(fallbackModel);
+  }
+}
+
+export async function generateGeneralFeedbackWithAI({
+  apiKey,
+  model = 'openai/gpt-5.6-luna',
+  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  overallScore,
+  totalQuestions,
+  evaluationsSummary,
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  overallScore: number;
+  totalQuestions: number;
+  evaluationsSummary: {
+    questionTitle: string;
+    vignette: string;
+    userAnswer: string;
+    score: number;
+    verdict?: string;
+    strengths?: string[];
+    idealAnswer?: string;
+  }[];
+}): Promise<string> {
+  const openai = getOpenAIClient(apiKey);
+
+  const summaryText = evaluationsSummary
+    .map(
+      (item, idx) => `
+--- QUESTÃO ${idx + 1}: ${item.questionTitle} ---
+- Pontuação / Veredito: ${item.score}/10 ${item.verdict ? `(${item.verdict})` : ''}
+- Caso Clínico: ${item.vignette.slice(0, 200)}...
+- Resposta do Médico: "${item.userAnswer}"
+${item.idealAnswer ? `- Gabarito Esperado: "${item.idealAnswer.slice(0, 250)}..."` : ''}
+${item.strengths && item.strengths.length > 0 ? `- Pontos Fortes Notados: ${item.strengths.join('; ')}` : ''}
+`
+    )
+    .join('\n');
+
+  const userPrompt = `AVALIAÇÃO DE PLANTÃO / SIMULADO FINALIZADO:
+Nota Final do Aluno: ${overallScore.toFixed(1)} / 10.0
+Total de Questões: ${totalQuestions}
+
+DESEMPENHO DETALHADO POR QUESTÃO:
+${summaryText}
+
+Gere o Feedback Geral de Preceptoria em Markdown contendo:
+1. Síntese Geral (1 parágrafo curto)
+2. Pontos Críticos e Condutas a Corrigir (Foque nos maiores erros de prescrição ou diagnóstico com explicação fisiopatológica/farmacológica do risco)
+3. Recomendações de Estudo Prioritárias
+
+Responda diretamente em Markdown sem blocos de código JSON.`;
+
+  const runCompletion = async (selectedModel: string) => {
+    const response = await openai.chat.completions.create({
+      model: selectedModel,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT_GENERAL_FEEDBACK },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.4,
+      max_tokens: 3000,
+    });
+
+    const content = response.choices[0]?.message?.content || '';
+    return fixMojibake(content.trim());
+  };
+
+  try {
+    return await runCompletion(model);
+  } catch (err) {
+    console.warn(`General feedback generator failed on ${model}, trying fallback ${fallbackModel}`, err);
     return await runCompletion(fallbackModel);
   }
 }

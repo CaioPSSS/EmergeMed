@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS public.tests (
   completed_at TIMESTAMP WITH TIME ZONE
 );
 
+-- Ensure new columns exist on tests table if it was created previously
+ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS mode TEXT DEFAULT 'standard';
+ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS plantao_data JSONB;
+
 -- Table: chapter_weights (Stores frequency and importance weights per chapter)
 CREATE TABLE IF NOT EXISTS public.chapter_weights (
   chapter_id INTEGER PRIMARY KEY,
@@ -87,18 +91,21 @@ ALTER TABLE public.chapter_weights ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapter_review_stats ENABLE ROW LEVEL SECURITY;
 
 -- Policies for chapter_progress
+DROP POLICY IF EXISTS "Users can manage their own chapter progress" ON public.chapter_progress;
 CREATE POLICY "Users can manage their own chapter progress"
   ON public.chapter_progress
   FOR ALL
   USING (auth.uid() = user_id);
 
 -- Policies for chapter_contents (readable by all authenticated users, writable by authenticated)
+DROP POLICY IF EXISTS "Authenticated users can read chapter contents" ON public.chapter_contents;
 CREATE POLICY "Authenticated users can read chapter contents"
   ON public.chapter_contents
   FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can insert/update chapter contents" ON public.chapter_contents;
 CREATE POLICY "Authenticated users can insert/update chapter contents"
   ON public.chapter_contents
   FOR ALL
@@ -106,24 +113,28 @@ CREATE POLICY "Authenticated users can insert/update chapter contents"
   USING (true);
 
 -- Policies for tests
+DROP POLICY IF EXISTS "Users can manage their own tests" ON public.tests;
 CREATE POLICY "Users can manage their own tests"
   ON public.tests
   FOR ALL
   USING (auth.uid() = user_id);
 
 -- Policies for user_settings
+DROP POLICY IF EXISTS "Users can manage their own settings" ON public.user_settings;
 CREATE POLICY "Users can manage their own settings"
   ON public.user_settings
   FOR ALL
   USING (auth.uid() = user_id);
 
 -- Policies for chapter_weights
+DROP POLICY IF EXISTS "Authenticated users can read weights" ON public.chapter_weights;
 CREATE POLICY "Authenticated users can read weights"
   ON public.chapter_weights
   FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can manage weights" ON public.chapter_weights;
 CREATE POLICY "Authenticated users can manage weights"
   ON public.chapter_weights
   FOR ALL
@@ -131,6 +142,7 @@ CREATE POLICY "Authenticated users can manage weights"
   USING (true);
 
 -- Policies for chapter_review_stats
+DROP POLICY IF EXISTS "Users can manage their own review stats" ON public.chapter_review_stats;
 CREATE POLICY "Users can manage their own review stats"
   ON public.chapter_review_stats
   FOR ALL

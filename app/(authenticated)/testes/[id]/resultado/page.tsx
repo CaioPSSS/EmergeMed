@@ -172,6 +172,50 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
+      {/* GENERAL PRECEPTOR FEEDBACK CARD */}
+      {results?.generalFeedback && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '28px',
+            borderRadius: '20px',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            boxShadow: '0 8px 32px rgba(56, 189, 248, 0.08)',
+          }}
+        >
+          <h2
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: 800,
+              color: '#38bdf8',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <Sparkles size={22} color="#38bdf8" />
+            Feedback do Preceptor — Análise Geral & Plano de Aprimoramento
+          </h2>
+
+          <div
+            style={{
+              color: 'var(--text-main)',
+              fontSize: '0.95rem',
+              lineHeight: 1.75,
+              whiteSpace: 'pre-line',
+              background: 'rgba(15, 23, 42, 0.5)',
+              padding: '22px',
+              borderRadius: '14px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+            }}
+          >
+            {results.generalFeedback}
+          </div>
+        </div>
+      )}
+
       {/* PLANTÃO BEDS MAP GRID */}
       {isPlantao && beds.length > 0 && (
         <div className="glass-panel" style={{ padding: '28px', borderRadius: '20px' }}>
