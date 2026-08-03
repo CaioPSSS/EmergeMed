@@ -2,7 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    useTypeScriptCli: true,
     serverActions: {
       bodySizeLimit: '25mb',
     },
