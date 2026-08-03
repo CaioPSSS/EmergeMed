@@ -35,11 +35,16 @@ export interface PrescriptionEvaluation {
 
 function fixMojibake(text: string): string {
   if (!text) return text;
-  try {
-    if (text.includes('Ã') || text.includes('Â')) {
-      return Buffer.from(text, 'latin1').toString('utf8');
-    }
-  } catch {}
+  // Only attempt conversion if text contains true Mojibake patterns:
+  // 'Ã' or 'Â' followed by Latin-1 supplement characters (\u0080-\u00BF)
+  if (/[ÃÂ][\u0080-\u00BF]/.test(text)) {
+    try {
+      const converted = Buffer.from(text, 'latin1').toString('utf8');
+      if (!converted.includes('\uFFFD')) {
+        return converted;
+      }
+    } catch {}
+  }
   return text;
 }
 

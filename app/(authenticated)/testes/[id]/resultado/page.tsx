@@ -33,14 +33,20 @@ function getTypeBadge(type: string) {
 
 const VENTILATOR_FIELD_LABELS: Record<string, string> = {
   modo: 'Modo Ventilatório',
-  volumeCorrente: 'Volume Corrente',
-  frequenciaRespiratoria: 'Frequência Respiratória',
+  volumeCorrente: 'Volume Corrente (Vt)',
+  frequenciaRespiratoria: 'Frequência Respiratória (FR)',
+  pressaoInspiratoria: 'Pressão Inspiratória (Pinsp / ΔP)',
+  pressaoSuporte: 'Pressão de Suporte (PS)',
+  tempoInspiratorio: 'Tempo Inspiratório (Ti)',
   peep: 'PEEP',
   fio2: 'FiO₂',
-  relacaoIE: 'Relação I:E',
-  pressaoPlatoAlvo: 'Pressão de Platô Alvo',
-  fluxoOuPressao: 'Fluxo / Pressão',
-  alarmes: 'Alarmes',
+  relacaoIE: 'Relação I:E / Ti',
+  fluxoOuPressao: 'Fluxo / Pressão Inspiratória',
+  sensibilidade: 'Sensibilidade (Trigger)',
+  pressaoPlatoAlvo: 'Alvo de Pplatô / Driving Pressure',
+  ciclagemFluxo: 'Ciclagem por Fluxo (% Fluxo)',
+  ventilacaoBackup: 'Ventilação de Backup (Apneia)',
+  alarmes: 'Alarmes Configurados',
 };
 
 export default function TestResultPage({ params }: { params: Promise<{ id: string }> }) {

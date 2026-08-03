@@ -81,8 +81,11 @@ export default function DashboardPage() {
         let selectedCap = CHAPTERS_DATA.find((c) => c.id === initialCapId);
 
         if (!selectedCap) {
-          // Sortear um não lido
+          // Sortear um não lido e SALVAR para persistir entre reloads
           selectedCap = getRandomUnreadChapter(readIds);
+          await supabase
+            .from('user_settings')
+            .upsert({ user_id: user.id, current_chapter_id: selectedCap.id, updated_at: new Date().toISOString() });
         }
 
         setCurrentChapter(selectedCap);

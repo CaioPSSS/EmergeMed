@@ -435,61 +435,199 @@ Se sem acesso: Midazolam 10mg IM`}
         )}
 
         {/* Ventilator Configuration Fields */}
-        {currentQ.type === 'ventilator' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Settings2 size={16} color="#a78bfa" />
-              {currentQ.promptText || 'Configure os parâmetros do ventilador mecânico:'}
-            </label>
+        {currentQ.type === 'ventilator' && (() => {
+          const currentVentData = (currentAnswer as Record<string, string>) || {};
+          const selectedMode = currentVentData.modo || '';
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '12px',
-            }}>
-              {Object.entries(VENTILATOR_FIELD_LABELS).map(([fieldKey, fieldInfo]) => {
-                const currentVentData = (currentAnswer as Record<string, string>) || {};
-                return (
-                  <div key={fieldKey} style={{
-                    background: 'rgba(15, 23, 42, 0.5)',
-                    padding: '14px',
-                    borderRadius: '12px',
-                    border: '1px solid var(--border-subtle)',
+          const ventModes: Record<string, { title: string; subtitle: string; fields: { key: string; label: string; unit?: string; placeholder: string; isTextarea?: boolean }[] }> = {
+            VCV: {
+              title: 'VCV — Ventilação Controlada a Volume',
+              subtitle: 'Modo a volume fixo (alvo de Vt). Recomendado para controle rígido do volume corrente (ex: 6 mL/kg em SDRA).',
+              fields: [
+                { key: 'volumeCorrente', label: 'Volume Corrente (Vt)', unit: 'mL', placeholder: 'Ex: 420 (6 mL/kg peso predito)' },
+                { key: 'frequenciaRespiratoria', label: 'Frequência Respiratória (FR)', unit: 'irpm', placeholder: 'Ex: 20' },
+                { key: 'peep', label: 'PEEP', unit: 'cmH₂O', placeholder: 'Ex: 10' },
+                { key: 'fio2', label: 'Fração Inspirada de O₂ (FiO₂)', unit: '%', placeholder: 'Ex: 100% ou 60%' },
+                { key: 'fluxoOuPressao', label: 'Fluxo Inspiratório & Onda', unit: 'L/min', placeholder: 'Ex: 60 L/min (onda decrescente)' },
+                { key: 'relacaoIE', label: 'Relação I:E ou Tempo Inspiratório', placeholder: 'Ex: 1:2 ou Ti 1.0s' },
+                { key: 'sensibilidade', label: 'Sensibilidade (Disparo/Trigger)', placeholder: 'Ex: -2 cmH₂O ou 2 L/min' },
+                { key: 'pressaoPlatoAlvo', label: 'Alvo de Pplatô / Driving Pressure', unit: 'cmH₂O', placeholder: 'Ex: Pplatô < 30 cmH₂O, DP < 15' },
+                { key: 'alarmes', label: 'Alarmes Configurados', placeholder: 'Ex: Ppico max 40, Vt min/max, FR, SpO₂...', isTextarea: true },
+              ],
+            },
+            PCV: {
+              title: 'PCV — Ventilação Controlada a Pressão',
+              subtitle: 'Modo a pressão fixa acima da PEEP. Indicado para controlar pressões de pico e melhorar distribuição gasosa.',
+              fields: [
+                { key: 'pressaoInspiratoria', label: 'Pressão Inspiratória (Pinsp ou ΔP)', unit: 'cmH₂O', placeholder: 'Ex: 15 cmH₂O acima da PEEP' },
+                { key: 'frequenciaRespiratoria', label: 'Frequência Respiratória (FR)', unit: 'irpm', placeholder: 'Ex: 20' },
+                { key: 'tempoInspiratorio', label: 'Tempo Inspiratório (Ti) / Relação I:E', placeholder: 'Ex: Ti 1.0s (ou I:E 1:2)' },
+                { key: 'peep', label: 'PEEP', unit: 'cmH₂O', placeholder: 'Ex: 10' },
+                { key: 'fio2', label: 'Fração Inspirada de O₂ (FiO₂)', unit: '%', placeholder: 'Ex: 100%' },
+                { key: 'sensibilidade', label: 'Sensibilidade (Disparo/Trigger)', placeholder: 'Ex: 2 L/min' },
+                { key: 'volumeCorrente', label: 'Volume Corrente Resultante Alvo (Vt)', unit: 'mL', placeholder: 'Ex: Monitorar Vt entre 350-420 mL' },
+                { key: 'alarmes', label: 'Alarmes Configurados', placeholder: 'Ex: Vt min/max, FR alta/baixa, SpO₂...', isTextarea: true },
+              ],
+            },
+            PSV: {
+              title: 'PSV — Pressão de Suporte (Assistida)',
+              subtitle: 'Modo espontâneo assistido. Indicado para pacientes com drive respiratório presente e desmame ventilatório.',
+              fields: [
+                { key: 'pressaoSuporte', label: 'Pressão de Suporte (PS)', unit: 'cmH₂O', placeholder: 'Ex: 12 cmH₂O acima da PEEP' },
+                { key: 'peep', label: 'PEEP', unit: 'cmH₂O', placeholder: 'Ex: 8' },
+                { key: 'fio2', label: 'Fração Inspirada de O₂ (FiO₂)', unit: '%', placeholder: 'Ex: 40%' },
+                { key: 'sensibilidade', label: 'Sensibilidade Inspiratória (Trigger)', placeholder: 'Ex: 2 L/min' },
+                { key: 'ciclagemFluxo', label: 'Ciclagem Expiratória (% Fluxo)', placeholder: 'Ex: 25% do fluxo de pico' },
+                { key: 'ventilacaoBackup', label: 'Ventilação de Backup (Apneia)', placeholder: 'Ex: VCV, FR 15 irpm, Vt 400 mL' },
+                { key: 'alarmes', label: 'Alarmes Configurados', placeholder: 'Ex: Apneia 20s, Vt min, FR alta/baixa, SpO₂...', isTextarea: true },
+              ],
+            },
+          };
+
+          const modeConfig = ventModes[selectedMode];
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <label style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Settings2 size={18} color="#a78bfa" />
+                {currentQ.promptText || 'Configure os parâmetros do ventilador mecânico:'}
+              </label>
+
+              {/* Step 1: Mode Selection Cards */}
+              <div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-subtle)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  1. Selecione o Modo Ventilatório:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  {[
+                    { key: 'VCV', name: 'VCV', desc: 'Volume Controlado', badge: 'Volume Fixo' },
+                    { key: 'PCV', name: 'PCV', desc: 'Pressão Controlada', badge: 'Pressão Fixa' },
+                    { key: 'PSV', name: 'PSV', desc: 'Pressão de Suporte', badge: 'Espontâneo' },
+                  ].map((m) => {
+                    const isSelected = selectedMode === m.key;
+                    return (
+                      <div
+                        key={m.key}
+                        onClick={() => handleVentilatorFieldChange(currentQ.id, 'modo', m.key)}
+                        style={{
+                          padding: '16px',
+                          borderRadius: '14px',
+                          background: isSelected ? 'rgba(139, 92, 246, 0.2)' : 'rgba(15, 23, 42, 0.6)',
+                          border: isSelected ? '2px solid #a78bfa' : '1px solid var(--border-subtle)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          boxShadow: isSelected ? '0 0 20px rgba(167, 139, 250, 0.2)' : 'none',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: isSelected ? '#a78bfa' : '#fff' }}>
+                            {m.name}
+                          </span>
+                          <span style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '9999px',
+                            background: isSelected ? '#a78bfa' : 'rgba(255, 255, 255, 0.08)',
+                            color: isSelected ? '#0f172a' : 'var(--text-subtle)',
+                          }}>
+                            {m.badge}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {m.desc}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Step 2: Mode-Specific Parameter Fields */}
+              {!selectedMode ? (
+                <div style={{
+                  padding: '28px',
+                  borderRadius: '14px',
+                  background: 'rgba(139, 92, 246, 0.06)',
+                  border: '1px dashed rgba(167, 139, 250, 0.3)',
+                  textAlign: 'center',
+                  color: '#a78bfa',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                }}>
+                  👆 Escolha um Modo Ventilatório acima (VCV, PCV ou PSV) para exibir os parâmetros ajustáveis correspondentes.
+                </div>
+              ) : modeConfig ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Mode Subtitle Banner */}
+                  <div style={{
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    background: 'rgba(139, 92, 246, 0.12)',
+                    borderLeft: '4px solid #a78bfa',
+                    fontSize: '0.85rem',
+                    color: '#e2e8f0',
                   }}>
-                    <label style={{
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      color: '#a78bfa',
-                      display: 'block',
-                      marginBottom: '6px',
-                    }}>
-                      {fieldInfo.label} {fieldInfo.unit && <span style={{ color: 'var(--text-subtle)' }}>({fieldInfo.unit})</span>}
-                    </label>
-                    {fieldKey === 'alarmes' ? (
-                      <textarea
-                        className="input-field"
-                        rows={2}
-                        style={{ fontSize: '0.88rem', padding: '8px 12px', resize: 'vertical' }}
-                        placeholder={fieldInfo.placeholder}
-                        value={currentVentData[fieldKey] || ''}
-                        onChange={(e) => handleVentilatorFieldChange(currentQ.id, fieldKey, e.target.value)}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        className="input-field"
-                        style={{ fontSize: '0.88rem', padding: '8px 12px' }}
-                        placeholder={fieldInfo.placeholder}
-                        value={currentVentData[fieldKey] || ''}
-                        onChange={(e) => handleVentilatorFieldChange(currentQ.id, fieldKey, e.target.value)}
-                      />
-                    )}
+                    <strong style={{ color: '#a78bfa' }}>{modeConfig.title}:</strong> {modeConfig.subtitle}
                   </div>
-                );
-              })}
+
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    2. Parâmetros Específicos para {selectedMode}:
+                  </div>
+
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                    gap: '14px',
+                  }}>
+                    {modeConfig.fields.map((field) => (
+                      <div key={field.key} style={{
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        padding: '14px 16px',
+                        borderRadius: '12px',
+                        border: '1px solid var(--border-subtle)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}>
+                        <label style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          color: '#a78bfa',
+                        }}>
+                          {field.label} {field.unit && <span style={{ color: 'var(--text-subtle)', fontWeight: 500 }}>({field.unit})</span>}
+                        </label>
+
+                        {field.isTextarea ? (
+                          <textarea
+                            className="input-field"
+                            rows={2}
+                            style={{ fontSize: '0.88rem', padding: '8px 12px', resize: 'vertical' }}
+                            placeholder={field.placeholder}
+                            value={currentVentData[field.key] || ''}
+                            onChange={(e) => handleVentilatorFieldChange(currentQ.id, field.key, e.target.value)}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            className="input-field"
+                            style={{ fontSize: '0.88rem', padding: '8px 12px' }}
+                            placeholder={field.placeholder}
+                            value={currentVentData[field.key] || ''}
+                            onChange={(e) => handleVentilatorFieldChange(currentQ.id, field.key, e.target.value)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Bottom Navigation & Submit Buttons */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)' }}>
