@@ -171,7 +171,7 @@ export const CHAPTERS_DATA: Chapter[] = [
   {
     "id": 18,
     "number": 18,
-    "title": "Abordagem inicial do pacient com dispneia",
+    "title": "Abordagem inicial do paciente com dispneia",
     "sectionNumber": 2,
     "sectionTitle": "Sinais e Sintomas Sintomáticos na Emergência",
     "startPage": 429,
@@ -198,7 +198,7 @@ export const CHAPTERS_DATA: Chapter[] = [
   {
     "id": 21,
     "number": 21,
-    "title": "Náuseas e vômitos",
+    "title": "Náuseas e vômitos",
     "sectionNumber": 2,
     "sectionTitle": "Sinais e Sintomas Sintomáticos na Emergência",
     "startPage": 489,
@@ -621,7 +621,7 @@ export const CHAPTERS_DATA: Chapter[] = [
   {
     "id": 68,
     "number": 68,
-    "title": "Fratura exposta꞉ abordagem na emergência",
+    "title": "Fratura exposta: abordagem na emergência",
     "sectionNumber": 7,
     "sectionTitle": "Abordagem do Paciente Vítima de Trauma",
     "startPage": 1315,
@@ -1255,7 +1255,7 @@ export const SECTIONS: Section[] = [
       {
         "id": 18,
         "number": 18,
-        "title": "Abordagem inicial do pacient com dispneia",
+        "title": "Abordagem inicial do paciente com dispneia",
         "sectionNumber": 2,
         "sectionTitle": "Sinais e Sintomas Sintomáticos na Emergência",
         "startPage": 429,
@@ -1282,7 +1282,7 @@ export const SECTIONS: Section[] = [
       {
         "id": 21,
         "number": 21,
-        "title": "Náuseas e vômitos",
+        "title": "Náuseas e vômitos",
         "sectionNumber": 2,
         "sectionTitle": "Sinais e Sintomas Sintomáticos na Emergência",
         "startPage": 489,
@@ -1735,7 +1735,7 @@ export const SECTIONS: Section[] = [
       {
         "id": 68,
         "number": 68,
-        "title": "Fratura exposta꞉ abordagem na emergência",
+        "title": "Fratura exposta: abordagem na emergência",
         "sectionNumber": 7,
         "sectionTitle": "Abordagem do Paciente Vítima de Trauma",
         "startPage": 1315,

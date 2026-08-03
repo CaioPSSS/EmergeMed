@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { fixMojibake } from '@/lib/text-sanitizer';
 import {
   SYSTEM_PROMPT_QUESTION_GENERATOR,
   SYSTEM_PROMPT_PRESCRIPTION_EVALUATOR,
@@ -39,19 +40,114 @@ export interface PrescriptionEvaluation {
   idealPrescription: string;
 }
 
-function fixMojibake(text: string): string {
-  if (!text) return text;
-  // Only attempt conversion if text contains true Mojibake patterns:
-  // 'Ã' or 'Â' followed by Latin-1 supplement characters (\u0080-\u00BF)
-  if (/[ÃÂ][\u0080-\u00BF]/.test(text)) {
-    try {
-      const converted = Buffer.from(text, 'latin1').toString('utf8');
-      if (!converted.includes('\uFFFD')) {
-        return converted;
-      }
-    } catch {}
+export { fixMojibake };
+
+/**
+ * Helper function to safely extract and parse JSON from AI model outputs wrapped in markdown codeblocks,
+ * preambles, or postscript text.
+ */
+export function parseJsonFromMarkdown<T = any>(text: string): T {
+  if (!text) {
+    throw new Error('Resposta de texto da IA está vazia');
   }
-  return text;
+
+  let cleaned = text.trim();
+
+  // 1. Extract content inside markdown codeblock (```json ... ``` or ``` ... ```) if present anywhere in text
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    const candidate = codeBlockMatch[1].trim();
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      // If direct parse of codeblock failed, use candidate string for further bracket searching
+      cleaned = candidate;
+    }
+  } else {
+    // Strip leading/trailing codeblock markers if partial
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+  }
+
+  // 2. Try direct JSON parse on cleaned text
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    // Proceed to bracket extraction
+  }
+
+  // 3. Extract JSON object or array payload if surrounded by preamble or trailing text
+  const firstBracket = cleaned.search(/[\[\{]/);
+  const lastBracket = Math.max(cleaned.lastIndexOf(']'), cleaned.lastIndexOf('}'));
+
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const sliced = cleaned.slice(firstBracket, lastBracket + 1);
+    try {
+      return JSON.parse(sliced) as T;
+    } catch {
+      // If initial bracket slice failed (e.g., preamble or postscript had curly braces),
+      // scan candidate bracket positions for valid JSON.
+      for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i];
+        if (char === '{' || char === '[') {
+          const closingChar = char === '{' ? '}' : ']';
+          let endIdx = cleaned.lastIndexOf(closingChar);
+          while (endIdx > i) {
+            const candidate = cleaned.slice(i, endIdx + 1);
+            try {
+              return JSON.parse(candidate) as T;
+            } catch {
+              endIdx = cleaned.lastIndexOf(closingChar, endIdx - 1);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (err: any) {
+    console.error('[OpenRouter JSON Parse Error] Conteúdo bruto:', text, err);
+    throw new Error(`Falha ao converter resposta da IA em JSON válido: ${err.message}`);
+  }
+}
+
+/**
+ * Helper function for executing AI calls with exponential backoff retries per model
+ * and multi-model fallback cascade across candidate models.
+ */
+export async function executeWithModelCascade<T>(
+  models: string[],
+  fn: (model: string) => Promise<T>,
+  options: { maxRetriesPerModel?: number; initialDelayMs?: number } = {}
+): Promise<T> {
+  const maxRetries = options.maxRetriesPerModel ?? 2;
+  const initialDelay = options.initialDelayMs ?? 500;
+
+  // Filter out empty or duplicate model names
+  const modelList = Array.from(new Set(models.filter(Boolean)));
+  let lastError: any = null;
+
+  for (const model of modelList) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn(model);
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[OpenRouter Cascade] Tentativa ${attempt + 1}/${maxRetries + 1} com o modelo '${model}' falhou: ${err?.message || err}`);
+        if (attempt < maxRetries) {
+          const delay = initialDelay * Math.pow(2, attempt);
+          await new Promise((res) => setTimeout(res, delay));
+        }
+      }
+    }
+    console.warn(`[OpenRouter Cascade] Modelo '${model}' esgotou todas as ${maxRetries + 1} tentativas. Alternando para o próximo modelo na cascata...`);
+  }
+
+  throw new Error(`Todos os modelos da cascata de IA falharam (${modelList.join(', ')}). Último erro: ${lastError?.message || lastError}`);
 }
 
 export function getOpenAIClient(userApiKey?: string) {
@@ -121,7 +217,9 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
   // Scale max_tokens dynamically: ~1200 tokens per question, minimum 6000, maximum 24000
   const calculatedMaxTokens = Math.min(24000, Math.max(6000, count * 1200));
 
-  const runCompletion = async (selectedModel: string) => {
+  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
@@ -133,8 +231,7 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
     });
 
     const content = response.choices[0]?.message?.content || '[]';
-    const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-    const parsed = JSON.parse(cleaned) as QuestionItem[];
+    const parsed = parseJsonFromMarkdown<QuestionItem[]>(content);
 
     for (const q of parsed) {
       if (q.vignette) q.vignette = fixMojibake(q.vignette);
@@ -151,19 +248,7 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
     }
 
     return parsed;
-  };
-
-  try {
-    return await runCompletion(model);
-  } catch (error) {
-    console.warn(`Primary model ${model} failed, attempting fallback ${fallbackModel}:`, error);
-    try {
-      return await runCompletion(fallbackModel);
-    } catch (fallbackErr) {
-      console.error('Fallback model also failed:', fallbackErr);
-      throw new Error('Falha ao gerar questões por IA. Verifique sua chave API do OpenRouter.');
-    }
-  }
+  });
 }
 
 export async function evaluatePrescriptionWithAI({
@@ -217,7 +302,9 @@ ${cleanChapterText ? `TEXTO COMPLETO DE REFERÊNCIA DO LIVRO:\n${cleanChapterTex
 
 Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markdown extra.`;
 
-  const runCompletion = async (selectedModel: string) => {
+  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
@@ -229,22 +316,14 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
     });
 
     const content = response.choices[0]?.message?.content || '{}';
-    const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-    const result = JSON.parse(cleaned) as PrescriptionEvaluation;
+    const result = parseJsonFromMarkdown<PrescriptionEvaluation>(content);
 
     if (result.verdict) result.verdict = fixMojibake(result.verdict);
     if (result.detailedFeedback) result.detailedFeedback = fixMojibake(result.detailedFeedback);
     if (result.idealPrescription) result.idealPrescription = fixMojibake(result.idealPrescription);
 
     return result;
-  };
-
-  try {
-    return await runCompletion(model);
-  } catch (error) {
-    console.warn(`Primary prescription model ${model} failed, using fallback ${fallbackModel}:`, error);
-    return await runCompletion(fallbackModel);
-  }
+  });
 }
 
 export async function generatePlantaoBedQuestionsWithAI({
@@ -276,7 +355,9 @@ Q4: Prescrição Completa ("prescription_complete") OU Ventilador Mecânico ("ve
 
 Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato especificado. Sem explicações ou markdown adicional.`;
 
-  const runCompletion = async (selectedModel: string) => {
+  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
@@ -288,8 +369,7 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
     });
 
     const content = response.choices[0]?.message?.content || '[]';
-    const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-    const parsed = JSON.parse(cleaned) as QuestionItem[];
+    const parsed = parseJsonFromMarkdown<QuestionItem[]>(content);
 
     for (const q of parsed) {
       if (q.vignette) q.vignette = fixMojibake(q.vignette);
@@ -307,14 +387,7 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
     }
 
     return parsed;
-  };
-
-  try {
-    return await runCompletion(model);
-  } catch (err) {
-    console.warn(`Plantao bed generator failed on ${model}, trying fallback ${fallbackModel}`, err);
-    return await runCompletion(fallbackModel);
-  }
+  });
 }
 
 export async function generateAdverseEvolutionQuestionWithAI({
@@ -355,7 +428,9 @@ Gere UMA única questão bônus (tipo "prescription_immediate" ou "multiple_choi
 
 Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdown extra.`;
 
-  const runCompletion = async (selectedModel: string) => {
+  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
@@ -367,8 +442,7 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
     });
 
     const content = response.choices[0]?.message?.content || '{}';
-    const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-    const parsed = JSON.parse(cleaned) as QuestionItem;
+    const parsed = parseJsonFromMarkdown<QuestionItem>(content);
 
     if (parsed.vignette) parsed.vignette = fixMojibake(parsed.vignette);
     if (parsed.explanation) parsed.explanation = fixMojibake(parsed.explanation);
@@ -379,14 +453,7 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
     }
 
     return parsed;
-  };
-
-  try {
-    return await runCompletion(model);
-  } catch (err) {
-    console.warn(`Adverse evolution generator failed on ${model}, trying fallback ${fallbackModel}`, err);
-    return await runCompletion(fallbackModel);
-  }
+  });
 }
 
 export async function generateGeneralFeedbackWithAI({
@@ -441,7 +508,9 @@ Gere o Feedback Geral de Preceptoria em Markdown contendo:
 
 Responda diretamente em Markdown sem blocos de código JSON.`;
 
-  const runCompletion = async (selectedModel: string) => {
+  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
@@ -454,13 +523,5 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
 
     const content = response.choices[0]?.message?.content || '';
     return fixMojibake(content.trim());
-  };
-
-  try {
-    return await runCompletion(model);
-  } catch (err) {
-    console.warn(`General feedback generator failed on ${model}, trying fallback ${fallbackModel}`, err);
-    return await runCompletion(fallbackModel);
-  }
+  });
 }
-

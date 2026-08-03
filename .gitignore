@@ -61,3 +61,6 @@ coverage/
 # Antigravity / Agent Scratch & System Files
 .gemini/
 .system_generated/
+.agents/
+ORIGINAL_REQUEST.md
+

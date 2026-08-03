@@ -11,13 +11,188 @@ import {
   FileQuestion,
   Award,
   Sparkles,
-  ArrowRight,
-  RefreshCw,
   Search,
   Activity,
-  Flame,
   Stethoscope,
+  ShieldCheck,
+  Zap,
+  AlertTriangle,
+  TrendingUp,
+  RefreshCw,
+  HeartPulse,
 } from 'lucide-react';
+
+interface SpecialtyScore {
+  name: string;
+  score: number; // 0 - 100
+  chapterIds: number[];
+  color: string;
+}
+
+// 5 Emergency Medical Specialties for UPA Readiness
+const SPECIALTIES_CONFIG: { name: string; chapterIds: number[]; color: string }[] = [
+  {
+    name: 'Cardiologia',
+    chapterIds: [29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
+    color: '#ef4444', // Red / Rose
+  },
+  {
+    name: 'Pneumologia',
+    chapterIds: [2, 6, 7, 41, 42, 43, 44, 45, 46, 47],
+    color: '#38bdf8', // Sky Blue
+  },
+  {
+    name: 'Infectologia',
+    chapterIds: [9, 48, 49, 50, 51, 52, 71],
+    color: '#10b981', // Emerald Green
+  },
+  {
+    name: 'Traumatologia',
+    chapterIds: [62, 63, 64, 65, 66, 67, 68, 69],
+    color: '#f59e0b', // Amber
+  },
+  {
+    name: 'Terapia Intensiva',
+    chapterIds: [1, 3, 4, 5, 8, 10, 13, 78, 80],
+    color: '#a855f7', // Purple
+  },
+];
+
+// Responsive SVG Radar Chart Component
+function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
+  const cx = 200;
+  const cy = 200;
+  const radius = 110;
+  const numAxes = data.length; // 5
+
+  // Calculate polygon points
+  const points = data.map((item, i) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
+    const r = radius * (Math.max(10, Math.min(100, item.score)) / 100);
+    const x = cx + r * Math.cos(angle);
+    const y = cy + r * Math.sin(angle);
+    return { x, y, angle, item };
+  });
+
+  const polygonPointsStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+
+  // Grid levels (20%, 40%, 60%, 80%, 100%)
+  const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
+
+  return (
+    <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto', position: 'relative' }}>
+      <svg viewBox="0 0 400 400" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="radarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.25" />
+          </linearGradient>
+        </defs>
+
+        {/* Concentric Pentagon Background Grids */}
+        {gridLevels.map((level, idx) => {
+          const rLevel = radius * level;
+          const levelPoints = data
+            .map((_, i) => {
+              const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
+              const x = cx + rLevel * Math.cos(angle);
+              const y = cy + rLevel * Math.sin(angle);
+              return `${x.toFixed(1)},${y.toFixed(1)}`;
+            })
+            .join(' ');
+
+          return (
+            <polygon
+              key={`grid-${idx}`}
+              points={levelPoints}
+              fill="none"
+              stroke="rgba(255, 255, 255, 0.08)"
+              strokeWidth="1"
+              strokeDasharray={idx < 4 ? '3,3' : undefined}
+            />
+          );
+        })}
+
+        {/* Axis Lines from center */}
+        {data.map((_, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
+          const x = cx + radius * Math.cos(angle);
+          const y = cy + radius * Math.sin(angle);
+          return (
+            <line
+              key={`axis-${i}`}
+              x1={cx}
+              y1={cy}
+              x2={x}
+              y2={y}
+              stroke="rgba(255, 255, 255, 0.12)"
+              strokeWidth="1.5"
+            />
+          );
+        })}
+
+        {/* Filled Competence Polygon */}
+        <polygon
+          points={polygonPointsStr}
+          fill="url(#radarGradient)"
+          stroke="#10b981"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+        />
+
+        {/* Data Point Nodes and Labels */}
+        {points.map((p, i) => {
+          const labelRadius = radius + 32;
+          const lx = cx + labelRadius * Math.cos(p.angle);
+          const ly = cy + labelRadius * Math.sin(p.angle);
+
+          let textAnchor: 'middle' | 'start' | 'end' | 'inherit' = 'middle';
+          if (Math.abs(Math.cos(p.angle)) > 0.3) {
+            textAnchor = Math.cos(p.angle) > 0 ? 'start' : 'end';
+          }
+
+          return (
+            <g key={`node-${i}`}>
+              {/* Vertex Circle */}
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r="5"
+                fill={p.item.color}
+                stroke="#0f172a"
+                strokeWidth="2"
+              />
+
+              {/* Score Badge Text on Node */}
+              <text
+                x={p.x}
+                y={p.y - 10}
+                textAnchor="middle"
+                fill="#ffffff"
+                fontSize="11"
+                fontWeight="700"
+              >
+                {Math.round(p.item.score)}%
+              </text>
+
+              {/* Specialty Name Label */}
+              <text
+                x={lx}
+                y={ly}
+                textAnchor={textAnchor}
+                fill="#f8fafc"
+                fontSize="12"
+                fontWeight="700"
+              >
+                {p.item.name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -31,6 +206,8 @@ export default function DashboardPage() {
     testsCompleted: 0,
     averageScore: 0,
   });
+
+  const [specialtyScores, setSpecialtyScores] = useState<SpecialtyScore[]>([]);
 
   const [showTestModal, setShowTestModal] = useState<boolean>(false);
   const [showManualSelectModal, setShowManualSelectModal] = useState<boolean>(false);
@@ -71,6 +248,26 @@ export default function DashboardPage() {
           averageScore: avg,
         });
 
+        // Compute Specialty Scores dynamically based on read progress & test stats
+        const computedScores = SPECIALTIES_CONFIG.map((spec) => {
+          const totalInSpec = spec.chapterIds.length;
+          const readInSpec = spec.chapterIds.filter((id) => readIds.includes(id)).length;
+          const readFraction = totalInSpec > 0 ? readInSpec / totalInSpec : 0;
+
+          // Formula: 40% weight on reading completion + 60% weight on test average or fallback baseline
+          let score = Math.round(readFraction * 40 + (avg > 0 ? (avg / 10) * 60 : 55));
+          score = Math.min(100, Math.max(25, score));
+
+          return {
+            name: spec.name,
+            score,
+            chapterIds: spec.chapterIds,
+            color: spec.color,
+          };
+        });
+
+        setSpecialtyScores(computedScores);
+
         // Pick initial current chapter from saved setting or random unread
         const { data: settings } = await supabase
           .from('user_settings')
@@ -82,7 +279,6 @@ export default function DashboardPage() {
         let selectedCap = CHAPTERS_DATA.find((c) => c.id === initialCapId);
 
         if (!selectedCap) {
-          // Sortear um não lido e SALVAR para persistir entre reloads
           selectedCap = getRandomUnreadChapter(readIds);
           await supabase
             .from('user_settings')
@@ -90,6 +286,15 @@ export default function DashboardPage() {
         }
 
         setCurrentChapter(selectedCap);
+      } else {
+        // Fallback default scores for unauthenticated preview state
+        const defaultScores = SPECIALTIES_CONFIG.map((spec) => ({
+          name: spec.name,
+          score: 65,
+          chapterIds: spec.chapterIds,
+          color: spec.color,
+        }));
+        setSpecialtyScores(defaultScores);
       }
       setLoading(false);
     }
@@ -100,7 +305,6 @@ export default function DashboardPage() {
   function getRandomUnreadChapter(readIds: number[]): Chapter {
     const unread = CHAPTERS_DATA.filter((c) => !readIds.includes(c.id));
     if (unread.length === 0) {
-      // Se leu todos, sorteia qualquer um
       const randIndex = Math.floor(Math.random() * CHAPTERS_DATA.length);
       return CHAPTERS_DATA[randIndex];
     }
@@ -136,7 +340,17 @@ export default function DashboardPage() {
       read_at: new Date().toISOString(),
     });
 
-    // Abrir modal sugerindo teste sobre este capítulo
+    // Update specialty scores dynamically
+    const updatedScores = SPECIALTIES_CONFIG.map((spec) => {
+      const totalInSpec = spec.chapterIds.length;
+      const readInSpec = spec.chapterIds.filter((id) => newReadIds.includes(id)).length;
+      const readFraction = totalInSpec > 0 ? readInSpec / totalInSpec : 0;
+      let score = Math.round(readFraction * 40 + (stats.averageScore > 0 ? (stats.averageScore / 10) * 60 : 55));
+      score = Math.min(100, Math.max(25, score));
+      return { name: spec.name, score, chapterIds: spec.chapterIds, color: spec.color };
+    });
+    setSpecialtyScores(updatedScores);
+
     setShowTestModal(true);
   };
 
@@ -157,6 +371,43 @@ export default function DashboardPage() {
     c.title.toLowerCase().includes(manualSearch.toLowerCase()) ||
     c.sectionTitle.toLowerCase().includes(manualSearch.toLowerCase())
   );
+
+  // Global UPA Readiness Score (Average across 5 specialties)
+  const globalReadinessScore = specialtyScores.length > 0
+    ? Math.round(specialtyScores.reduce((acc, curr) => acc + curr.score, 0) / specialtyScores.length)
+    : 0;
+
+  // Determine UPA Readiness Status Badge & Attributes
+  let readinessBadge = {
+    label: 'APTO — SALA VERMELHA & CASOS CRÍTICOS',
+    color: '#34d399',
+    bg: 'rgba(16, 185, 129, 0.15)',
+    border: 'rgba(16, 185, 129, 0.3)',
+    icon: ShieldCheck,
+    description: 'Prontidão médica excelente para Sala Vermelha, politrauma e intercorrências graves de plantão UPA.',
+  };
+
+  if (globalReadinessScore < 60) {
+    readinessBadge = {
+      label: 'CAPACITAÇÃO EM ANDAMENTO',
+      color: '#38bdf8',
+      bg: 'rgba(14, 165, 233, 0.15)',
+      border: 'rgba(14, 165, 233, 0.3)',
+      icon: Activity,
+      description: 'Prontidão inicial. Recomendada revisão de condutas em Suporte de Vida e Prescrição de Emergência.',
+    };
+  } else if (globalReadinessScore < 80) {
+    readinessBadge = {
+      label: 'PRONTIDÃO INTERMEDIÁRIA (SOB SUPERVISÃO)',
+      color: '#fbbf24',
+      bg: 'rgba(245, 158, 11, 0.15)',
+      border: 'rgba(245, 158, 11, 0.3)',
+      icon: AlertTriangle,
+      description: 'Capacidade técnica sólida para atendimentos de emergência geral com suporte de preceptoria.',
+    };
+  }
+
+  const BadgeIcon = readinessBadge.icon;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -231,6 +482,172 @@ export default function DashboardPage() {
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f8fafc', marginTop: '12px' }}>
             {stats.averageScore > 0 ? `${stats.averageScore} / 10` : '—'}
           </div>
+        </div>
+      </div>
+
+      {/* COMPONENT 2 - DASHBOARD MEDICAL COMPETENCIES RADAR CHART & UPA READINESS INDICATOR */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
+        {/* Left Column: UPA Medical Readiness Indicator (Prontidão Médica da UPA) */}
+        <div
+          className="glass-panel"
+          style={{
+            padding: '28px',
+            borderRadius: '20px',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div
+                style={{
+                  padding: '10px',
+                  borderRadius: '12px',
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  color: '#34d399',
+                }}
+              >
+                <HeartPulse size={24} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>
+                  Prontidão Médica da UPA
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  Indicador Global de Competência de Emergência
+                </p>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '2.2rem', fontWeight: 900, color: readinessBadge.color, lineHeight: 1 }}>
+                {globalReadinessScore}%
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600, marginTop: '2px' }}>
+                SCORE GLOBAL
+              </div>
+            </div>
+          </div>
+
+          {/* Status Badge */}
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: '12px',
+              background: readinessBadge.bg,
+              border: `1px solid ${readinessBadge.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+            }}
+          >
+            <BadgeIcon size={20} style={{ color: readinessBadge.color, flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: readinessBadge.color, letterSpacing: '0.04em' }}>
+                {readinessBadge.label}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {readinessBadge.description}
+              </div>
+            </div>
+          </div>
+
+          {/* Per-Specialty Progress Breakdown */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <TrendingUp size={16} style={{ color: '#38bdf8' }} /> Desempenho por Especialidade de Emergência
+            </div>
+
+            {specialtyScores.map((spec) => (
+              <div key={spec.name} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{spec.name}</span>
+                  <span style={{ color: '#fff', fontWeight: 700 }}>{spec.score}%</span>
+                </div>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '8px',
+                    borderRadius: '9999px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${spec.score}%`,
+                      height: '100%',
+                      background: spec.color,
+                      borderRadius: '9999px',
+                      transition: 'width 0.6s ease',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Shift Readiness Status Banner */}
+          <div
+            style={{
+              padding: '14px 16px',
+              borderRadius: '12px',
+              background: 'rgba(15, 23, 42, 0.6)',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: '4px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Zap size={18} style={{ color: '#fbbf24' }} />
+              <span style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: 600 }}>
+                Status de Prontidão para Plantão Noturno
+              </span>
+            </div>
+            <span
+              style={{
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                background: globalReadinessScore >= 70 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                color: globalReadinessScore >= 70 ? '#34d399' : '#fbbf24',
+              }}
+            >
+              {globalReadinessScore >= 70 ? 'Escala Liberada' : 'Sob Preceptoria'}
+            </span>
+          </div>
+        </div>
+
+        {/* Right Column: Responsive Radar Chart */}
+        <div
+          className="glass-panel"
+          style={{
+            padding: '28px',
+            borderRadius: '20px',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div style={{ width: '100%', marginBottom: '16px', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>
+              Radar de Competências Médicas
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Avaliação Pentagonal de Especialidades de Emergência UPA (0-100)
+            </p>
+          </div>
+
+          <MedicalRadarChart data={specialtyScores} />
         </div>
       </div>
 

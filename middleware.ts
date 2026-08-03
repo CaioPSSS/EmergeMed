@@ -15,7 +15,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/capitulos') ||
     request.nextUrl.pathname.startsWith('/testes') ||
     request.nextUrl.pathname.startsWith('/historico') ||
-    request.nextUrl.pathname.startsWith('/configuracoes');
+    request.nextUrl.pathname.startsWith('/configuracoes') ||
+    request.nextUrl.pathname.startsWith('/plantoes');
 
   if (!supabaseUrl || !supabaseAnonKey) {
     // If Supabase is not configured, block protected pages instead of silently allowing access
