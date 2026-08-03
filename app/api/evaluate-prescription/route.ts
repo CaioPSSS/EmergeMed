@@ -17,7 +17,17 @@ export async function POST(request: Request) {
       idealPrescription,
       evaluationCriteria,
       chapterId,
-    } = await request.json();
+      questionType,
+      ventilatorData,
+    } = await request.json() as {
+      vignette: string;
+      userPrescription: string;
+      idealPrescription?: string;
+      evaluationCriteria?: string[];
+      chapterId?: number;
+      questionType?: 'prescription_complete' | 'prescription_immediate' | 'ventilator';
+      ventilatorData?: Record<string, string>;
+    };
 
     if (!vignette || typeof vignette !== 'string') {
       return NextResponse.json({ error: 'Caso clínico (vignette) é obrigatório.' }, { status: 400 });
@@ -56,6 +66,8 @@ export async function POST(request: Request) {
       idealPrescription,
       evaluationCriteria,
       chapterText,
+      questionType,
+      ventilatorData,
     });
 
     return NextResponse.json({ evaluation });

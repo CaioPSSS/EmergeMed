@@ -12,7 +12,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const { chapterIds, count = 5, questionType = 'mixed' } = await request.json();
+    const { chapterIds, count = 5, questionType = 'mixed' } = await request.json() as {
+      chapterIds: number[];
+      count?: number;
+      questionType?: 'multiple_choice' | 'prescription' | 'ventilator' | 'mixed';
+    };
 
     if (!chapterIds || !Array.isArray(chapterIds) || chapterIds.length === 0) {
       return NextResponse.json({ error: 'Selecione pelo menos um capítulo.' }, { status: 400 });

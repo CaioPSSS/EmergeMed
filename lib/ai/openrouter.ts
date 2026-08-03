@@ -7,16 +7,21 @@ export interface QuestionOption {
 
 export interface QuestionItem {
   id: number;
-  type: 'multiple_choice' | 'prescription';
+  type: 'multiple_choice' | 'prescription_complete' | 'prescription_immediate' | 'ventilator';
   chapterId: number;
   chapterTitle: string;
   vignette: string;
+  // Multiple choice fields
   options?: string[];
   correctOption?: number; // 0-indexed: 0=A, 1=B, 2=C, 3=D, 4=E
   explanation?: string;
+  // Prescription fields (complete + immediate)
   promptText?: string;
   idealPrescription?: string;
   evaluationCriteria?: string[];
+  // Ventilator fields
+  ventilatorFields?: Record<string, string>;
+  idealVentilator?: Record<string, string>;
 }
 
 export interface PrescriptionEvaluation {
@@ -26,6 +31,16 @@ export interface PrescriptionEvaluation {
   improvements: string[];
   detailedFeedback: string;
   idealPrescription: string;
+}
+
+function fixMojibake(text: string): string {
+  if (!text) return text;
+  try {
+    if (text.includes('Ã') || text.includes('Â')) {
+      return Buffer.from(text, 'latin1').toString('utf8');
+    }
+  } catch {}
+  return text;
 }
 
 export function getOpenAIClient(userApiKey?: string) {
@@ -55,7 +70,7 @@ export async function generateQuestionsWithAI({
   chaptersInfo: { id: number; number: number; title: string; sectionTitle: string }[];
   chapterTexts?: Record<number, string>;
   count?: number;
-  questionType?: 'multiple_choice' | 'prescription' | 'mixed';
+  questionType?: 'multiple_choice' | 'prescription' | 'ventilator' | 'mixed';
 }): Promise<QuestionItem[]> {
   const openai = getOpenAIClient(apiKey);
 
@@ -65,22 +80,35 @@ export async function generateQuestionsWithAI({
 
   let textContext = '';
   if (chapterTexts && Object.keys(chapterTexts).length > 0) {
-    textContext = '\n\nTrechos de referência dos capítulos do livro:\n' +
+    textContext = '\n\nTEXTO COMPLETO DOS CAPÍTULOS DO LIVRO (FONTE PRIMÁRIA OBRIGATÓRIA):\n' +
       Object.entries(chapterTexts)
-        .map(([id, text]) => `--- TEXTO DO CAPÍTULO ${id} ---\n${text.slice(0, 10000)}...`)
-        .join('\n');
+        .map(([id, text]) => {
+          const cleaned = fixMojibake(text || '');
+          return `--- TEXTO COMPLETO DO CAPÍTULO ${id} ---\n${cleaned}`;
+        })
+        .join('\n\n');
   }
+
+  const typeDescriptions: Record<string, string> = {
+    mixed: 'mistas — inclua questões de múltipla escolha, prescrição completa (do dia), prescrição imediata (no momento) e configuração de ventilador mecânico (SOMENTE quando cabível para a patologia do caso)',
+    multiple_choice: 'apenas múltipla escolha (A-E) com 5 alternativas',
+    prescription: 'apenas prescrições — alterne entre prescrição completa (prescription_complete) e prescrição imediata (prescription_immediate)',
+    ventilator: 'apenas configuração de ventilador mecânico (somente se a patologia justificar ventilação mecânica invasiva)',
+  };
 
   const userPrompt = `Gere ${count} questões clínicas de medicina de emergência para UPA sobre os seguintes capítulos:
 ${chaptersPrompt}
 ${textContext}
 
-Tipo de questões desejadas: ${questionType === 'mixed' ? 'mistas (múltipla escolha e prescrição)' : questionType === 'multiple_choice' ? 'apenas múltipla escolha (A-E)' : 'apenas prescrever condutas'}.
+INSTRUÇÕES FUNDAMENTAIS:
+1. O TEXTO COMPLETO DO CAPÍTULO FORNECIDO ACIMA É SUA FONTE PRIMÁRIA E OBRIGATÓRIA. Todas as questões devem ser derivadas de conceitos, dados, tabelas e protocolos presentes no capítulo.
+2. Tipo de questões desejadas: ${typeDescriptions[questionType] || typeDescriptions.mixed}.
+3. As questões devem ser DESAFIADORAS — nível de residência médica e prova de título.
 
 Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Responda APENAS o JSON válido sem marcações markdown de código.`;
 
-  // Scale max_tokens dynamically: ~800 tokens per question, minimum 4000, maximum 16000
-  const calculatedMaxTokens = Math.min(16000, Math.max(4000, count * 800));
+  // Scale max_tokens dynamically: ~1200 tokens per question, minimum 6000, maximum 24000
+  const calculatedMaxTokens = Math.min(24000, Math.max(6000, count * 1200));
 
   const runCompletion = async (selectedModel: string) => {
     const response = await openai.chat.completions.create({
@@ -89,36 +117,25 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
         { role: 'system', content: SYSTEM_PROMPT_QUESTION_GENERATOR },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.7,
+      temperature: 0.4,
       max_tokens: calculatedMaxTokens,
     });
 
     const content = response.choices[0]?.message?.content || '[]';
-    // Clean response in case model wrapped it in ```json ... ```
     const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
     const parsed = JSON.parse(cleaned) as QuestionItem[];
 
-    // Normalize correctOption to always be a 0-indexed integer
     for (const q of parsed) {
-      if (q.type === 'multiple_choice' && q.correctOption !== undefined) {
-        const raw = q.correctOption as unknown;
-        if (typeof raw === 'string') {
-          // Handle letter answers like "A", "B", "C", "D", "E"
-          const upper = raw.trim().toUpperCase();
-          if (/^[A-E]$/.test(upper)) {
-            q.correctOption = upper.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3, E=4
-          } else {
-            q.correctOption = parseInt(raw, 10);
-          }
-        }
-        // Sanity check: if value is out of 0-4 range, default to 0
-        if (typeof q.correctOption !== 'number' || isNaN(q.correctOption) || q.correctOption < 0 || q.correctOption > 4) {
-          q.correctOption = 0;
-        }
-      }
-      // Also strip any letter prefixes from options (e.g. "A) ...", "B) ...")
+      if (q.vignette) q.vignette = fixMojibake(q.vignette);
+      if (q.explanation) q.explanation = fixMojibake(q.explanation);
+      if (q.promptText) q.promptText = fixMojibake(q.promptText);
+      if (q.idealPrescription) q.idealPrescription = fixMojibake(q.idealPrescription);
       if (q.options) {
-        q.options = q.options.map(opt => opt.replace(/^[A-E]\)\s*/i, ''));
+        q.options = q.options.map(opt => fixMojibake(opt).replace(/^[A-E]\)\s*/i, ''));
+      }
+      // Normalize legacy 'prescription' type to 'prescription_complete'
+      if ((q as any).type === 'prescription') {
+        (q as any).type = 'prescription_complete';
       }
     }
 
@@ -147,6 +164,8 @@ export async function evaluatePrescriptionWithAI({
   idealPrescription,
   evaluationCriteria,
   chapterText,
+  questionType,
+  ventilatorData,
 }: {
   apiKey?: string;
   model?: string;
@@ -156,20 +175,34 @@ export async function evaluatePrescriptionWithAI({
   idealPrescription?: string;
   evaluationCriteria?: string[];
   chapterText?: string;
+  questionType?: 'prescription_complete' | 'prescription_immediate' | 'ventilator';
+  ventilatorData?: Record<string, string>;
 }): Promise<PrescriptionEvaluation> {
   const openai = getOpenAIClient(apiKey);
 
-  const userPrompt = `Avalie a seguinte prescrição médica para um caso de emergência na UPA:
+  const cleanChapterText = fixMojibake(chapterText || '');
+
+  const typeLabel = questionType === 'ventilator'
+    ? 'CONFIGURAÇÃO DE VENTILADOR MECÂNICO'
+    : questionType === 'prescription_immediate'
+    ? 'PRESCRIÇÃO IMEDIATA (NO MOMENTO)'
+    : 'PRESCRIÇÃO COMPLETA (DO DIA)';
+
+  const ventilatorSection = ventilatorData
+    ? `\nPARÂMETROS DO VENTILADOR CONFIGURADOS PELO MÉDICO:\n${Object.entries(ventilatorData).map(([k, v]) => `- ${k}: ${v || '(não preenchido)'}`).join('\n')}\n`
+    : '';
+
+  const userPrompt = `Avalie a seguinte ${typeLabel} para um caso de emergência na UPA:
+
+TIPO DE QUESTÃO: ${questionType || 'prescription_complete'}
 
 CASO CLÍNICO:
 ${vignette}
 
-PRESCRIÇÃO ESCRITA PELO MÉDICO:
-${userPrescription}
-
+${questionType === 'ventilator' ? ventilatorSection : `PRESCRIÇÃO ESCRITA PELO MÉDICO:\n${userPrescription}\n`}
 ${idealPrescription ? `GABARITO / PRESCRIÇÃO DE REFERÊNCIA:\n${idealPrescription}\n` : ''}
 ${evaluationCriteria ? `CRITÉRIOS ESPERADOS:\n${evaluationCriteria.join('\n')}\n` : ''}
-${chapterText ? `TEXTO DE REFERÊNCIA DO LIVRO:\n${chapterText.slice(0, 2000)}\n` : ''}
+${cleanChapterText ? `TEXTO COMPLETO DE REFERÊNCIA DO LIVRO:\n${cleanChapterText}\n` : ''}
 
 Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markdown extra.`;
 
@@ -181,12 +214,18 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.3,
-      max_tokens: 2000,
+      max_tokens: 4000,
     });
 
     const content = response.choices[0]?.message?.content || '{}';
     const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-    return JSON.parse(cleaned) as PrescriptionEvaluation;
+    const result = JSON.parse(cleaned) as PrescriptionEvaluation;
+
+    if (result.verdict) result.verdict = fixMojibake(result.verdict);
+    if (result.detailedFeedback) result.detailedFeedback = fixMojibake(result.detailedFeedback);
+    if (result.idealPrescription) result.idealPrescription = fixMojibake(result.idealPrescription);
+
+    return result;
   };
 
   try {

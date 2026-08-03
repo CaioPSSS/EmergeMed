@@ -8,15 +8,40 @@ import {
   Award,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
-  RotateCcw,
-  Sparkles,
-  ArrowRight,
   FileText,
-  Check,
   ChevronDown,
   ChevronUp,
+  Sparkles,
+  Zap,
+  Settings2,
 } from 'lucide-react';
+
+function getTypeBadge(type: string) {
+  switch (type) {
+    case 'multiple_choice':
+      return { label: 'Múltipla Escolha', color: '#34d399', icon: CheckCircle2 };
+    case 'prescription_complete':
+      return { label: 'Prescrição Completa', color: '#fbbf24', icon: FileText };
+    case 'prescription_immediate':
+      return { label: 'Prescrição Imediata', color: '#fb923c', icon: Zap };
+    case 'ventilator':
+      return { label: 'Ventilador Mecânico', color: '#a78bfa', icon: Settings2 };
+    default:
+      return { label: 'Questão', color: '#38bdf8', icon: FileText };
+  }
+}
+
+const VENTILATOR_FIELD_LABELS: Record<string, string> = {
+  modo: 'Modo Ventilatório',
+  volumeCorrente: 'Volume Corrente',
+  frequenciaRespiratoria: 'Frequência Respiratória',
+  peep: 'PEEP',
+  fio2: 'FiO₂',
+  relacaoIE: 'Relação I:E',
+  pressaoPlatoAlvo: 'Pressão de Platô Alvo',
+  fluxoOuPressao: 'Fluxo / Pressão',
+  alarmes: 'Alarmes',
+};
 
 export default function TestResultPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -136,6 +161,10 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
           const res = results[q.id] || {};
           const isMultiple = q.type === 'multiple_choice';
           const isExpanded = expandedItems[q.id] !== false; // Default expanded
+          const badge = getTypeBadge(q.type);
+          const qScoreColor = isMultiple
+            ? res.isCorrect ? '#34d399' : '#f43f5e'
+            : getScoreColor(res.score || 0);
 
           return (
             <div
@@ -144,9 +173,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
               style={{
                 padding: '24px',
                 borderRadius: '16px',
-                borderLeft: isMultiple
-                  ? `4px solid ${res.isCorrect ? '#34d399' : '#f43f5e'}`
-                  : `4px solid ${res.score >= 7 ? '#34d399' : res.score >= 5 ? '#fbbf24' : '#f43f5e'}`,
+                borderLeft: `4px solid ${qScoreColor}`,
               }}
             >
               {/* Question Header */}
@@ -164,14 +191,14 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
                   {isMultiple ? (
                     res.isCorrect ? <CheckCircle2 size={22} color="#34d399" /> : <XCircle size={22} color="#f43f5e" />
                   ) : (
-                    <FileText size={22} color="#38bdf8" />
+                    <badge.icon size={22} color={badge.color} />
                   )}
                   <div>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
                       Questão {idx + 1} • {q.chapterTitle}
                     </span>
                     <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff', marginTop: '2px' }}>
-                      {isMultiple ? 'Questão Objetiva' : 'Prescrição Médica'}
+                      {badge.label}
                     </h3>
                   </div>
                 </div>
@@ -180,9 +207,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
                   <span style={{
                     fontSize: '0.9rem',
                     fontWeight: 700,
-                    color: isMultiple
-                      ? res.isCorrect ? '#34d399' : '#f43f5e'
-                      : getScoreColor(res.score || 0),
+                    color: qScoreColor,
                   }}>
                     {isMultiple ? (res.isCorrect ? '+10 pts' : '0 pts') : `${res.score || 0} / 10 pts`}
                   </span>
@@ -227,7 +252,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
                     </div>
                   )}
 
-                  {/* Prescription Evaluation Feedback */}
+                  {/* Prescription / Ventilator AI Evaluation Feedback */}
                   {!isMultiple && res.evaluation && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                       <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '14px', borderRadius: '10px', borderLeft: `3px solid ${getScoreColor(res.score)}` }}>
@@ -244,7 +269,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
                         {res.evaluation.strengths && res.evaluation.strengths.length > 0 && (
                           <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#34d399', marginBottom: '6px' }}>
-                              ✓ Pontos Fortes da Prescrição:
+                              ✓ Pontos Fortes:
                             </div>
                             <ul style={{ paddingLeft: '18px', fontSize: '0.82rem', color: '#e2e8f0' }}>
                               {res.evaluation.strengths.map((item: string, i: number) => (
@@ -268,24 +293,59 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
                         )}
                       </div>
 
-                      {/* User Prescription vs Ideal Prescription */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '12px', borderRadius: '10px' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-subtle)' }}>Sua Prescrição Escrita:</span>
-                          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', color: '#e2e8f0', marginTop: '6px' }}>
-                            {res.userPrescription}
-                          </pre>
+                      {/* Ventilator Comparison Table */}
+                      {q.type === 'ventilator' && res.ventilatorData && q.idealVentilator && (
+                        <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#a78bfa', marginBottom: '12px' }}>
+                            Comparação: Seus Parâmetros vs. Ideal
+                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-subtle)', fontWeight: 600 }}>Parâmetro</th>
+                                <th style={{ textAlign: 'left', padding: '8px', color: '#fb923c', fontWeight: 600 }}>Sua Config.</th>
+                                <th style={{ textAlign: 'left', padding: '8px', color: '#34d399', fontWeight: 600 }}>Ideal</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(q.idealVentilator).map(([key, idealVal]) => (
+                                <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <td style={{ padding: '8px', color: '#e2e8f0', fontWeight: 600 }}>
+                                    {VENTILATOR_FIELD_LABELS[key] || key}
+                                  </td>
+                                  <td style={{ padding: '8px', color: '#fb923c' }}>
+                                    {res.ventilatorData[key] || '(não preenchido)'}
+                                  </td>
+                                  <td style={{ padding: '8px', color: '#34d399' }}>
+                                    {idealVal}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
+                      )}
 
-                        {res.evaluation.idealPrescription && (
-                          <div style={{ background: 'rgba(14, 165, 233, 0.08)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38bdf8' }}>Prescrição de Referência da Emergência:</span>
-                            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', color: '#38bdf8', marginTop: '6px' }}>
-                              {res.evaluation.idealPrescription}
+                      {/* User Prescription vs Ideal Prescription */}
+                      {(q.type === 'prescription_complete' || q.type === 'prescription_immediate') && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '12px', borderRadius: '10px' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-subtle)' }}>Sua Prescrição Escrita:</span>
+                            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', color: '#e2e8f0', marginTop: '6px' }}>
+                              {res.userPrescription}
                             </pre>
                           </div>
-                        )}
-                      </div>
+
+                          {res.evaluation.idealPrescription && (
+                            <div style={{ background: 'rgba(14, 165, 233, 0.08)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38bdf8' }}>Prescrição de Referência:</span>
+                              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', color: '#38bdf8', marginTop: '6px' }}>
+                                {res.evaluation.idealPrescription}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -12,7 +12,36 @@ import {
   AlertCircle,
   FileText,
   Stethoscope,
+  Zap,
+  Settings2,
 } from 'lucide-react';
+
+const VENTILATOR_FIELD_LABELS: Record<string, { label: string; unit: string; placeholder: string }> = {
+  modo: { label: 'Modo Ventilatório', unit: '', placeholder: 'VCV, PCV ou PSV' },
+  volumeCorrente: { label: 'Volume Corrente', unit: 'mL', placeholder: 'Ex: 420' },
+  frequenciaRespiratoria: { label: 'Frequência Respiratória', unit: 'irpm', placeholder: 'Ex: 20' },
+  peep: { label: 'PEEP', unit: 'cmH₂O', placeholder: 'Ex: 10' },
+  fio2: { label: 'FiO₂', unit: '', placeholder: 'Ex: 1.0 ou 0.6' },
+  relacaoIE: { label: 'Relação I:E', unit: '', placeholder: 'Ex: 1:2' },
+  pressaoPlatoAlvo: { label: 'Pressão de Platô Alvo', unit: 'cmH₂O', placeholder: 'Ex: < 30' },
+  fluxoOuPressao: { label: 'Fluxo / Pressão Inspiratória', unit: '', placeholder: 'Ex: 50 L/min' },
+  alarmes: { label: 'Alarmes Configurados', unit: '', placeholder: 'Ppico, Vt, FR, SpO2...' },
+};
+
+function getTypeBadge(type: string) {
+  switch (type) {
+    case 'multiple_choice':
+      return { label: 'Múltipla Escolha', bg: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: 'rgba(16, 185, 129, 0.3)' };
+    case 'prescription_complete':
+      return { label: 'Prescrição Completa', bg: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.3)' };
+    case 'prescription_immediate':
+      return { label: 'Prescrição Imediata', bg: 'rgba(249, 115, 22, 0.15)', color: '#fb923c', border: 'rgba(249, 115, 22, 0.3)' };
+    case 'ventilator':
+      return { label: 'Ventilador Mecânico', bg: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.3)' };
+    default:
+      return { label: 'Questão', bg: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: 'rgba(56, 189, 248, 0.3)' };
+  }
+}
 
 export default function TakeTestPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -64,11 +93,27 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
     }));
   };
 
+  const handleVentilatorFieldChange = (questionId: number, field: string, value: string) => {
+    setUserAnswers((prev) => {
+      const current = (prev[questionId] as Record<string, string>) || {};
+      return {
+        ...prev,
+        [questionId]: { ...current, [field]: value },
+      };
+    });
+  };
+
   const handleSubmitTest = async () => {
     // B8: Check unanswered questions count
-    const unansweredCount = questions.filter(
-      (q) => userAnswers[q.id] === undefined || userAnswers[q.id] === '' || userAnswers[q.id] === null
-    ).length;
+    const unansweredCount = questions.filter((q) => {
+      const answer = userAnswers[q.id];
+      if (answer === undefined || answer === null) return true;
+      if (typeof answer === 'string' && answer.trim() === '') return true;
+      if (q.type === 'ventilator' && typeof answer === 'object') {
+        return Object.values(answer).every((v) => !v || (v as string).trim() === '');
+      }
+      return false;
+    }).length;
 
     if (unansweredCount > 0) {
       const confirmSubmit = window.confirm(
@@ -85,8 +130,8 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       let totalPoints = 0;
       const maxPoints = questions.length * 10;
 
-      // Evaluate multiple choice immediately, prepare promises for prescriptions
-      const prescriptionPromises: Promise<{ id: number; evalData: any; userPrescription: string }>[] = [];
+      // Evaluate multiple choice immediately, prepare promises for AI-evaluated questions
+      const aiEvalPromises: Promise<{ id: number; evalData: any; userAnswer: any }>[] = [];
 
       for (const q of questions) {
         const answer = userAnswers[q.id];
@@ -102,10 +147,10 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             score,
             explanation: q.explanation,
           };
-        } else if (q.type === 'prescription') {
+        } else if (q.type === 'prescription_complete' || q.type === 'prescription_immediate') {
           const userPrescription = answer || 'Sem resposta enviada';
 
-          prescriptionPromises.push(
+          aiEvalPromises.push(
             fetch('/api/evaluate-prescription', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -115,24 +160,51 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                 idealPrescription: q.idealPrescription,
                 evaluationCriteria: q.evaluationCriteria,
                 chapterId: q.chapterId,
+                questionType: q.type,
               }),
             })
               .then((res) => res.json())
-              .then((evalData) => ({ id: q.id, evalData, userPrescription }))
+              .then((evalData) => ({ id: q.id, evalData, userAnswer: userPrescription }))
+          );
+        } else if (q.type === 'ventilator') {
+          const ventilatorData = (answer as Record<string, string>) || {};
+          const userPrescription = Object.entries(ventilatorData)
+            .map(([k, v]) => `${k}: ${v || '(vazio)'}`)
+            .join('\n');
+
+          aiEvalPromises.push(
+            fetch('/api/evaluate-prescription', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                vignette: q.vignette,
+                userPrescription,
+                idealPrescription: q.idealVentilator
+                  ? Object.entries(q.idealVentilator).map(([k, v]) => `${k}: ${v}`).join('\n')
+                  : undefined,
+                evaluationCriteria: q.evaluationCriteria,
+                chapterId: q.chapterId,
+                questionType: 'ventilator',
+                ventilatorData,
+              }),
+            })
+              .then((res) => res.json())
+              .then((evalData) => ({ id: q.id, evalData, userAnswer: ventilatorData }))
           );
         }
       }
 
-      // B4: Run prescription evaluations in parallel via Promise.all
-      if (prescriptionPromises.length > 0) {
-        const prescriptionResults = await Promise.all(prescriptionPromises);
+      // B4: Run AI evaluations in parallel via Promise.all
+      if (aiEvalPromises.length > 0) {
+        const aiResults = await Promise.all(aiEvalPromises);
 
-        for (const res of prescriptionResults) {
+        for (const res of aiResults) {
           const score = Number(res.evalData.evaluation?.score) || 0;
           totalPoints += score;
 
           evaluations[res.id] = {
-            userPrescription: res.userPrescription,
+            userPrescription: typeof res.userAnswer === 'string' ? res.userAnswer : JSON.stringify(res.userAnswer),
+            ventilatorData: typeof res.userAnswer === 'object' ? res.userAnswer : undefined,
             evaluation: res.evalData.evaluation,
             score,
           };
@@ -186,6 +258,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const currentQ = questions[currentIndex];
   const isLastQuestion = currentIndex === questions.length - 1;
   const currentAnswer = userAnswers[currentQ.id];
+  const typeBadge = getTypeBadge(currentQ.type);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '840px', margin: '0 auto' }}>
@@ -214,8 +287,8 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       {/* Question Card */}
       <div className="glass-panel" style={{ padding: '32px', borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         
-        {/* Chapter Tag */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Chapter Tag + Type Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{
             padding: '4px 12px',
             borderRadius: '9999px',
@@ -232,11 +305,11 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             borderRadius: '9999px',
             fontSize: '0.78rem',
             fontWeight: 700,
-            background: currentQ.type === 'multiple_choice' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-            color: currentQ.type === 'multiple_choice' ? '#34d399' : '#fbbf24',
-            border: `1px solid ${currentQ.type === 'multiple_choice' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+            background: typeBadge.bg,
+            color: typeBadge.color,
+            border: `1px solid ${typeBadge.border}`,
           }}>
-            {currentQ.type === 'multiple_choice' ? 'Múltipla Escolha' : 'Prescrição Médica'}
+            {typeBadge.label}
           </span>
         </div>
 
@@ -245,7 +318,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           background: 'rgba(15, 23, 42, 0.6)',
           padding: '20px',
           borderRadius: '14px',
-          borderLeft: '4px solid #38bdf8',
+          borderLeft: `4px solid ${typeBadge.color}`,
           fontSize: '1rem',
           lineHeight: '1.6',
           color: '#f8fafc',
@@ -300,16 +373,16 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           </div>
         )}
 
-        {/* Prescription Text Area */}
-        {currentQ.type === 'prescription' && (
+        {/* Prescription Complete Text Area */}
+        {currentQ.type === 'prescription_complete' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileText size={16} color="#34d399" />
-              {currentQ.promptText || 'Escreva sua prescrição completa para este caso:'}
+              <FileText size={16} color="#fbbf24" />
+              {currentQ.promptText || 'Escreva sua prescrição COMPLETA de internação para este caso:'}
             </label>
             <textarea
               className="input-field"
-              rows={8}
+              rows={14}
               style={{
                 fontFamily: 'monospace',
                 fontSize: '0.92rem',
@@ -317,15 +390,104 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                 padding: '16px',
                 resize: 'vertical',
               }}
-              placeholder={`Exemplo de formato:
-1. Soro Fisiológico 0.9% 1000mL IV agora em 30 min
-2. Ceftriaxona 2g IV agora (após culturas)
-3. Hemoculturas 2 pares + Urocultura
-4. Monitorização contínua de SpO2, PA e ECG
-5. Se PAM < 65 mmHg: iniciar Noradrenalina 0.05 mcg/kg/min...`}
+              placeholder={`Estrutura sugerida:
+REPOUSO E CABECEIRA: ...
+DIETA: ...
+HIDRATAÇÃO E INFUSÕES:
+1. SF 0,9% ...
+MEDICAMENTOS FIXOS:
+2. Ceftriaxona ...
+SINTOMÁTICOS E PROTOCOLOS:
+• DOR/FEBRE: Dipirona ...
+• HIPERGLICEMIA: Insulina Regular SC conforme HGT ...
+• PROFILAXIA TEV: Enoxaparina ...
+• PROFILAXIA MUCOSA: Omeprazol ...`}
               value={currentAnswer || ''}
               onChange={(e) => handlePrescriptionTextChange(currentQ.id, e.target.value)}
             />
+          </div>
+        )}
+
+        {/* Prescription Immediate Text Area */}
+        {currentQ.type === 'prescription_immediate' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Zap size={16} color="#fb923c" />
+              {currentQ.promptText || 'Prescreva a MEDICAÇÃO/CONDUTA IMEDIATA para este momento:'}
+            </label>
+            <textarea
+              className="input-field"
+              rows={5}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '0.92rem',
+                lineHeight: '1.5',
+                padding: '16px',
+                resize: 'vertical',
+              }}
+              placeholder={`Exemplo:
+Diazepam 10mg (2mL) IV em flush AGORA
+Se sem acesso: Midazolam 10mg IM`}
+              value={currentAnswer || ''}
+              onChange={(e) => handlePrescriptionTextChange(currentQ.id, e.target.value)}
+            />
+          </div>
+        )}
+
+        {/* Ventilator Configuration Fields */}
+        {currentQ.type === 'ventilator' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Settings2 size={16} color="#a78bfa" />
+              {currentQ.promptText || 'Configure os parâmetros do ventilador mecânico:'}
+            </label>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: '12px',
+            }}>
+              {Object.entries(VENTILATOR_FIELD_LABELS).map(([fieldKey, fieldInfo]) => {
+                const currentVentData = (currentAnswer as Record<string, string>) || {};
+                return (
+                  <div key={fieldKey} style={{
+                    background: 'rgba(15, 23, 42, 0.5)',
+                    padding: '14px',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    <label style={{
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      color: '#a78bfa',
+                      display: 'block',
+                      marginBottom: '6px',
+                    }}>
+                      {fieldInfo.label} {fieldInfo.unit && <span style={{ color: 'var(--text-subtle)' }}>({fieldInfo.unit})</span>}
+                    </label>
+                    {fieldKey === 'alarmes' ? (
+                      <textarea
+                        className="input-field"
+                        rows={2}
+                        style={{ fontSize: '0.88rem', padding: '8px 12px', resize: 'vertical' }}
+                        placeholder={fieldInfo.placeholder}
+                        value={currentVentData[fieldKey] || ''}
+                        onChange={(e) => handleVentilatorFieldChange(currentQ.id, fieldKey, e.target.value)}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        className="input-field"
+                        style={{ fontSize: '0.88rem', padding: '8px 12px' }}
+                        placeholder={fieldInfo.placeholder}
+                        value={currentVentData[fieldKey] || ''}
+                        onChange={(e) => handleVentilatorFieldChange(currentQ.id, fieldKey, e.target.value)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -356,7 +518,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             >
               {submitting ? (
                 <>
-                  <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> Avaliando Prescrições via IA...
+                  <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> Avaliando via IA...
                 </>
               ) : (
                 <>

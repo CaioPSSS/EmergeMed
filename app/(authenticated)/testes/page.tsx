@@ -21,7 +21,7 @@ function TestGeneratorForm() {
 
   const [selectedChapterIds, setSelectedChapterIds] = useState<number[]>([]);
   const [questionCount, setQuestionCount] = useState<number>(5);
-  const [questionType, setQuestionType] = useState<'multiple_choice' | 'prescription' | 'mixed'>('mixed');
+  const [questionType, setQuestionType] = useState<'multiple_choice' | 'prescription' | 'ventilator' | 'mixed'>('mixed');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [chapterSearch, setChapterSearch] = useState<string>('');
@@ -238,9 +238,10 @@ function TestGeneratorForm() {
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
             {[
-              { id: 'mixed', label: 'Misto (Recomendado)', desc: 'Múltipla Escolha + Prescrições' },
+              { id: 'mixed', label: 'Misto (Recomendado)', desc: 'MCQ + Prescrições + Ventilador' },
               { id: 'multiple_choice', label: 'Apenas Múltipla Escolha', desc: 'Questões objetivas A-E' },
-              { id: 'prescription', label: 'Apenas Prescrição', desc: 'Escrever conduta e via' },
+              { id: 'prescription', label: 'Apenas Prescrições', desc: 'Completa (do dia) + Imediata (no momento)' },
+              { id: 'ventilator', label: 'Ventilador Mecânico', desc: 'Configurar VM (quando cabível)' },
             ].map((fmt) => (
               <button
                 key={fmt.id}
