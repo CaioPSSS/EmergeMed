@@ -35,8 +35,35 @@ CREATE TABLE IF NOT EXISTS public.tests (
   answers JSONB,
   results JSONB,
   completed BOOLEAN DEFAULT FALSE,
+  mode TEXT DEFAULT 'standard', -- 'standard' | 'plantao'
+  plantao_data JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   completed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Table: chapter_weights (Stores frequency and importance weights per chapter)
+CREATE TABLE IF NOT EXISTS public.chapter_weights (
+  chapter_id INTEGER PRIMARY KEY,
+  frequency_score NUMERIC(3,1) NOT NULL DEFAULT 5.0,
+  importance_score NUMERIC(3,1) NOT NULL DEFAULT 5.0,
+  category TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Table: chapter_review_stats (SM-2 spaced repetition stats per user and chapter)
+CREATE TABLE IF NOT EXISTS public.chapter_review_stats (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  chapter_id INTEGER NOT NULL,
+  times_reviewed INTEGER DEFAULT 0,
+  times_correct INTEGER DEFAULT 0,
+  times_incorrect INTEGER DEFAULT 0,
+  last_reviewed_at TIMESTAMP WITH TIME ZONE,
+  next_review_at TIMESTAMP WITH TIME ZONE,
+  ease_factor NUMERIC(4,2) DEFAULT 2.5,
+  interval_days INTEGER DEFAULT 1,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, chapter_id)
 );
 
 -- Table: user_settings (Stores OpenRouter API key and model preferences)
@@ -56,6 +83,8 @@ ALTER TABLE public.chapter_progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapter_contents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chapter_weights ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chapter_review_stats ENABLE ROW LEVEL SECURITY;
 
 -- Policies for chapter_progress
 CREATE POLICY "Users can manage their own chapter progress"
@@ -87,3 +116,23 @@ CREATE POLICY "Users can manage their own settings"
   ON public.user_settings
   FOR ALL
   USING (auth.uid() = user_id);
+
+-- Policies for chapter_weights
+CREATE POLICY "Authenticated users can read weights"
+  ON public.chapter_weights
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Authenticated users can manage weights"
+  ON public.chapter_weights
+  FOR ALL
+  TO authenticated
+  USING (true);
+
+-- Policies for chapter_review_stats
+CREATE POLICY "Users can manage their own review stats"
+  ON public.chapter_review_stats
+  FOR ALL
+  USING (auth.uid() = user_id);
+

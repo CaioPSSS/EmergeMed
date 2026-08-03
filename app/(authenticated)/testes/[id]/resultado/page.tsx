@@ -4,6 +4,7 @@ import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { QuestionItem } from '@/lib/ai/openrouter';
+import { determineBedOutcome } from '@/lib/spaced-repetition';
 import {
   Award,
   CheckCircle2,
@@ -14,6 +15,9 @@ import {
   Sparkles,
   Zap,
   Settings2,
+  Stethoscope,
+  AlertTriangle,
+  Flame,
 } from 'lucide-react';
 
 function getTypeBadge(type: string) {
@@ -92,6 +96,9 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
   const score = Number(testData.score) || 0;
   const questions = (testData.questions || []) as QuestionItem[];
   const results = testData.results || {};
+  const isPlantao = testData.mode === 'plantao';
+  const plantaoData = testData.plantao_data || {};
+  const beds = plantaoData.beds || [];
 
   const getScoreColor = (val: number) => {
     if (val >= 8) return '#34d399'; // Emerald
@@ -100,265 +107,365 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
     return '#f43f5e'; // Rose
   };
 
-  const scoreColor = getScoreColor(score);
+  const mainScoreColor = getScoreColor(score);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '880px', margin: '0 auto' }}>
-      
-      {/* Score Header Card */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '900px', margin: '0 auto' }}>
+      {/* Top Banner Card */}
       <div
         className="glass-panel"
         style={{
           padding: '36px',
           borderRadius: '24px',
           textAlign: 'center',
-          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.8) 100%)',
-          border: `1px solid ${scoreColor}40`,
-          boxShadow: `0 12px 40px ${scoreColor}15`,
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.7) 100%)',
+          border: `1px solid ${mainScoreColor}40`,
+          boxShadow: `0 10px 40px ${mainScoreColor}15`,
         }}
       >
-        <div style={{
-          width: '72px',
-          height: '72px',
-          borderRadius: '24px',
-          background: `${scoreColor}20`,
-          border: `1px solid ${scoreColor}50`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          margin: '0 auto 16px auto',
-          color: scoreColor,
-        }}>
-          <Award size={38} />
+        <div
+          style={{
+            width: '72px',
+            height: '72px',
+            borderRadius: '20px',
+            background: `${mainScoreColor}20`,
+            border: `1px solid ${mainScoreColor}50`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px auto',
+            color: mainScoreColor,
+          }}
+        >
+          {isPlantao ? <Stethoscope size={36} /> : <Award size={36} />}
         </div>
 
-        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-subtle)', marginBottom: '4px' }}>
-          DESEMPENHO AVALIADO POR IA
-        </div>
-        <div style={{ fontSize: '3rem', fontWeight: 900, color: scoreColor, lineHeight: 1 }}>
-          {score} <span style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>/ 10</span>
+        <h1 style={{ fontSize: '2.2rem', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>
+          {isPlantao ? `Relatório de Plantão Noturno #${plantaoData.plantaoNumber || 1}` : 'Desempenho no Simulado IA'}
+        </h1>
+
+        <div style={{ fontSize: '3rem', fontWeight: 900, color: mainScoreColor, margin: '16px 0 8px 0' }}>
+          {score} <span style={{ fontSize: '1.4rem', color: 'var(--text-subtle)', fontWeight: 600 }}>/ 10.0</span>
         </div>
 
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '12px', maxWidth: '500px', margin: '12px auto 0 auto' }}>
-          {score >= 8
-            ? 'Excelente raciocínio clínico! Conduta segura para sala vermelha e porta de UPA.'
-            : score >= 6
-            ? 'Bom desempenho! Revise as observações e posologias sugeridas pela IA.'
-            : 'Atenção aos pontos de melhoria nas prescrições e condutas de emergência.'}
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+          {isPlantao
+            ? `Atendimento simulado em ${beds.length} leitos de UPA. ${questions.length} questões respondidas.`
+            : `Avaliação do simulado contendo ${questions.length} questões de emergência.`}
         </p>
 
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '24px' }}>
-          <button onClick={() => router.push('/testes')} className="btn-primary">
-            <Sparkles size={18} /> Gerar Novo Teste
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '24px' }}>
+          <button onClick={() => router.push(isPlantao ? '/plantoes' : '/historico')} className="btn-secondary">
+            Ver Histórico
           </button>
-          <button onClick={() => router.push('/dashboard')} className="btn-secondary">
-            Voltar ao Dashboard
+          <button
+            onClick={() => router.push(isPlantao ? '/testes?mode=plantao' : '/testes')}
+            className="btn-primary"
+            style={{
+              background: isPlantao
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #0284c7 0%, #0d9488 100%)',
+            }}
+          >
+            <Sparkles size={18} /> {isPlantao ? 'Iniciar Novo Plantão' : 'Gerar Novo Teste'}
           </button>
         </div>
       </div>
 
-      {/* Detailed Questions Review */}
-      <h2 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>
-        Análise Detalhada Questão por Questão
-      </h2>
+      {/* PLANTÃO BEDS MAP GRID */}
+      {isPlantao && beds.length > 0 && (
+        <div className="glass-panel" style={{ padding: '28px', borderRadius: '20px' }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Stethoscope size={20} color="#34d399" />
+            Mapa de Leitos do Plantão ({beds.length} Pacientes)
+          </h2>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {questions.map((q, idx) => {
-          const res = results[q.id] || {};
-          const isMultiple = q.type === 'multiple_choice';
-          const isExpanded = expandedItems[q.id] !== false; // Default expanded
-          const badge = getTypeBadge(q.type);
-          const qScoreColor = isMultiple
-            ? res.isCorrect ? '#34d399' : '#f43f5e'
-            : getScoreColor(res.score || 0);
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+            {beds.map((bed: any) => {
+              const bedQs = questions.filter(
+                (q) => (bed.questionIds || []).includes(q.id) || bed.bonusQuestionId === q.id
+              );
+              let bedPoints = 0;
+              bedQs.forEach((q) => {
+                bedPoints += results[q.id]?.score || 0;
+              });
 
-          return (
-            <div
-              key={q.id}
-              className="glass-panel"
-              style={{
-                padding: '24px',
-                borderRadius: '16px',
-                borderLeft: `4px solid ${qScoreColor}`,
-              }}
-            >
-              {/* Question Header */}
+              const bedAvgScore = bedQs.length > 0 ? bedPoints / bedQs.length : 0;
+              const outcome = determineBedOutcome(bedAvgScore, 10);
+
+              const outcomeColors: Record<string, { bg: string; color: string; border: string }> = {
+                green: { bg: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: 'rgba(16, 185, 129, 0.3)' },
+                yellow: { bg: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.3)' },
+                orange: { bg: 'rgba(249, 115, 22, 0.15)', color: '#fb923c', border: 'rgba(249, 115, 22, 0.3)' },
+                red: { bg: 'rgba(244, 63, 94, 0.15)', color: '#fda4af', border: 'rgba(244, 63, 94, 0.3)' },
+              };
+
+              const style = outcomeColors[outcome.color];
+
+              return (
+                <div
+                  key={bed.bedNumber}
+                  style={{
+                    padding: '20px',
+                    borderRadius: '16px',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: `1px solid ${style.border}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 800, color: '#fff', fontSize: '1rem' }}>
+                      🛏️ Leito 0{bed.bedNumber}
+                    </span>
+                    <span
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        background: style.bg,
+                        color: style.color,
+                        border: `1px solid ${style.border}`,
+                      }}
+                    >
+                      {outcome.label}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#e2e8f0' }}>
+                      Cap. {bed.chapterId}: {bed.chapterTitle}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
+                      {bed.sectionTitle}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    {outcome.message}
+                  </div>
+
+                  {bed.bonusQuestionId && (
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        color: '#fda4af',
+                        background: 'rgba(244, 63, 94, 0.15)',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <AlertTriangle size={14} /> EVOLUÇÃO ADVERSA ACIONADA (Q5 Extra)
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: style.color, paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
+                    Nota do Leito: {Math.round(bedAvgScore * 10) / 10} / 10
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* DETAILED QUESTION EVALUATION LIST */}
+      <div className="glass-panel" style={{ padding: '32px', borderRadius: '20px' }}>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: '20px' }}>
+          Detalhamento das Respostas & Avaliações IA
+        </h2>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {questions.map((q, idx) => {
+            const res = results[q.id] || {};
+            const isExpanded = expandedItems[q.id];
+            const badge = getTypeBadge(q.type);
+            const qScore = Number(res.score) || 0;
+            const qColor = getScoreColor(qScore);
+
+            return (
               <div
-                onClick={() => toggleExpand(q.id)}
+                key={q.id}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  userSelect: 'none',
+                  borderRadius: '14px',
+                  background: 'rgba(15, 23, 42, 0.5)',
+                  border: `1px solid ${qColor}40`,
+                  overflow: 'hidden',
+                  transition: 'all 0.2s ease',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {isMultiple ? (
-                    res.isCorrect ? <CheckCircle2 size={22} color="#34d399" /> : <XCircle size={22} color="#f43f5e" />
-                  ) : (
-                    <badge.icon size={22} color={badge.color} />
-                  )}
-                  <div>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
-                      Questão {idx + 1} • {q.chapterTitle}
-                    </span>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff', marginTop: '2px' }}>
-                      {badge.label}
-                    </h3>
+                {/* Collapsed Header */}
+                <div
+                  onClick={() => toggleExpand(q.id)}
+                  style={{
+                    padding: '16px 20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
+                    <div
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '10px',
+                        background: `${qColor}20`,
+                        color: qColor,
+                        fontWeight: 800,
+                        fontSize: '0.95rem',
+                      }}
+                    >
+                      {qScore} / 10
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>
+                        Questão {idx + 1}: {q.chapterTitle}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+                      </div>
+                    </div>
                   </div>
+
+                  {isExpanded ? <ChevronUp size={20} color="var(--text-subtle)" /> : <ChevronDown size={20} color="var(--text-subtle)" />}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{
-                    fontSize: '0.9rem',
-                    fontWeight: 700,
-                    color: qScoreColor,
-                  }}>
-                    {isMultiple ? (res.isCorrect ? '+10 pts' : '0 pts') : `${res.score || 0} / 10 pts`}
-                  </span>
-                  {isExpanded ? <ChevronUp size={18} color="var(--text-subtle)" /> : <ChevronDown size={18} color="var(--text-subtle)" />}
-                </div>
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', borderTop: '1px solid var(--border-subtle)' }}>
+                    {/* Vignette */}
+                    <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '16px', borderRadius: '10px', fontSize: '0.92rem', color: '#e2e8f0', lineHeight: 1.5 }}>
+                      <strong>Caso Clínico:</strong> {q.vignette}
+                    </div>
+
+                    {/* MCQ Details */}
+                    {q.type === 'multiple_choice' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {q.options?.map((opt, oIdx) => {
+                          const isUser = res.userAnswer === oIdx;
+                          const isCorrect = q.correctOption === oIdx;
+
+                          let bg = 'rgba(15, 23, 42, 0.4)';
+                          let border = 'var(--border-subtle)';
+                          let color = '#94a3b8';
+
+                          if (isCorrect) {
+                            bg = 'rgba(16, 185, 129, 0.15)';
+                            border = 'rgba(16, 185, 129, 0.4)';
+                            color = '#34d399';
+                          } else if (isUser && !isCorrect) {
+                            bg = 'rgba(244, 63, 94, 0.15)';
+                            border = 'rgba(244, 63, 94, 0.4)';
+                            color = '#fda4af';
+                          }
+
+                          return (
+                            <div
+                              key={oIdx}
+                              style={{
+                                padding: '10px 14px',
+                                borderRadius: '8px',
+                                background: bg,
+                                border: `1px solid ${border}`,
+                                fontSize: '0.88rem',
+                                color: color,
+                                fontWeight: isCorrect || isUser ? 600 : 400,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <span>
+                                {String.fromCharCode(65 + oIdx)}) {opt}
+                              </span>
+                              {isCorrect && <CheckCircle2 size={16} color="#34d399" />}
+                              {isUser && !isCorrect && <XCircle size={16} color="#fda4af" />}
+                            </div>
+                          );
+                        })}
+
+                        {q.explanation && (
+                          <div style={{ marginTop: '10px', padding: '12px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.08)', borderLeft: '3px solid #38bdf8', fontSize: '0.88rem', color: '#e2e8f0' }}>
+                            <strong style={{ color: '#38bdf8' }}>Explicação:</strong> {q.explanation}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Prescription / Ventilator AI Evaluation Details */}
+                    {q.type !== 'multiple_choice' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-subtle)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            Sua Resposta Enviada:
+                          </div>
+                          <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(15, 23, 42, 0.8)', border: '1px solid var(--border-subtle)', fontFamily: 'monospace', fontSize: '0.88rem', color: '#fff', whiteSpace: 'pre-wrap' }}>
+                            {res.userPrescription || 'Sem resposta enviada'}
+                          </div>
+                        </div>
+
+                        {res.evaluation && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(14, 165, 233, 0.06)', padding: '18px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#38bdf8' }}>
+                              Veredito IA: {res.evaluation.verdict || 'Avaliado'}
+                            </div>
+
+                            {res.evaluation.strengths?.length > 0 && (
+                              <div>
+                                <strong style={{ fontSize: '0.82rem', color: '#34d399' }}>Pontos Fortes:</strong>
+                                <ul style={{ paddingLeft: '20px', marginTop: '4px', fontSize: '0.85rem', color: '#e2e8f0' }}>
+                                  {res.evaluation.strengths.map((s: string, i: number) => (
+                                    <li key={i}>{s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {res.evaluation.improvements?.length > 0 && (
+                              <div>
+                                <strong style={{ fontSize: '0.82rem', color: '#fbbf24' }}>Pontos de Melhoria:</strong>
+                                <ul style={{ paddingLeft: '20px', marginTop: '4px', fontSize: '0.85rem', color: '#e2e8f0' }}>
+                                  {res.evaluation.improvements.map((imp: string, i: number) => (
+                                    <li key={i}>{imp}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {res.evaluation.detailedFeedback && (
+                              <div style={{ fontSize: '0.88rem', color: '#cbd5e1', marginTop: '6px', lineHeight: 1.5 }}>
+                                <strong>Feedback Detalhado:</strong> {res.evaluation.detailedFeedback}
+                              </div>
+                            )}
+
+                            {res.evaluation.idealPrescription && (
+                              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)' }}>
+                                <strong style={{ fontSize: '0.82rem', color: '#34d399' }}>Gabarito de Referência (Nota 10):</strong>
+                                <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.8)', fontFamily: 'monospace', fontSize: '0.85rem', color: '#34d399', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                                  {res.evaluation.idealPrescription}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-
-              {/* Expanded Body */}
-              {isExpanded && (
-                <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {/* Vignette */}
-                  <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '14px', borderRadius: '10px', fontSize: '0.92rem', color: 'var(--text-muted)' }}>
-                    {q.vignette}
-                  </div>
-
-                  {/* Multiple Choice Feedback */}
-                  {isMultiple && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        <div style={{ flex: 1, padding: '12px', borderRadius: '10px', background: res.isCorrect ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)', border: `1px solid ${res.isCorrect ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}` }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-subtle)' }}>Sua Resposta:</span>
-                          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: res.isCorrect ? '#34d399' : '#f43f5e', marginTop: '2px' }}>
-                            {res.userAnswer !== undefined && q.options ? q.options[res.userAnswer] : 'Não respondida'}
-                          </div>
-                        </div>
-
-                        {!res.isCorrect && q.options && q.correctOption !== undefined && (
-                          <div style={{ flex: 1, padding: '12px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-subtle)' }}>Resposta Correta:</span>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#38bdf8', marginTop: '2px' }}>
-                              {q.options[q.correctOption]}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {q.explanation && (
-                        <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '14px', borderRadius: '10px', borderLeft: '3px solid #38bdf8', fontSize: '0.88rem', color: '#e2e8f0', lineHeight: 1.5 }}>
-                          <strong style={{ color: '#38bdf8' }}>Explicação Clínica:</strong> {q.explanation}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Prescription / Ventilator AI Evaluation Feedback */}
-                  {!isMultiple && res.evaluation && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '14px', borderRadius: '10px', borderLeft: `3px solid ${getScoreColor(res.score)}` }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: getScoreColor(res.score), marginBottom: '6px' }}>
-                          PARECER DO PRECEPTOR IA: {res.evaluation.verdict || 'Avaliado'}
-                        </div>
-                        <div style={{ fontSize: '0.9rem', color: '#f8fafc', lineHeight: 1.5 }}>
-                          {res.evaluation.detailedFeedback}
-                        </div>
-                      </div>
-
-                      {/* Strengths & Improvements */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                        {res.evaluation.strengths && res.evaluation.strengths.length > 0 && (
-                          <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#34d399', marginBottom: '6px' }}>
-                              ✓ Pontos Fortes:
-                            </div>
-                            <ul style={{ paddingLeft: '18px', fontSize: '0.82rem', color: '#e2e8f0' }}>
-                              {res.evaluation.strengths.map((item: string, i: number) => (
-                                <li key={i}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {res.evaluation.improvements && res.evaluation.improvements.length > 0 && (
-                          <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fbbf24', marginBottom: '6px' }}>
-                              ⚠ O que Pode/Deve Ajustar:
-                            </div>
-                            <ul style={{ paddingLeft: '18px', fontSize: '0.82rem', color: '#e2e8f0' }}>
-                              {res.evaluation.improvements.map((item: string, i: number) => (
-                                <li key={i}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Ventilator Comparison Table */}
-                      {q.type === 'ventilator' && res.ventilatorData && q.idealVentilator && (
-                        <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#a78bfa', marginBottom: '12px' }}>
-                            Comparação: Seus Parâmetros vs. Ideal
-                          </div>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                            <thead>
-                              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-subtle)', fontWeight: 600 }}>Parâmetro</th>
-                                <th style={{ textAlign: 'left', padding: '8px', color: '#fb923c', fontWeight: 600 }}>Sua Config.</th>
-                                <th style={{ textAlign: 'left', padding: '8px', color: '#34d399', fontWeight: 600 }}>Ideal</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Object.entries(q.idealVentilator).map(([key, idealVal]) => (
-                                <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <td style={{ padding: '8px', color: '#e2e8f0', fontWeight: 600 }}>
-                                    {VENTILATOR_FIELD_LABELS[key] || key}
-                                  </td>
-                                  <td style={{ padding: '8px', color: '#fb923c' }}>
-                                    {res.ventilatorData[key] || '(não preenchido)'}
-                                  </td>
-                                  <td style={{ padding: '8px', color: '#34d399' }}>
-                                    {idealVal}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-
-                      {/* User Prescription vs Ideal Prescription */}
-                      {(q.type === 'prescription_complete' || q.type === 'prescription_immediate') && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '12px', borderRadius: '10px' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-subtle)' }}>Sua Prescrição Escrita:</span>
-                            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', color: '#e2e8f0', marginTop: '6px' }}>
-                              {res.userPrescription}
-                            </pre>
-                          </div>
-
-                          {res.evaluation.idealPrescription && (
-                            <div style={{ background: 'rgba(14, 165, 233, 0.08)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38bdf8' }}>Prescrição de Referência:</span>
-                              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.85rem', color: '#38bdf8', marginTop: '6px' }}>
-                                {res.evaluation.idealPrescription}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

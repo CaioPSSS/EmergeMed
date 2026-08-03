@@ -1,5 +1,10 @@
 import OpenAI from 'openai';
-import { SYSTEM_PROMPT_QUESTION_GENERATOR, SYSTEM_PROMPT_PRESCRIPTION_EVALUATOR } from './prompts';
+import {
+  SYSTEM_PROMPT_QUESTION_GENERATOR,
+  SYSTEM_PROMPT_PRESCRIPTION_EVALUATOR,
+  SYSTEM_PROMPT_PLANTAO_GENERATOR,
+  SYSTEM_PROMPT_ADVERSE_EVOLUTION,
+} from './prompts';
 
 export interface QuestionOption {
   text: string;
@@ -240,3 +245,146 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
     return await runCompletion(fallbackModel);
   }
 }
+
+export async function generatePlantaoBedQuestionsWithAI({
+  apiKey,
+  model = 'openai/gpt-5.6-luna',
+  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  bedNumber,
+  chapterInfo,
+  chapterText,
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  bedNumber: number;
+  chapterInfo: { id: number; number: number; title: string; sectionTitle: string };
+  chapterText?: string;
+}): Promise<QuestionItem[]> {
+  const openai = getOpenAIClient(apiKey);
+  const cleanText = fixMojibake(chapterText || '');
+
+  const userPrompt = `Crie a simulação completa para o LEITO ${bedNumber} (Capítulo ${chapterInfo.number}: ${chapterInfo.title} - Seção: ${chapterInfo.sectionTitle}).
+${cleanText ? `\nTEXTO DE REFERÊNCIA DO LIVRO:\n${cleanText}\n` : ''}
+
+Gere exatamente 4 questões sequenciais formando uma narrativa clínica contínua para um paciente atendido neste leito:
+Q1: Múltipla escolha A-E (Triagem / Diagnóstico inicial)
+Q2: Múltipla escolha A-E (Exames / Confirmação diagnóstica)
+Q3: Prescrição Imediata ("prescription_immediate") - Resgate de emergência
+Q4: Prescrição Completa ("prescription_complete") OU Ventilador Mecânico ("ventilator", se indicado)
+
+Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato especificado. Sem explicações ou markdown adicional.`;
+
+  const runCompletion = async (selectedModel: string) => {
+    const response = await openai.chat.completions.create({
+      model: selectedModel,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT_PLANTAO_GENERATOR },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.4,
+      max_tokens: 8000,
+    });
+
+    const content = response.choices[0]?.message?.content || '[]';
+    const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+    const parsed = JSON.parse(cleaned) as QuestionItem[];
+
+    for (const q of parsed) {
+      if (q.vignette) q.vignette = fixMojibake(q.vignette);
+      if (q.explanation) q.explanation = fixMojibake(q.explanation);
+      if (q.promptText) q.promptText = fixMojibake(q.promptText);
+      if (q.idealPrescription) q.idealPrescription = fixMojibake(q.idealPrescription);
+      if (q.options) {
+        q.options = q.options.map((opt) => fixMojibake(opt).replace(/^[A-E]\)\s*/i, ''));
+      }
+      if ((q as any).type === 'prescription') {
+        (q as any).type = 'prescription_complete';
+      }
+      q.chapterId = chapterInfo.id;
+      q.chapterTitle = chapterInfo.title;
+    }
+
+    return parsed;
+  };
+
+  try {
+    return await runCompletion(model);
+  } catch (err) {
+    console.warn(`Plantao bed generator failed on ${model}, trying fallback ${fallbackModel}`, err);
+    return await runCompletion(fallbackModel);
+  }
+}
+
+export async function generateAdverseEvolutionQuestionWithAI({
+  apiKey,
+  model = 'openai/gpt-5.6-luna',
+  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  bedNumber,
+  chapterTitle,
+  originalVignette,
+  errorsContext,
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  bedNumber: number;
+  chapterTitle: string;
+  originalVignette: string;
+  errorsContext: { questionType: string; vignette: string; userText: string; idealText?: string }[];
+}): Promise<QuestionItem> {
+  const openai = getOpenAIClient(apiKey);
+
+  const errorsSummary = errorsContext
+    .map(
+      (err, i) =>
+        `Erro ${i + 1} (${err.questionType}): Resposta do médico: "${err.userText}" | Esperado: "${err.idealText || 'Conduta correta'}"`
+    )
+    .join('\n');
+
+  const userPrompt = `Simule uma EVOLUÇÃO ADVERSA (Q5 BÔNUS DE COMPLICAÇÃO) para o LEITO ${bedNumber} (Tema: ${chapterTitle}).
+
+CASO CLÍNICO ORIGINAL:
+${originalVignette}
+
+ERROS COMETIDOS PELO MÉDICO NO ATENDIMENTO INICIAL:
+${errorsSummary}
+
+Gere UMA única questão bônus (tipo "prescription_immediate" ou "multiple_choice") onde o paciente descompensa devido aos erros cometidos e exige conduta de emergência salvadora.
+
+Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdown extra.`;
+
+  const runCompletion = async (selectedModel: string) => {
+    const response = await openai.chat.completions.create({
+      model: selectedModel,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT_ADVERSE_EVOLUTION },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.5,
+      max_tokens: 3000,
+    });
+
+    const content = response.choices[0]?.message?.content || '{}';
+    const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+    const parsed = JSON.parse(cleaned) as QuestionItem;
+
+    if (parsed.vignette) parsed.vignette = fixMojibake(parsed.vignette);
+    if (parsed.explanation) parsed.explanation = fixMojibake(parsed.explanation);
+    if (parsed.promptText) parsed.promptText = fixMojibake(parsed.promptText);
+    if (parsed.idealPrescription) parsed.idealPrescription = fixMojibake(parsed.idealPrescription);
+    if ((parsed as any).type === 'prescription') {
+      (parsed as any).type = 'prescription_complete';
+    }
+
+    return parsed;
+  };
+
+  try {
+    return await runCompletion(model);
+  } catch (err) {
+    console.warn(`Adverse evolution generator failed on ${model}, trying fallback ${fallbackModel}`, err);
+    return await runCompletion(fallbackModel);
+  }
+}
+

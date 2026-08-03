@@ -65,6 +65,7 @@ export default function AuthenticatedLayout({
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/capitulos', label: 'Capítulos (122)', icon: BookOpen },
     { href: '/testes', label: 'Gerar Testes', icon: FileQuestion },
+    { href: '/plantoes', label: '🏥 Modo Plantão', icon: Stethoscope },
     { href: '/historico', label: 'Histórico & Evolução', icon: History },
     { href: '/configuracoes', label: 'Configurações & PDF', icon: Settings },
   ];

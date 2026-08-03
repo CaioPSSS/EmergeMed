@@ -16,6 +16,7 @@ import {
   Search,
   Activity,
   Flame,
+  Stethoscope,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -177,11 +178,19 @@ export default function DashboardPage() {
 
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
-            onClick={() => router.push('/testes')}
+            onClick={() => router.push('/testes?mode=plantao')}
             className="btn-primary"
+            style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)' }}
+          >
+            <Stethoscope size={18} /> Iniciar Modo Plantão
+          </button>
+
+          <button
+            onClick={() => router.push('/testes')}
+            className="btn-secondary"
             style={{ padding: '12px 20px' }}
           >
-            <Sparkles size={18} /> Novo Teste por IA
+            <Sparkles size={18} /> Simulado Clássico
           </button>
         </div>
       </div>
@@ -223,6 +232,61 @@ export default function DashboardPage() {
             {stats.averageScore > 0 ? `${stats.averageScore} / 10` : '—'}
           </div>
         </div>
+      </div>
+
+      {/* Modo Plantão Callout Card */}
+      <div
+        className="glass-panel"
+        style={{
+          padding: '28px',
+          borderRadius: '20px',
+          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(14, 165, 233, 0.08) 100%)',
+          border: '1px solid rgba(16, 185, 129, 0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '20px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '16px',
+              background: 'rgba(16, 185, 129, 0.2)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#34d399',
+              flexShrink: 0,
+            }}
+          >
+            <Stethoscope size={28} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
+              NÚCLEO DE REPETIÇÃO ESPAÇADA
+            </div>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
+              Modo Plantão — Leitos UPA & Evolução de Pacientes
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', maxWidth: '600px' }}>
+              Revise temas automaticamente priorizados pelo algoritmo SM-2 + matriz epidemiológica. Cada leito traz um caso em 4 etapas continuas.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => router.push('/testes?mode=plantao')}
+          className="btn-primary"
+          style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)' }}
+        >
+          <Stethoscope size={18} /> Iniciar Plantão Noturno
+        </button>
       </div>
 
       {/* Main Chapter Focus Card (Capítulo Sorteado em Destaque) */}
