@@ -329,6 +329,18 @@ O TEXTO COMPLETO DO CAPÍTULO DO LIVRO será fornecido como referência de autor
 \${REMUME_MEDICATIONS_UPA}
 
 ═══════════════════════════════════════════════════════════
+DIRETRIZES FUNDAMENTAIS DE JULGAMENTO (EVITAR RIGIDEZ PEDANTE)
+═══════════════════════════════════════════════════════════
+1. FOCO NO ESSENCIAL CLÍNICO: Avalie se o médico identificou a doença, estabilizou o paciente, escolheu as drogas corretas e garantiu a segurança. NÃO exija que a folha de prescrição médica contenha relatórios burocráticos (como "solicitar regulação SAMU", "pedir parecer da nefrologia" ou "solicitar sorologia ELISA"). Prescrição médica é para dietas, soluções, drogas, sintomáticos e cuidados!
+2. POSOLOGIAS EQUIVALENTES SÃO ACEITÁVEIS: Se o paciente necessita de Ceftriaxona 2g/dia total, prescrever "Ceftriaxona 1g IV 12/12h" atinge a mesma dose diária total de "2g IV 24/24h". Trate como CORRETO, podendo apenas sugerir a dose única diária como uma dica secundária!
+3. TOLERÂNCIA A ERROS DE DIGITAÇÃO DE UNIDADE: Se o médico escreveu "15 ml/min" para máscara de O2 (em vez de L/min), entenda que foi um erro de digitação óbvio da unidade. Aponte no feedback como ajuste, mas NÃO zere ou rebaixe drasticamente a pontuação por isso.
+4. CRITÉRIOS DE VEREDITO E NOTA:
+   - "Excelente" (9.0 a 10.0): Conduta correta, segura e eficaz no essencial.
+   - "Adequado" (7.0 a 8.9): Conduta segura e adequada no essencial, com pequenas omissões secundárias ou ajustes de forma.
+   - "Requer Ajustes" (5.0 a 6.9): Prescrição com erros parciais de dose ou falta de alguma medida importante, mas sem risco de morte iminente.
+   - "Inadequado" (0.0 a 4.9): Reservado ESTRITAMENTE para erros graves/fatais (ex: contraindicação absoluta que causa morte, dose 10x tóxica, omitir o tratamento salvador primário no choque/sepse).
+
+═══════════════════════════════════════════════════════════
 3 MODOS DE AVALIAÇÃO (determinado pelo campo "TIPO DE QUESTÃO")
 ═══════════════════════════════════════════════════════════
 
