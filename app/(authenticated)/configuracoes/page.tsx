@@ -279,53 +279,88 @@ export default function ConfiguracoesPage() {
             onChange={(e) => setFallbackModel(e.target.value)}
             style={{ background: 'rgba(15, 23, 42, 0.8)' }}
           >
-            <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra (🎁 GRÁTIS - Recomendado)</option>
-            <option value="google/gemma-4-31b-it:free">Google Gemma 4 31B (🎁 GRÁTIS)</option>
-            <option value="google/gemma-4-26b-a4b-it:free">Google Gemma 4 26B (🎁 GRÁTIS)</option>
-            <option value="tencent/hy3-preview">Tencent Hy3 Preview ($0.06/1M)</option>
-            <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna ($0.10/1M)</option>
+            <optgroup label="🎁 100% Gratuitos (Recomendados para Fallback)">
+              <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra (🎁 GRÁTIS - Recomendado)</option>
+              <option value="google/gemma-4-31b-it:free">Google Gemma 4 31B (🎁 GRÁTIS - DeepMind)</option>
+              <option value="google/gemma-4-26b-a4b-it:free">Google Gemma 4 26B (🎁 GRÁTIS - MoE 3.8B Ativo)</option>
+            </optgroup>
+            <optgroup label="⚡ Alta Eficiência & Baixo Custo (Sub-0.20/1M)">
+              <option value="tencent/hy3-preview">Tencent Hy3 Preview ($0.06/1M - ⚡ MoE Ultra Barato)</option>
+              <option value="inclusionai/ring-2.6-1t">inclusionAI Ring-2.6-1T ($0.075/1M - 1T Thinking MoE)</option>
+              <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731 ($0.09/1M - Ultra Rápido MoE)</option>
+              <option value="google/gemma-4-31b-it">Google Gemma 4 31B ($0.09/1M - 🏥 #17 em Saúde)</option>
+              <option value="xiaomi/mimo-v2.5">Xiaomi MiMo-V2.5 ($0.11/1M - 🏥 #12 em Saúde)</option>
+              <option value="google/gemini-2.5-flash">Google Gemini 2.5 Flash ($0.15/1M - Vercel Native)</option>
+              <option value="openai/gpt-5.4-nano">OpenAI GPT-5.4 Nano ($0.20/1M - Low Latency)</option>
+              <option value="qwen/qwen3.6-35b-a3b">Qwen 3.6 35B A3B ($0.10/1M - 🧠 Thinking Mode)</option>
+            </optgroup>
+            <optgroup label="🥇 Líderes em Saúde & Raciocínio Médio/Alto">
+              <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna ($0.10/1M - 🥇 #1 em Saúde)</option>
+              <option value="z-ai/glm-5.2">Z.ai GLM 5.2 ($0.27/1M - 🏥 #3 em Saúde, #4 Academia)</option>
+              <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro ($0.43/1M - 🏥 #9 em Saúde, 1.6T MoE)</option>
+              <option value="xiaomi/mimo-v2.5-pro">Xiaomi MiMo-V2.5-Pro ($0.34/1M - Agentic Pro)</option>
+            </optgroup>
           </select>
         </div>
 
-        {/* Visual Cheat Sheet Box */}
+        {/* Visual Strategic Guide Box */}
         <div style={{
-          background: 'rgba(14, 165, 233, 0.06)',
-          border: '1px solid rgba(56, 189, 248, 0.25)',
-          borderRadius: '14px',
-          padding: '16px 20px',
-          fontSize: '0.83rem',
-          lineHeight: '1.5',
+          background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          borderRadius: '16px',
+          padding: '20px 24px',
+          fontSize: '0.85rem',
+          lineHeight: '1.6',
         }}>
-          <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Cpu size={16} /> 💡 Guia Estratégico de Perfis Médicos (OpenRouter 2026):
+          <div style={{ fontWeight: 800, fontSize: '1rem', color: '#38bdf8', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Cpu size={18} /> 💡 Guia Estratégico de Motores de IA (OpenRouter 2026)
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #34d399' }}>
-              <div style={{ fontWeight: 700, color: '#34d399' }}>🎁 Perfil Custo Zero</div>
-              <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>Nemotron 3 Ultra</strong></div>
-              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>Gemma 4 31B Free</strong></div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>Custo: $0,00 / mês</div>
+
+          {/* Detailed Profiles */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+            <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '12px', borderLeft: '4px solid #34d399' }}>
+              <div style={{ fontWeight: 800, color: '#34d399', fontSize: '0.9rem', marginBottom: '4px' }}>🎁 Perfil Custo Zero</div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Questões: <strong>NVIDIA Nemotron 3 Ultra</strong> (550B MoE)</div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Avaliação: <strong>Gemma 4 31B Free</strong> (DeepMind)</div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', marginTop: '6px' }}>Custo mensal: <strong>$0,00</strong></div>
             </div>
 
-            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #38bdf8' }}>
-              <div style={{ fontWeight: 700, color: '#38bdf8' }}>🥇 Campeão Médico #1</div>
-              <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>GPT-5.6 Luna</strong> (#1 Saúde)</div>
-              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>GPT-5.6 Luna</strong> / <strong>MiMo-V2.5</strong></div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>~$0,05 por 100 simulados</div>
+            <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '12px', borderLeft: '4px solid #38bdf8' }}>
+              <div style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.9rem', marginBottom: '4px' }}>🥇 Campeão Médico #1</div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Questões: <strong>OpenAI GPT-5.6 Luna</strong> (🥇 #1 em Saúde)</div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Avaliação: <strong>GPT-5.6 Luna</strong> / <strong>MiMo-V2.5</strong></div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', marginTop: '6px' }}>Custo: <strong>~$0,05 por 100 simulados</strong></div>
             </div>
 
-            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #fb923c' }}>
-              <div style={{ fontWeight: 700, color: '#fb923c' }}>⚡ Ultra Econômico</div>
-              <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>DeepSeek V4 Flash</strong> / <strong>Tencent Hy3</strong></div>
-              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>Ring-2.6-1T</strong> / <strong>V4 Flash</strong></div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>Menos de $0,02 por 100 simulados</div>
+            <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '12px', borderLeft: '4px solid #fb923c' }}>
+              <div style={{ fontWeight: 800, color: '#fb923c', fontSize: '0.9rem', marginBottom: '4px' }}>⚡ Ultra Econômico (Sub-0.10)</div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Questões: <strong>Tencent Hy3</strong> ($0.06/1M) / <strong>DeepSeek Flash</strong></div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Avaliação: <strong>inclusionAI Ring-2.6-1T</strong> ($0.075/1M)</div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', marginTop: '6px' }}>Custo: <strong>Menos de $0,02 por 100 simulados</strong></div>
             </div>
 
-            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #a855f7' }}>
-              <div style={{ fontWeight: 700, color: '#c084fc' }}>💎 Preceptor Elite (R3)</div>
-              <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>GPT-5.6 Luna</strong></div>
-              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>Z.ai GLM 5.2</strong> (#3 Saúde) / <strong>V4 Pro</strong></div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>Raciocínio de preceptor sênior</div>
+            <div style={{ background: 'rgba(15, 23, 42, 0.7)', padding: '12px 14px', borderRadius: '12px', borderLeft: '4px solid #a855f7' }}>
+              <div style={{ fontWeight: 800, color: '#c084fc', fontSize: '0.9rem', marginBottom: '4px' }}>💎 Preceptor Elite (R3 / Staff)</div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Questões: <strong>GPT-5.6 Luna</strong></div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.82rem' }}>• Avaliação: <strong>Z.ai GLM 5.2</strong> (🏥 #3 Saúde) / <strong>V4 Pro</strong></div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', marginTop: '6px' }}>Precisão cirúrgica de docente sênior</div>
+            </div>
+          </div>
+
+          {/* Model Rankings & Spec Summary */}
+          <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontWeight: 700, color: '#f8fafc', marginBottom: '8px', fontSize: '0.85rem' }}>
+              📊 Ranking & Especificações dos Principais Modelos Suportados:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              <div>• <strong>GPT-5.6 Luna</strong>: 🥇 #1 em Saúde | 1.05M Contexto | $0,10 In / $0,60 Out</div>
+              <div>• <strong>Z.ai GLM 5.2</strong>: 🏥 #3 em Saúde, #4 Academia | 1.05M Contexto | $0,27 In / $0,87 Out</div>
+              <div>• <strong>DeepSeek V4 Pro</strong>: 🏥 #9 em Saúde, #1 Finance | 1.05M Contexto (1.6T MoE) | $0,43 In</div>
+              <div>• <strong>Xiaomi MiMo-V2.5</strong>: 🏥 #12 em Saúde | 1.05M Contexto | $0,11 In / $0,22 Out</div>
+              <div>• <strong>Tencent Hy3</strong>: ⚡ Ultra Rápido MoE | 262K Contexto | $0,06 In / $0,21 Out</div>
+              <div>• <strong>inclusionAI Ring-2.6-1T</strong>: 🧠 1T Thinking MoE | 262K Contexto | $0,075 In / $0,62 Out</div>
+              <div>• <strong>DeepSeek V4 Flash</strong>: ⚡ 13B Ativos / 284B total | 1.05M Contexto | $0,09 In / $0,18 Out</div>
+              <div>• <strong>Nemotron 3 Ultra (Free)</strong>: 🎁 550B MoE Open-Orchestrator | 1M Contexto | $0,00 (Grátis)</div>
             </div>
           </div>
         </div>
