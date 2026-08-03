@@ -19,9 +19,9 @@ export default function ConfiguracoesPage() {
   const supabase = createClient();
 
   const [openrouterKey, setOpenrouterKey] = useState<string>('');
-  const [questionModel, setQuestionModel] = useState<string>('deepseek/deepseek-v4-flash');
-  const [prescriptionModel, setPrescriptionModel] = useState<string>('deepseek/deepseek-v4-flash');
-  const [fallbackModel, setFallbackModel] = useState<string>('google/gemini-2.5-flash');
+  const [questionModel, setQuestionModel] = useState<string>('openai/gpt-5.6-luna');
+  const [prescriptionModel, setPrescriptionModel] = useState<string>('openai/gpt-5.6-luna');
+  const [fallbackModel, setFallbackModel] = useState<string>('nvidia/nemotron-3-ultra-550b-a55b:free');
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState<boolean>(false);
@@ -209,13 +209,29 @@ export default function ConfiguracoesPage() {
               onChange={(e) => setQuestionModel(e.target.value)}
               style={{ background: 'rgba(15, 23, 42, 0.8)' }}
             >
-              <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna (~$0.10/1M - 🥇 #1 em Saúde)</option>
-              <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra (🎁 GRÁTIS - 550B MoE)</option>
-              <option value="google/gemma-4-31b-it:free">Google Gemma 4 31B (🎁 GRÁTIS - DeepMind)</option>
-              <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731 (~$0.09/1M - Ultra Rápido)</option>
-              <option value="qwen/qwen3.6-35b-a3b">Qwen 3.6 35B A3B (~$0.10/1M - Thinking Mode)</option>
-              <option value="z-ai/glm-5.2">Z.ai GLM 5.2 (~$0.27/1M - 🏥 #3 em Saúde)</option>
-              <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro (~$0.43/1M - 🏥 #8 em Saúde)</option>
+              <optgroup label="🥇 Líderes em Saúde & Raciocínio Médio/Alto">
+                <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna ($0.10/1M - 🥇 #1 em Saúde)</option>
+                <option value="z-ai/glm-5.2">Z.ai GLM 5.2 ($0.27/1M - 🏥 #3 em Saúde, #4 Academia)</option>
+                <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro ($0.43/1M - 🏥 #9 em Saúde, 1.6T MoE)</option>
+                <option value="xiaomi/mimo-v2.5-pro">Xiaomi MiMo-V2.5-Pro ($0.34/1M - Agentic Pro)</option>
+              </optgroup>
+              <optgroup label="⚡ Alta Eficiência & Baixo Custo (Sub-0.20/1M)">
+                <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731 ($0.09/1M - Ultra Rápido MoE)</option>
+                <option value="xiaomi/mimo-v2.5">Xiaomi MiMo-V2.5 ($0.11/1M - 🏥 #12 em Saúde)</option>
+                <option value="tencent/hy3-preview">Tencent Hy3 Preview ($0.06/1M - ⚡ MoE Ultra Barato)</option>
+                <option value="inclusionai/ring-2.6-1t">inclusionAI Ring-2.6-1T ($0.075/1M - 1T Thinking MoE)</option>
+                <option value="qwen/qwen3.6-35b-a3b">Qwen 3.6 35B A3B ($0.10/1M - 🧠 Thinking Mode)</option>
+                <option value="qwen/qwen3.7-plus">Qwen 3.7 Plus ($0.32/1M - Multi-Modal Agent)</option>
+                <option value="stepfun/step-3.7-flash">StepFun Step 3.7 Flash ($0.20/1M - Fast MoE)</option>
+                <option value="google/gemma-4-31b-it">Google Gemma 4 31B ($0.09/1M - 🏥 #17 em Saúde)</option>
+                <option value="openai/gpt-5.4-nano">OpenAI GPT-5.4 Nano ($0.20/1M - Low Latency)</option>
+                <option value="minimax/minimax-m3">MiniMax M3 ($0.24/1M - 🏥 #16 em Saúde, 1M Contexto)</option>
+              </optgroup>
+              <optgroup label="🎁 100% Gratuitos (Free Tier OpenRouter)">
+                <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra (🎁 GRÁTIS - 550B MoE)</option>
+                <option value="google/gemma-4-31b-it:free">Google Gemma 4 31B (🎁 GRÁTIS - DeepMind)</option>
+                <option value="google/gemma-4-26b-a4b-it:free">Google Gemma 4 26B (🎁 GRÁTIS - MoE 3.8B Ativo)</option>
+              </optgroup>
             </select>
           </div>
 
@@ -229,19 +245,33 @@ export default function ConfiguracoesPage() {
               onChange={(e) => setPrescriptionModel(e.target.value)}
               style={{ background: 'rgba(15, 23, 42, 0.8)' }}
             >
-              <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna (~$0.10/1M - 🥇 #1 em Saúde)</option>
-              <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra (🎁 GRÁTIS - 550B MoE)</option>
-              <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731 (~$0.09/1M - Ultra Rápido)</option>
-              <option value="z-ai/glm-5.2">Z.ai GLM 5.2 (~$0.27/1M - 🏥 #3 em Saúde)</option>
-              <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro (~$0.43/1M - 🏥 #8 em Saúde)</option>
-              <option value="xiaomi/mimo-v2.5">Xiaomi MiMo-V2.5 (~$0.11/1M - 🏥 #13 em Saúde)</option>
+              <optgroup label="🥇 Líderes em Saúde & Raciocínio Médio/Alto">
+                <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna ($0.10/1M - 🥇 #1 em Saúde)</option>
+                <option value="z-ai/glm-5.2">Z.ai GLM 5.2 ($0.27/1M - 🏥 #3 em Saúde, #4 Academia)</option>
+                <option value="deepseek/deepseek-v4-pro">DeepSeek V4 Pro ($0.43/1M - 🏥 #9 em Saúde, 1.6T MoE)</option>
+                <option value="xiaomi/mimo-v2.5-pro">Xiaomi MiMo-V2.5-Pro ($0.34/1M - Agentic Pro)</option>
+              </optgroup>
+              <optgroup label="⚡ Alta Eficiência & Baixo Custo (Sub-0.20/1M)">
+                <option value="deepseek/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731 ($0.09/1M - Ultra Rápido MoE)</option>
+                <option value="xiaomi/mimo-v2.5">Xiaomi MiMo-V2.5 ($0.11/1M - 🏥 #12 em Saúde)</option>
+                <option value="tencent/hy3-preview">Tencent Hy3 Preview ($0.06/1M - ⚡ MoE Ultra Barato)</option>
+                <option value="inclusionai/ring-2.6-1t">inclusionAI Ring-2.6-1T ($0.075/1M - 1T Thinking MoE)</option>
+                <option value="qwen/qwen3.6-35b-a3b">Qwen 3.6 35B A3B ($0.10/1M - 🧠 Thinking Mode)</option>
+                <option value="google/gemma-4-31b-it">Google Gemma 4 31B ($0.09/1M - 🏥 #17 em Saúde)</option>
+                <option value="minimax/minimax-m3">MiniMax M3 ($0.24/1M - 🏥 #16 em Saúde, 1M Contexto)</option>
+              </optgroup>
+              <optgroup label="🎁 100% Gratuitos (Free Tier OpenRouter)">
+                <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra (🎁 GRÁTIS - 550B MoE)</option>
+                <option value="google/gemma-4-31b-it:free">Google Gemma 4 31B (🎁 GRÁTIS - DeepMind)</option>
+                <option value="google/gemma-4-26b-a4b-it:free">Google Gemma 4 26B (🎁 GRÁTIS - MoE 3.8B Ativo)</option>
+              </optgroup>
             </select>
           </div>
         </div>
 
         <div>
           <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>
-            Modelo de Fallback
+            Modelo de Fallback (Reserva de Segurança)
           </label>
           <select
             className="input-field"
@@ -251,8 +281,9 @@ export default function ConfiguracoesPage() {
           >
             <option value="nvidia/nemotron-3-ultra-550b-a55b:free">NVIDIA Nemotron 3 Ultra (🎁 GRÁTIS - Recomendado)</option>
             <option value="google/gemma-4-31b-it:free">Google Gemma 4 31B (🎁 GRÁTIS)</option>
-            <option value="google/gemini-2.5-flash">Google Gemini 2.5 Flash (~$0.15/1M)</option>
-            <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna (~$0.10/1M)</option>
+            <option value="google/gemma-4-26b-a4b-it:free">Google Gemma 4 26B (🎁 GRÁTIS)</option>
+            <option value="tencent/hy3-preview">Tencent Hy3 Preview ($0.06/1M)</option>
+            <option value="openai/gpt-5.6-luna">OpenAI GPT-5.6 Luna ($0.10/1M)</option>
           </select>
         </div>
 
@@ -266,28 +297,35 @@ export default function ConfiguracoesPage() {
           lineHeight: '1.5',
         }}>
           <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Cpu size={16} /> 💡 Colinha Rápida de Escolha de Modelos (OpenRouter Real-Time):
+            <Cpu size={16} /> 💡 Guia Estratégico de Perfis Médicos (OpenRouter 2026):
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
             <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #34d399' }}>
-              <div style={{ fontWeight: 700, color: '#34d399' }}>🎁 Perfil 100% Gratuito</div>
-              <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>NVIDIA Nemotron 3 Ultra</strong></div>
+              <div style={{ fontWeight: 700, color: '#34d399' }}>🎁 Perfil Custo Zero</div>
+              <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>Nemotron 3 Ultra</strong></div>
               <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>Gemma 4 31B Free</strong></div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>Custo: $0,00 / mês</div>
             </div>
 
             <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #38bdf8' }}>
-              <div style={{ fontWeight: 700, color: '#38bdf8' }}>🥇 Campeão Custo-Benefício</div>
+              <div style={{ fontWeight: 700, color: '#38bdf8' }}>🥇 Campeão Médico #1</div>
               <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>GPT-5.6 Luna</strong> (#1 Saúde)</div>
-              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>GPT-5.6 Luna</strong> ($0.10/1M)</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>~$0,05 para fazer 100 testes</div>
+              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>GPT-5.6 Luna</strong> / <strong>MiMo-V2.5</strong></div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>~$0,05 por 100 simulados</div>
+            </div>
+
+            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #fb923c' }}>
+              <div style={{ fontWeight: 700, color: '#fb923c' }}>⚡ Ultra Econômico</div>
+              <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>DeepSeek V4 Flash</strong> / <strong>Tencent Hy3</strong></div>
+              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>Ring-2.6-1T</strong> / <strong>V4 Flash</strong></div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>Menos de $0,02 por 100 simulados</div>
             </div>
 
             <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '10px 12px', borderRadius: '10px', borderLeft: '3px solid #a855f7' }}>
-              <div style={{ fontWeight: 700, color: '#c084fc' }}>💎 Perceptor Elite (R3/Staff)</div>
+              <div style={{ fontWeight: 700, color: '#c084fc' }}>💎 Preceptor Elite (R3)</div>
               <div style={{ color: 'var(--text-muted)' }}>Questões: <strong>GPT-5.6 Luna</strong></div>
-              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>GLM 5.2</strong> (#3 Saúde) / <strong>DeepSeek V4 Pro</strong></div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>Precisão cirúrgica de R3</div>
+              <div style={{ color: 'var(--text-muted)' }}>Avaliação: <strong>Z.ai GLM 5.2</strong> (#3 Saúde) / <strong>V4 Pro</strong></div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>Raciocínio de preceptor sênior</div>
             </div>
           </div>
         </div>
