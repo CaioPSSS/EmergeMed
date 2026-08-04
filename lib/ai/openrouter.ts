@@ -229,7 +229,8 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
       ],
       temperature: 0.4,
       max_tokens: calculatedMaxTokens,
-    });
+      plugins: [{ id: 'web', max_results: 3 }],
+    } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
     const parsed = parseJsonFromMarkdown<QuestionItem[]>(content);
@@ -314,7 +315,8 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
       ],
       temperature: 0.3,
       max_tokens: 4000,
-    });
+      plugins: [{ id: 'web', max_results: 3 }],
+    } as any);
 
     const content = response.choices[0]?.message?.content || '{}';
     const result = parseJsonFromMarkdown<PrescriptionEvaluation>(content);
@@ -367,7 +369,8 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
       ],
       temperature: 0.4,
       max_tokens: 8000,
-    });
+      plugins: [{ id: 'web', max_results: 3 }],
+    } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
     const parsed = parseJsonFromMarkdown<QuestionItem[]>(content);
@@ -440,7 +443,8 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
       ],
       temperature: 0.5,
       max_tokens: 3000,
-    });
+      plugins: [{ id: 'web', max_results: 3 }],
+    } as any);
 
     const content = response.choices[0]?.message?.content || '{}';
     const parsed = parseJsonFromMarkdown<QuestionItem>(content);
@@ -538,7 +542,8 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
       ],
       temperature: 0.4,
       max_tokens: 3000,
-    });
+      plugins: [{ id: 'web', max_results: 3 }],
+    } as any);
 
     const content = response.choices[0]?.message?.content || '';
     return fixMojibake(content.trim());

@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Flame,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 const VENTILATOR_FIELD_LABELS: Record<string, { label: string; unit: string; placeholder: string }> = {
@@ -61,6 +63,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [generatingAdverse, setGeneratingAdverse] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPlantaoTopics, setShowPlantaoTopics] = useState<boolean>(false);
 
   // Plantão specific state
   const isPlantao = testRecord?.mode === 'plantao';
@@ -121,8 +124,9 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
     b.bonusQuestionId === questions[currentIndex]?.id
   );
 
-  const triggerAdverseEvolutionIfNeeded = async (bed: any) => {
+  const triggerAdverseEvolutionIfNeeded = async (bed: any, customEvals?: Record<number, any>) => {
     if (!bed || bed.bonusQuestionId) return; // Already has bonus question
+    const evals = customEvals || {};
 
     const bedQuestions = questions.filter(
       (q) => (bed.questionIds || []).includes(q.id)
@@ -133,16 +137,38 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       (q) => q.type === 'multiple_choice' && userAnswers[q.id] !== undefined && userAnswers[q.id] !== q.correctOption
     );
 
-    // If 2+ MCQ questions were answered wrong, trigger adverse evolution
-    if (mcqWrong.length >= 2) {
+    // Check evaluated prescription failures in this bed if any exist
+    const prescFailures = bedQuestions.filter(
+      (q) => q.type !== 'multiple_choice' && evals[q.id] && (
+        evals[q.id]?.score < 6.0 ||
+        evals[q.id]?.evaluation?.verdict === 'Inadequado' ||
+        evals[q.id]?.evaluation?.verdict === 'Requer Ajustes'
+      )
+    );
+
+    if (mcqWrong.length >= 2 || prescFailures.length > 0) {
       setGeneratingAdverse(true);
       try {
-        const errorsContext = mcqWrong.map((q) => ({
-          questionType: q.type,
-          vignette: q.vignette,
-          userText: q.options?.[userAnswers[q.id]] || 'Opção incorreta',
-          idealText: q.options?.[q.correctOption || 0] || 'Opção correta',
-        }));
+        const errorsContext: any[] = [];
+
+        mcqWrong.forEach((q) => {
+          errorsContext.push({
+            questionType: q.type,
+            vignette: q.vignette,
+            userText: q.options?.[userAnswers[q.id]] || 'Opção incorreta',
+            idealText: q.options?.[q.correctOption || 0] || 'Opção correta',
+          });
+        });
+
+        prescFailures.forEach((q) => {
+          const evalObj = evals[q.id];
+          errorsContext.push({
+            questionType: q.type,
+            vignette: q.vignette,
+            userText: `${evalObj?.userPrescription || 'Prescrição com erro'} (Veredito: ${evalObj?.evaluation?.verdict || 'Inadequado'} - ${evalObj?.evaluation?.improvements?.join('; ') || ''})`,
+            idealText: evalObj?.evaluation?.idealPrescription || q.idealPrescription || 'Conduta correta',
+          });
+        });
 
         const res = await fetch('/api/generate-adverse-evolution', {
           method: 'POST',
@@ -281,6 +307,106 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             evaluation: res.evalData.evaluation,
             score,
           };
+        }
+      }
+
+      // Check if any bed in Plantão experienced an Adverse Evolution (Q5 Bonus) based on AI evaluations or wrong answers
+      if (isPlantao && beds.length > 0) {
+        const newlyGeneratedBonusQuestions: QuestionItem[] = [];
+        const adverseBedNumbers: number[] = [];
+
+        for (const bed of beds) {
+          if (bed.bonusQuestionId) continue; // Already generated
+
+          const bedQs = questions.filter((q) => (bed.questionIds || []).includes(q.id));
+
+          // 1. MCQ wrong answers
+          const mcqWrong = bedQs.filter(
+            (q) => q.type === 'multiple_choice' && userAnswers[q.id] !== undefined && userAnswers[q.id] !== q.correctOption
+          );
+
+          // 2. Prescription / Ventilator errors (verdict Inadequado or Requer Ajustes or score < 6.0)
+          const prescFailures = bedQs.filter(
+            (q) => q.type !== 'multiple_choice' && (
+              evaluations[q.id]?.score < 6.0 ||
+              evaluations[q.id]?.evaluation?.verdict === 'Inadequado' ||
+              evaluations[q.id]?.evaluation?.verdict === 'Requer Ajustes'
+            )
+          );
+
+          // 3. Bed average score < 6.0
+          let bedPts = 0;
+          bedQs.forEach((q) => { bedPts += evaluations[q.id]?.score || 0; });
+          const bedAvg = bedQs.length > 0 ? bedPts / bedQs.length : 0;
+
+          if (mcqWrong.length >= 2 || prescFailures.length > 0 || bedAvg < 6.0) {
+            const errorsContext: any[] = [];
+
+            mcqWrong.forEach((q) => {
+              errorsContext.push({
+                questionType: q.type,
+                vignette: q.vignette,
+                userText: q.options?.[userAnswers[q.id]] || 'Opção incorreta selecionada',
+                idealText: q.options?.[q.correctOption || 0] || 'Opção correta',
+              });
+            });
+
+            prescFailures.forEach((q) => {
+              const evalObj = evaluations[q.id];
+              errorsContext.push({
+                questionType: q.type,
+                vignette: q.vignette,
+                userText: `${evalObj?.userPrescription || 'Prescrição enviada'} (Veredito: ${evalObj?.evaluation?.verdict || 'Inadequado'} - ${evalObj?.evaluation?.improvements?.join('; ') || ''})`,
+                idealText: evalObj?.evaluation?.idealPrescription || q.idealPrescription || 'Conduta de referência',
+              });
+            });
+
+            try {
+              const res = await fetch('/api/generate-adverse-evolution', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  testId,
+                  bedNumber: bed.bedNumber,
+                  chapterTitle: bed.chapterTitle,
+                  originalVignette: bedQs[0]?.vignette || '',
+                  errorsContext,
+                }),
+              });
+
+              const data = await res.json();
+              if (res.ok && data.question) {
+                newlyGeneratedBonusQuestions.push(data.question);
+                adverseBedNumbers.push(bed.bedNumber);
+              }
+            } catch (err) {
+              console.error(`Erro ao gerar evolução adversa para Leito ${bed.bedNumber}:`, err);
+            }
+          }
+        }
+
+        // If new Q5 bonus questions were generated during submission, append them and pause test completion!
+        if (newlyGeneratedBonusQuestions.length > 0) {
+          const updatedQuestions = [...questions];
+          newlyGeneratedBonusQuestions.forEach((q5) => {
+            if (!updatedQuestions.some((q) => q.id === q5.id)) {
+              updatedQuestions.push(q5);
+            }
+          });
+
+          setQuestions(updatedQuestions);
+          setSubmitting(false);
+
+          alert(
+            `⚠️ EVOLUÇÃO ADVERSA DETECTADA!\n\nDevido a erro de dosagem/prescrição ou descompensação do paciente no(s) Leito(s) ${adverseBedNumbers.join(', ')}, foi gerada uma questão de emergência salvadora (Q5 Bônus).\n\nVocê precisa realizar a conduta de emergência para tentar salvar o paciente antes de encerrar o plantão!`
+          );
+
+          // Navigate to the first newly generated Q5 bonus question
+          const firstQ5Idx = updatedQuestions.findIndex((q) => q.id === newlyGeneratedBonusQuestions[0].id);
+          if (firstQ5Idx !== -1) {
+            setCurrentIndex(firstQ5Idx);
+          }
+          return; // STOP submission execution here until user answers Q5!
         }
       }
 
@@ -424,9 +550,30 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
               border: '1px solid rgba(16, 185, 129, 0.3)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#34d399', fontWeight: 800, fontSize: '0.9rem' }}>
-              <Stethoscope size={18} />
-              <span>Plantão Noturno #{plantaoData?.plantaoNumber || 1}</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#34d399', fontWeight: 800, fontSize: '0.9rem' }}>
+                <Stethoscope size={18} />
+                <span>Plantão Noturno #{plantaoData?.plantaoNumber || 1}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPlantaoTopics(!showPlantaoTopics)}
+                title={showPlantaoTopics ? 'Ocultar diagnósticos/capítulos' : 'Exibir diagnósticos/capítulos'}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: showPlantaoTopics ? '#38bdf8' : 'var(--text-subtle)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                }}
+              >
+                {showPlantaoTopics ? <EyeOff size={13} /> : <Eye size={13} />}
+                {showPlantaoTopics ? 'Ocultar' : 'Exibir'}
+              </button>
             </div>
 
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
@@ -477,7 +624,11 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                       )}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      Cap. {bed.chapterId}: {bed.chapterTitle}
+                      {showPlantaoTopics ? (
+                        `Cap. ${bed.chapterId}: ${bed.chapterTitle}`
+                      ) : (
+                        <span style={{ fontStyle: 'italic', opacity: 0.8 }}>🔒 Paciente em Atendimento</span>
+                      )}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
                       <span>Progresso:</span>
@@ -558,19 +709,59 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         >
           {/* Chapter Tag + Type Badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span
-              style={{
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                background: 'rgba(56, 189, 248, 0.15)',
-                color: '#38bdf8',
-                border: '1px solid rgba(56, 189, 248, 0.3)',
-              }}
-            >
-              Capítulo: {currentQ.chapterTitle}
-            </span>
+            {isPlantao ? (
+              showPlantaoTopics ? (
+                <span
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                  }}
+                >
+                  Capítulo: {currentQ.chapterTitle}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPlantaoTopics(true)}
+                  title="Clique para revelar o capítulo/diagnóstico deste leito"
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    color: 'var(--text-muted)',
+                    border: '1px dashed var(--border-subtle)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <EyeOff size={13} color="#38bdf8" />
+                  <span>🔒 Leito {currentBed?.bedNumber || 1} — Caso em Atendimento (Clique para revelar capítulo)</span>
+                </button>
+              )
+            ) : (
+              <span
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '9999px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                }}
+              >
+                Capítulo: {currentQ.chapterTitle}
+              </span>
+            )}
             <span
               style={{
                 padding: '4px 12px',

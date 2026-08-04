@@ -17,6 +17,8 @@ import {
   Clock,
   ShieldAlert,
   Flame,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 function TestGeneratorForm() {
@@ -41,6 +43,7 @@ function TestGeneratorForm() {
   const [readChapterIds, setReadChapterIds] = useState<number[]>([]);
   const [scoredChapters, setScoredChapters] = useState<ScoredChapter[]>([]);
   const [loadingStats, setLoadingStats] = useState<boolean>(true);
+  const [showPlantaoTopics, setShowPlantaoTopics] = useState<boolean>(false);
 
   // General state
   const [loading, setLoading] = useState<boolean>(false);
@@ -357,20 +360,43 @@ function TestGeneratorForm() {
 
           {/* Priority Topics Preview */}
           <div>
-            <label
-              style={{
-                fontSize: '0.95rem',
-                fontWeight: 700,
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '12px',
-              }}
-            >
-              <Clock size={16} color="#38bdf8" />
-              Temas com Maior Prioridade de Revisão ({readChapterIds.length} capítulos lidos)
-            </label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <label
+                style={{
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <Clock size={16} color="#38bdf8" />
+                Temas Selecionados pelo Algoritmo ({readChapterIds.length} capítulos lidos)
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setShowPlantaoTopics(!showPlantaoTopics)}
+                style={{
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  color: showPlantaoTopics ? '#38bdf8' : 'var(--text-muted)',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                {showPlantaoTopics ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showPlantaoTopics ? 'Ocultar Temas (Sem Spoilers)' : 'Exibir Temas (Ocultado por Padrão)'}
+              </button>
+            </div>
 
             {loadingStats ? (
               <div style={{ padding: '20px', color: 'var(--text-muted)', textAlign: 'center' }}>
@@ -389,6 +415,43 @@ function TestGeneratorForm() {
                 }}
               >
                 ⚠️ Você ainda não possui nenhum capítulo marcado como lido. Acesse a aba <strong>Capítulos</strong> e marque alguns temas para poder usar o Modo Plantão.
+              </div>
+            ) : !showPlantaoTopics ? (
+              <div
+                style={{
+                  padding: '16px 20px',
+                  borderRadius: '12px',
+                  background: 'rgba(15, 23, 42, 0.4)',
+                  border: '1px dashed var(--border-subtle)',
+                  fontSize: '0.85rem',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <EyeOff size={18} color="#38bdf8" />
+                  <span>Os diagnósticos e capítulos sorteados estão <strong>ocultados por padrão</strong> para simular a emergência sem spoilers.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPlantaoTopics(true)}
+                  style={{
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    color: '#38bdf8',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Exibir Temas
+                </button>
               </div>
             ) : (
               <div
