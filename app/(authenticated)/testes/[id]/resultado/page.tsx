@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { QuestionItem } from '@/lib/ai/openrouter';
 import { determineBedOutcome } from '@/lib/spaced-repetition';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import {
   Award,
   CheckCircle2,
@@ -201,17 +202,13 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
 
           <div
             style={{
-              color: 'var(--text-main)',
-              fontSize: '0.95rem',
-              lineHeight: 1.75,
-              whiteSpace: 'pre-line',
               background: 'rgba(15, 23, 42, 0.5)',
               padding: '22px',
               borderRadius: '14px',
               border: '1px solid rgba(255, 255, 255, 0.06)',
             }}
           >
-            {results.generalFeedback}
+            <MarkdownRenderer content={results.generalFeedback} />
           </div>
         </div>
       )}
@@ -440,7 +437,8 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
 
                         {q.explanation && (
                           <div style={{ marginTop: '10px', padding: '12px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.08)', borderLeft: '3px solid #38bdf8', fontSize: '0.88rem', color: '#e2e8f0' }}>
-                            <strong style={{ color: '#38bdf8' }}>Explicação:</strong> {q.explanation}
+                            <strong style={{ color: '#38bdf8', display: 'block', marginBottom: '6px' }}>Explicação:</strong>
+                            <MarkdownRenderer content={q.explanation} />
                           </div>
                         )}
                       </div>
@@ -488,7 +486,8 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
 
                             {res.evaluation.detailedFeedback && (
                               <div style={{ fontSize: '0.88rem', color: '#cbd5e1', marginTop: '6px', lineHeight: 1.5 }}>
-                                <strong>Feedback Detalhado:</strong> {res.evaluation.detailedFeedback}
+                                <strong style={{ color: '#38bdf8', display: 'block', marginBottom: '6px' }}>Feedback Detalhado:</strong>
+                                <MarkdownRenderer content={res.evaluation.detailedFeedback} />
                               </div>
                             )}
 
