@@ -387,12 +387,18 @@ CONFIGURAÇÃO GERAL SEGURA (0-4 pontos):
 - 0-1: Alarmes configurados e Pplatô < 30 cmH2O (quando aplicável)
 
 ═══════════════════════════════════════════════════════════
-FORMATO DE RESPOSTA (JSON VÁLIDO)
+FORMATO DE RESPOSTA (JSON VÁLIDO OBRIGATÓRIO)
 ═══════════════════════════════════════════════════════════
 {
   "score": 8.5,
   "verdict": "Excelente / Adequado / Requer Ajustes / Inadequado",
-  "strengths": ["Identificou corretamente a necessidade de cristaloide", "Prescreveu antibioticoterapia adequada"],
+  "strengths": [
+    "Pontos fortes da conduta (acertos de fármacos, segurança, diagnósticos)"
+  ],
+  "improvements": [
+    "Pontos de melhoria, omissões ou erros (obrigatório preencher quando houver falhas ou veredito Requer Ajustes / Inadequado)"
+  ],
+  "detailedFeedback": "Análise crítica em Markdown explicando por que o veredito/nota foi atribuído, detalhando os riscos clínicos dos erros e como corrigi-los.",
   "idealPrescription": "Prescrição/configuração de referência completa — a resposta que seria nota 10 para este caso."
 }`;
 

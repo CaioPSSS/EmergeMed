@@ -42,7 +42,28 @@ export async function POST(request: Request) {
     const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
     const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
-    // 2. Generate general feedback markdown via AI
+    // 2. Fetch test record to get chapter_ids for book reference text
+    const { data: testRecord } = await supabase
+      .from('tests')
+      .select('results, chapter_ids')
+      .eq('id', testId)
+      .single();
+
+    const chapterTexts: Record<number, string> = {};
+    if (testRecord?.chapter_ids && testRecord.chapter_ids.length > 0) {
+      const { data: contents } = await supabase
+        .from('chapter_contents')
+        .select('chapter_id, content')
+        .in('chapter_id', testRecord.chapter_ids);
+
+      if (contents) {
+        contents.forEach((c) => {
+          chapterTexts[c.chapter_id] = c.content;
+        });
+      }
+    }
+
+    // 3. Generate general feedback markdown via AI with full chapter texts
     const generalFeedback = await generateGeneralFeedbackWithAI({
       apiKey,
       model: questionModel,
@@ -50,14 +71,8 @@ export async function POST(request: Request) {
       overallScore,
       totalQuestions: evaluationsSummary ? evaluationsSummary.length : 0,
       evaluationsSummary: evaluationsSummary || [],
+      chapterTexts,
     });
-
-    // 3. Fetch test record to update results JSONB with generalFeedback
-    const { data: testRecord } = await supabase
-      .from('tests')
-      .select('results')
-      .eq('id', testId)
-      .single();
 
     const updatedResults = {
       ...(testRecord?.results || {}),

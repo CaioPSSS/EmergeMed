@@ -463,6 +463,7 @@ export async function generateGeneralFeedbackWithAI({
   overallScore,
   totalQuestions,
   evaluationsSummary,
+  chapterTexts,
 }: {
   apiKey?: string;
   model?: string;
@@ -478,6 +479,7 @@ export async function generateGeneralFeedbackWithAI({
     strengths?: string[];
     idealAnswer?: string;
   }[];
+  chapterTexts?: Record<number, string>;
 }): Promise<string> {
   const openai = getOpenAIClient(apiKey);
 
@@ -486,24 +488,38 @@ export async function generateGeneralFeedbackWithAI({
       (item, idx) => `
 --- QUESTÃO ${idx + 1}: ${item.questionTitle} ---
 - Pontuação / Veredito: ${item.score}/10 ${item.verdict ? `(${item.verdict})` : ''}
-- Caso Clínico: ${item.vignette.slice(0, 200)}...
+- Caso Clínico Completo: ${item.vignette}
 - Resposta do Médico: "${item.userAnswer}"
-${item.idealAnswer ? `- Gabarito Esperado: "${item.idealAnswer.slice(0, 250)}..."` : ''}
+${item.idealAnswer ? `- Gabarito Esperado: "${item.idealAnswer}"` : ''}
 ${item.strengths && item.strengths.length > 0 ? `- Pontos Fortes Notados: ${item.strengths.join('; ')}` : ''}
 `
     )
     .join('\n');
 
+  let bookContext = '';
+  if (chapterTexts && Object.keys(chapterTexts).length > 0) {
+    bookContext = '\n\nTEXTO COMPLETO DOS CAPÍTULOS DE REFERÊNCIA DO LIVRO (FONTE PRIMÁRIA OBRIGATÓRIA PARA AVALIAÇÃO):\n' +
+      Object.entries(chapterTexts)
+        .map(([id, text]) => `--- TEXTO DO CAPÍTULO ${id} ---\n${fixMojibake(text || '')}`)
+        .join('\n\n');
+  }
+
   const userPrompt = `AVALIAÇÃO DE PLANTÃO / SIMULADO FINALIZADO:
 Nota Final do Aluno: ${overallScore.toFixed(1)} / 10.0
 Total de Questões: ${totalQuestions}
 
-DESEMPENHO DETALHADO POR QUESTÃO:
+DESEMPENHO DETALHADO POR QUESTÃO (ATENÇÃO: LEIA O CASO CLÍNICO COMPLETO DE CADA QUESTÃO, POIS VÁRIAS QUESTÕES DESCREVEM A EVOLUÇÃO DO PACIENTE APÓS TRATAMENTO INICIAL, COMO QUEDA DA GLICEMIA OU MELHORA DA PRESSÃO ARTERIAL):
 ${summaryText}
+${bookContext}
+
+REGRAS OBRIGATÓRIAS PARA O FEEDBACK GERAL:
+1. Mantenha coerência com as avaliações individuais. Se uma questão foi avaliada como "Adequada" ou obteve boa nota, priorize a seção de pontos críticos para os erros reais cometidos nas questões com nota mais baixa. Caso queira abordar algum detalhe em questões com boa nota, mencione como sugestão de refinamento técnico, e não como falha grave.
+2. Preste atenção estrita aos dados de EVOLUÇÃO da vinheta (ex: glicemia que já caiu para 285 mg/dL, PA que já subiu para 102/64 mmHg). NUNCA confunda parâmetros de admissão com a situação atual apresentada no momento da conduta.
+3. Baseie as explicações nos protocolos e no texto dos capítulos do livro fornecidos acima.
 
 Gere o Feedback Geral de Preceptoria em Markdown contendo:
 1. Síntese Geral (1 parágrafo curto)
-2. Pontos Críticos e Condutas a Corrigir (Foque nos maiores erros de prescrição ou diagnóstico com explicação fisiopatológica/farmacológica do risco)
+2. Pontos Críticos e Condutas a Corrigir (Foque nos erros de maior risco de segurança e nas principais oportunidades de melhoria)
 3. Recomendações de Estudo Prioritárias
 
 Responda diretamente em Markdown sem blocos de código JSON.`;
