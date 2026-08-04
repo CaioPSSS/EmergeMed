@@ -42,10 +42,10 @@ export async function POST(request: Request) {
     const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
     const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
-    // 2. Fetch test record to get chapter_ids for book reference text
+    // 2. Fetch test record to get chapter_ids for book reference text and test mode
     const { data: testRecord } = await supabase
       .from('tests')
-      .select('results, chapter_ids')
+      .select('results, chapter_ids, mode')
       .eq('id', testId)
       .single();
 
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Generate general feedback markdown via AI with full chapter texts
+    // 3. Generate general feedback markdown via AI with full chapter texts and mode context
     const generalFeedback = await generateGeneralFeedbackWithAI({
       apiKey,
       model: questionModel,
@@ -72,6 +72,7 @@ export async function POST(request: Request) {
       totalQuestions: evaluationsSummary ? evaluationsSummary.length : 0,
       evaluationsSummary: evaluationsSummary || [],
       chapterTexts,
+      mode: (testRecord?.mode as 'simulado' | 'plantao') || 'simulado',
     });
 
     const updatedResults = {

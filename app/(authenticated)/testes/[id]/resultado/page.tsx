@@ -63,6 +63,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
   const [testData, setTestData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [expandedItems, setExpandedItems] = useState<Record<number, boolean>>({});
+  const [selectedBedNumber, setSelectedBedNumber] = useState<number | null>(null);
 
   useEffect(() => {
     async function loadResult() {
@@ -110,6 +111,45 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
 
   const mainScoreColor = getScoreColor(score);
 
+  const displayedQuestions = isPlantao && selectedBedNumber !== null
+    ? questions.filter((q) => {
+        const activeBed = beds.find((b: any) => b.bedNumber === selectedBedNumber);
+        if (!activeBed) return true;
+        return (activeBed.questionIds || []).includes(q.id) || activeBed.bonusQuestionId === q.id;
+      })
+    : questions;
+
+  const getStepInfo = (q: any) => {
+    if (!isPlantao) return null;
+    const parentBed = beds.find(
+      (b: any) => (b.questionIds || []).includes(q.id) || b.bonusQuestionId === q.id
+    );
+    if (!parentBed) return null;
+
+    if (parentBed.bonusQuestionId === q.id) {
+      return {
+        bedNumber: parentBed.bedNumber,
+        step: 'Etapa 5 (Bônus)',
+        title: 'Manejo de Complicação Adversa',
+        color: '#f43f5e',
+        bg: 'rgba(244, 63, 94, 0.15)',
+      };
+    }
+
+    const idxInBed = (parentBed.questionIds || []).indexOf(q.id);
+    const steps = [
+      { step: 'Etapa 1', title: 'Triagem & Suspeita Diagnóstica', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' },
+      { step: 'Etapa 2', title: 'Exames & Confirmação Diagnóstica', color: '#fbbf24', bg: 'rgba(245, 158, 11, 0.15)' },
+      { step: 'Etapa 3', title: 'Conduta Imediata de Resgate', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.15)' },
+      { step: 'Etapa 4', title: 'Prescrição do Dia / Ventilação Mecânica', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)' },
+    ];
+
+    return {
+      bedNumber: parentBed.bedNumber,
+      ...(steps[idxInBed] || { step: `Etapa ${idxInBed + 1}`, title: 'Evolução Clínica do Leito', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' }),
+    };
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '900px', margin: '0 auto' }}>
       {/* Top Banner Card */}
@@ -142,7 +182,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
         </div>
 
         <h1 style={{ fontSize: '2.2rem', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>
-          {isPlantao ? `Relatório de Plantão Noturno #${plantaoData.plantaoNumber || 1}` : 'Desempenho no Simulado IA'}
+          {isPlantao ? `Relatório de Passagem de Plantão Noturno #${plantaoData.plantaoNumber || 1}` : 'Desempenho no Simulado IA'}
         </h1>
 
         <div style={{ fontSize: '3rem', fontWeight: 900, color: mainScoreColor, margin: '16px 0 8px 0' }}>
@@ -151,7 +191,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
 
         <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
           {isPlantao
-            ? `Atendimento simulado em ${beds.length} leitos de UPA. ${questions.length} questões respondidas.`
+            ? `Atendimento simulado na Sala Vermelha em ${beds.length} leitos de UPA. ${questions.length} condutas avaliadas.`
             : `Avaliação do simulado contendo ${questions.length} questões de emergência.`}
         </p>
 
@@ -197,7 +237,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
             }}
           >
             <Sparkles size={22} color="#38bdf8" />
-            Feedback do Preceptor — Análise Geral & Plano de Aprimoramento
+            {isPlantao ? 'Feedback do Preceptor Chefe — Passagem de Plantão & Auditoria de Leitos' : 'Feedback do Preceptor — Análise Geral & Plano de Aprimoramento'}
           </h2>
 
           <div
@@ -216,13 +256,25 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
       {/* PLANTÃO BEDS MAP GRID */}
       {isPlantao && beds.length > 0 && (
         <div className="glass-panel" style={{ padding: '28px', borderRadius: '20px' }}>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Stethoscope size={20} color="#34d399" />
-            Mapa de Leitos do Plantão ({beds.length} Pacientes)
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
+              <Stethoscope size={20} color="#34d399" />
+              Mapa de Leitos do Plantão ({beds.length} Pacientes)
+            </h2>
+            {selectedBedNumber !== null && (
+              <button
+                onClick={() => setSelectedBedNumber(null)}
+                className="btn-secondary"
+                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              >
+                Ver Todos os Leitos
+              </button>
+            )}
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
             {beds.map((bed: any) => {
+              const isSelected = selectedBedNumber === bed.bedNumber;
               const bedQs = questions.filter(
                 (q) => (bed.questionIds || []).includes(q.id) || bed.bonusQuestionId === q.id
               );
@@ -246,19 +298,23 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
               return (
                 <div
                   key={bed.bedNumber}
+                  onClick={() => setSelectedBedNumber(isSelected ? null : bed.bedNumber)}
                   style={{
                     padding: '20px',
                     borderRadius: '16px',
-                    background: 'rgba(15, 23, 42, 0.6)',
-                    border: `1px solid ${style.border}`,
+                    background: isSelected ? 'rgba(30, 41, 59, 0.9)' : 'rgba(15, 23, 42, 0.6)',
+                    border: isSelected ? '2px solid #38bdf8' : `1px solid ${style.border}`,
+                    boxShadow: isSelected ? '0 0 20px rgba(56, 189, 248, 0.2)' : 'none',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontWeight: 800, color: '#fff', fontSize: '1rem' }}>
-                      🛏️ Leito 0{bed.bedNumber}
+                      🛏️ Leito 0{bed.bedNumber} {isSelected ? '(Selecionado)' : ''}
                     </span>
                     <span
                       style={{
@@ -306,8 +362,11 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
                     </div>
                   )}
 
-                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: style.color, paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
-                    Nota do Leito: {Math.round(bedAvgScore * 10) / 10} / 10
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: style.color, paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Nota do Leito: {Math.round(bedAvgScore * 10) / 10} / 10</span>
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
+                      {isSelected ? 'Ver Todos' : 'Filtrar Leito'}
+                    </span>
                   </div>
                 </div>
               );
@@ -318,17 +377,29 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
 
       {/* DETAILED QUESTION EVALUATION LIST */}
       <div className="glass-panel" style={{ padding: '32px', borderRadius: '20px' }}>
-        <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: '20px' }}>
-          Detalhamento das Respostas & Avaliações IA
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', margin: 0 }}>
+            {isPlantao
+              ? selectedBedNumber !== null
+                ? `Prontuário Progressivo & Condutas do Leito 0${selectedBedNumber}`
+                : 'Detalhamento Clínico das Condutas por Leito'
+              : 'Detalhamento das Respostas & Avaliações IA'}
+          </h2>
+          {isPlantao && selectedBedNumber !== null && (
+            <span style={{ fontSize: '0.82rem', color: '#38bdf8', fontWeight: 600, background: 'rgba(56, 189, 248, 0.1)', padding: '4px 10px', borderRadius: '8px' }}>
+              Exibindo apenas Leito 0{selectedBedNumber}
+            </span>
+          )}
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {questions.map((q, idx) => {
+          {displayedQuestions.map((q, idx) => {
             const res = results[q.id] || {};
             const isExpanded = expandedItems[q.id];
             const badge = getTypeBadge(q.type);
             const qScore = Number(res.score) || 0;
             const qColor = getScoreColor(qScore);
+            const stepInfo = getStepInfo(q);
 
             return (
               <div
@@ -369,10 +440,24 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
                     </div>
 
                     <div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>
-                        Questão {idx + 1}: {q.chapterTitle}
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {stepInfo && (
+                          <span
+                            style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              color: stepInfo.color,
+                              background: stepInfo.bg,
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                            }}
+                          >
+                            🛏️ Leito 0{stepInfo.bedNumber} • {stepInfo.step}: {stepInfo.title}
+                          </span>
+                        )}
+                        <span>Questão {idx + 1}: {q.chapterTitle}</span>
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
                       </div>
                     </div>

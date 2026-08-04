@@ -6,6 +6,7 @@ import {
   SYSTEM_PROMPT_PLANTAO_GENERATOR,
   SYSTEM_PROMPT_ADVERSE_EVOLUTION,
   SYSTEM_PROMPT_GENERAL_FEEDBACK,
+  SYSTEM_PROMPT_PLANTAO_FEEDBACK,
 } from './prompts';
 
 export interface QuestionOption {
@@ -464,6 +465,7 @@ export async function generateGeneralFeedbackWithAI({
   totalQuestions,
   evaluationsSummary,
   chapterTexts,
+  mode = 'simulado',
 }: {
   apiKey?: string;
   model?: string;
@@ -480,6 +482,7 @@ export async function generateGeneralFeedbackWithAI({
     idealAnswer?: string;
   }[];
   chapterTexts?: Record<number, string>;
+  mode?: 'simulado' | 'plantao';
 }): Promise<string> {
   const openai = getOpenAIClient(apiKey);
 
@@ -504,11 +507,13 @@ ${item.strengths && item.strengths.length > 0 ? `- Pontos Fortes Notados: ${item
         .join('\n\n');
   }
 
-  const userPrompt = `AVALIAÇÃO DE PLANTÃO / SIMULADO FINALIZADO:
-Nota Final do Aluno: ${overallScore.toFixed(1)} / 10.0
-Total de Questões: ${totalQuestions}
+  const isPlantao = mode === 'plantao';
 
-DESEMPENHO DETALHADO POR QUESTÃO (ATENÇÃO: LEIA O CASO CLÍNICO COMPLETO DE CADA QUESTÃO, POIS VÁRIAS QUESTÕES DESCREVEM A EVOLUÇÃO DO PACIENTE APÓS TRATAMENTO INICIAL, COMO QUEDA DA GLICEMIA OU MELHORA DA PRESSÃO ARTERIAL):
+  const userPrompt = `AVALIAÇÃO DE ${isPlantao ? 'PLANTÃO NOTURNO NA SALA VERMELHA DE UPA' : 'SIMULADO FINALIZADO'}:
+Nota Final do Aluno: ${overallScore.toFixed(1)} / 10.0
+Total de Questões/Leitos: ${totalQuestions}
+
+DESEMPENHO DETALHADO POR QUESTÃO / LEITO (ATENÇÃO: LEIA O CASO CLÍNICO COMPLETO DE CADA QUESTÃO, POIS VÁRIAS QUESTÕES DESCREVEM A EVOLUÇÃO DO PACIENTE APÓS TRATAMENTO INICIAL, COMO QUEDA DA GLICEMIA OU MELHORA DA PRESSÃO ARTERIAL):
 ${summaryText}
 ${bookContext}
 
@@ -517,20 +522,18 @@ REGRAS OBRIGATÓRIAS PARA O FEEDBACK GERAL:
 2. Preste atenção estrita aos dados de EVOLUÇÃO da vinheta (ex: glicemia que já caiu para 285 mg/dL, PA que já subiu para 102/64 mmHg). NUNCA confunda parâmetros de admissão com a situação atual apresentada no momento da conduta.
 3. Baseie as explicações nos protocolos e no texto dos capítulos do livro fornecidos acima.
 
-Gere o Feedback Geral de Preceptoria em Markdown contendo:
-1. Síntese Geral (1 parágrafo curto)
-2. Pontos Críticos e Condutas a Corrigir (Foque nos erros de maior risco de segurança e nas principais oportunidades de melhoria)
-3. Recomendações de Estudo Prioritárias
+${isPlantao ? 'Gere o Feedback de Passagem de Plantão Noturno em Markdown.' : 'Gere o Feedback Geral de Preceptoria em Markdown contendo Síntese Geral, Pontos Críticos e Recomendações de Estudo.'}
 
 Responda diretamente em Markdown sem blocos de código JSON.`;
 
   const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+  const systemPrompt = isPlantao ? SYSTEM_PROMPT_PLANTAO_FEEDBACK : SYSTEM_PROMPT_GENERAL_FEEDBACK;
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT_GENERAL_FEEDBACK },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.4,
