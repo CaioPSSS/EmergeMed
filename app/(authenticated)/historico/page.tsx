@@ -14,6 +14,8 @@ import {
   Play,
   Clock,
   CheckCircle2,
+  Stethoscope,
+  Filter,
 } from 'lucide-react';
 
 export default function HistoricoPage() {
@@ -23,6 +25,7 @@ export default function HistoricoPage() {
   const [tests, setTests] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [modeFilter, setModeFilter] = useState<'all' | 'simulado' | 'plantao'>('all');
 
   useEffect(() => {
     async function loadHistory() {
@@ -63,8 +66,12 @@ export default function HistoricoPage() {
   };
 
   const filteredTests = tests.filter((t) => {
-    if (filter === 'pending') return !t.completed;
-    if (filter === 'completed') return t.completed;
+    if (filter === 'pending' && t.completed) return false;
+    if (filter === 'completed' && !t.completed) return false;
+
+    if (modeFilter === 'plantao' && t.mode !== 'plantao') return false;
+    if (modeFilter === 'simulado' && t.mode === 'plantao') return false;
+
     return true;
   });
 
@@ -111,21 +118,53 @@ export default function HistoricoPage() {
       </div>
 
       {/* Filter Tabs */}
-      <div style={{ display: 'flex', gap: '10px' }}>
-        {[
-          { id: 'all', label: `Todos (${tests.length})` },
-          { id: 'pending', label: `Em Andamento (${totalPending})` },
-          { id: 'completed', label: `Concluídos (${totalCompleted})` },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setFilter(tab.id as any)}
-            className={filter === tab.id ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 16px', fontSize: '0.88rem' }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginRight: '6px' }}>
+            <Filter size={14} /> Filtros:
+          </span>
+
+          {[
+            { id: 'all', label: `Todos (${tests.length})` },
+            { id: 'pending', label: `Em Andamento (${totalPending})` },
+            { id: 'completed', label: `Concluídos (${totalCompleted})` },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setFilter(tab.id as any)}
+              className={filter === tab.id ? 'btn-primary' : 'btn-secondary'}
+              style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          {[
+            { id: 'all', label: 'Todos os Formatos' },
+            { id: 'simulado', label: '📝 Simulados Clássicos' },
+            { id: 'plantao', label: '🩺 Plantões Noturnos' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setModeFilter(tab.id as any)}
+              style={{
+                padding: '6px 14px',
+                fontSize: '0.82rem',
+                borderRadius: '8px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                background: modeFilter === tab.id ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.6)',
+                color: modeFilter === tab.id ? '#38bdf8' : 'var(--text-muted)',
+                border: modeFilter === tab.id ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid var(--border-subtle)',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Test history list */}
@@ -149,17 +188,27 @@ export default function HistoricoPage() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {filteredTests.map((t) => {
               const isCompleted = t.completed;
+              const isPlantao = t.mode === 'plantao';
+              const plantaoData = t.plantao_data || {};
+              const beds = plantaoData.beds || [];
               const dateVal = isCompleted ? t.completed_at || t.created_at : t.created_at;
               const dateStr = dateVal
                 ? new Date(dateVal).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                 : 'Recente';
               const chapterCount = t.chapter_ids ? t.chapter_ids.length : 0;
               const badgeStyle = getScoreBadge(Number(t.score) || 0);
-
               const firstCap = CHAPTERS_DATA.find((c) => c.id === t.chapter_ids?.[0]);
+
+              const cardBorder = isPlantao
+                ? isCompleted ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(249, 115, 22, 0.4)'
+                : isCompleted ? '1px solid var(--border-subtle)' : '1px solid rgba(249, 115, 22, 0.3)';
+
+              const cardBg = isPlantao
+                ? isCompleted ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.7) 100%)' : 'rgba(249, 115, 22, 0.08)'
+                : isCompleted ? 'rgba(15, 23, 42, 0.5)' : 'rgba(249, 115, 22, 0.06)';
 
               return (
                 <div
@@ -169,17 +218,18 @@ export default function HistoricoPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '16px 20px',
-                    borderRadius: '12px',
-                    background: isCompleted ? 'rgba(15, 23, 42, 0.5)' : 'rgba(249, 115, 22, 0.06)',
-                    border: isCompleted ? '1px solid var(--border-subtle)' : '1px solid rgba(249, 115, 22, 0.3)',
+                    padding: '18px 22px',
+                    borderRadius: '14px',
+                    background: cardBg,
+                    border: cardBorder,
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
+                    boxShadow: isPlantao ? '0 4px 20px rgba(16, 185, 129, 0.05)' : 'none',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = isCompleted ? 'rgba(56, 189, 248, 0.4)' : '#fb923c')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = isCompleted ? 'var(--border-subtle)' : 'rgba(249, 115, 22, 0.3)')}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = isPlantao ? '#34d399' : isCompleted ? 'rgba(56, 189, 248, 0.4)' : '#fb923c')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = isPlantao ? (isCompleted ? 'rgba(16, 185, 129, 0.35)' : 'rgba(249, 115, 22, 0.4)') : isCompleted ? 'var(--border-subtle)' : 'rgba(249, 115, 22, 0.3)')}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
                     {isCompleted ? (
                       <div style={{
                         padding: '8px 14px',
@@ -189,7 +239,7 @@ export default function HistoricoPage() {
                         border: `1px solid ${badgeStyle.border}`,
                         fontWeight: 800,
                         fontSize: '1.1rem',
-                        minWidth: '54px',
+                        minWidth: '58px',
                         textAlign: 'center',
                       }}>
                         {t.score !== null ? t.score : '—'}
@@ -212,14 +262,27 @@ export default function HistoricoPage() {
                       </div>
                     )}
 
-                    <div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff' }}>
-                        {firstCap ? `Cap. ${firstCap.number}: ${firstCap.title}` : `${chapterCount} Capítulos`}
-                        {chapterCount > 1 && ` (+${chapterCount - 1} outros)`}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {isPlantao ? (
+                          <span style={{ padding: '3px 9px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Stethoscope size={12} /> PLANTÃO NOTURNO #{plantaoData.plantaoNumber || 1}
+                          </span>
+                        ) : (
+                          <span style={{ padding: '3px 9px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Sparkles size={12} /> SIMULADO IA
+                          </span>
+                        )}
+
+                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+                          {firstCap ? `Cap. ${firstCap.number}: ${firstCap.title}` : `${chapterCount} Capítulos`}
+                          {chapterCount > 1 && ` (+${chapterCount - 1} outros)`}
+                        </span>
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <span><Calendar size={12} style={{ display: 'inline', marginRight: '4px' }} /> {dateStr}</span>
-                        <span>• {t.total_questions} Questões</span>
+                        <span>• {isPlantao && beds.length > 0 ? `🛏️ ${beds.length} Leitos de UPA (${t.total_questions} condutas)` : `${t.total_questions} Questões`}</span>
                         <span>• Formato: {getFormatLabel(t.question_type)}</span>
                       </div>
                     </div>
@@ -233,9 +296,9 @@ export default function HistoricoPage() {
                           router.push(`/testes/${t.id}`);
                         }}
                         className="btn-primary"
-                        style={{ padding: '8px 16px', fontSize: '0.82rem', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
+                        style={{ padding: '8px 16px', fontSize: '0.82rem', background: isPlantao ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
                       >
-                        Continuar Teste <Play size={14} />
+                        {isPlantao ? 'Retomar Plantão' : 'Continuar Teste'} <Play size={14} />
                       </button>
                     ) : (
                       <ChevronRight size={18} color="var(--text-subtle)" />
@@ -250,3 +313,4 @@ export default function HistoricoPage() {
     </div>
   );
 }
+

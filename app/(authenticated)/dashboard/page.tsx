@@ -485,6 +485,139 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Main Chapter Focus Card (Capítulo Sorteado em Destaque) */}
+      <div
+        className="glass-panel"
+        style={{
+          padding: '36px',
+          borderRadius: '20px',
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.7) 100%)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          position: 'absolute',
+          top: '-40px',
+          right: '-40px',
+          width: '200px',
+          height: '200px',
+          background: 'radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, transparent 70%)',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+        }} />
+
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Carregando capítulo sorteado...
+          </div>
+        ) : currentChapter ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{
+                  padding: '4px 12px',
+                  borderRadius: '9999px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                }}>
+                  SEÇÃO {currentChapter.sectionNumber} — {currentChapter.sectionTitle}
+                </span>
+                {isCurrentRead && (
+                  <span style={{
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    color: '#34d399',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}>
+                    <CheckCircle2 size={14} /> Lido
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => setShowManualSelectModal(true)}
+                  className="btn-secondary"
+                  style={{ fontSize: '0.88rem', padding: '8px 14px' }}
+                >
+                  <Search size={16} /> Mudar Capítulo
+                </button>
+                <button
+                  onClick={handleDrawNextChapter}
+                  className="btn-secondary"
+                  style={{
+                    fontSize: '0.88rem',
+                    padding: '8px 14px',
+                    borderColor: 'rgba(56, 189, 248, 0.4)',
+                    color: '#38bdf8',
+                  }}
+                >
+                  <Shuffle size={16} /> Sortear de Novo
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '0.95rem', color: 'var(--text-subtle)', fontWeight: 600, marginBottom: '4px' }}>
+                SUGESTÃO DE LEITURA ATUAL (SORTEIO ALEATÓRIO)
+              </div>
+              <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.25 }}>
+                Capítulo {currentChapter.number}: {currentChapter.title}
+              </h2>
+            </div>
+
+            {/* Actions for current chapter */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              marginTop: '12px',
+              paddingTop: '20px',
+              borderTop: '1px solid var(--border-subtle)',
+              flexWrap: 'wrap',
+            }}>
+              {!isCurrentRead ? (
+                <button
+                  onClick={handleMarkAsRead}
+                  className="btn-primary"
+                  style={{ padding: '12px 24px', fontSize: '0.95rem' }}
+                >
+                  <CheckCircle2 size={18} /> Marcar Capítulo como Lido
+                </button>
+              ) : (
+                <button
+                  onClick={() => router.push(`/testes?chapterId=${currentChapter.id}`)}
+                  className="btn-primary"
+                  style={{ padding: '12px 24px', fontSize: '0.95rem' }}
+                >
+                  <Sparkles size={18} /> Criar Teste Sobre Este Capítulo
+                </button>
+              )}
+
+              <button
+                onClick={handleDrawNextChapter}
+                className="btn-secondary"
+                style={{ padding: '12px 20px', fontSize: '0.95rem' }}
+              >
+                <RefreshCw size={18} /> Sortear Próximo Capítulo
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       {/* COMPONENT 2 - DASHBOARD MEDICAL COMPETENCIES RADAR CHART & UPA READINESS INDICATOR */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
         {/* Left Column: UPA Medical Readiness Indicator (Prontidão Médica da UPA) */}
@@ -704,139 +837,6 @@ export default function DashboardPage() {
         >
           <Stethoscope size={18} /> Iniciar Plantão Noturno
         </button>
-      </div>
-
-      {/* Main Chapter Focus Card (Capítulo Sorteado em Destaque) */}
-      <div
-        className="glass-panel"
-        style={{
-          padding: '36px',
-          borderRadius: '20px',
-          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.7) 100%)',
-          border: '1px solid rgba(56, 189, 248, 0.3)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{
-          position: 'absolute',
-          top: '-40px',
-          right: '-40px',
-          width: '200px',
-          height: '200px',
-          background: 'radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, transparent 70%)',
-          borderRadius: '50%',
-          pointerEvents: 'none',
-        }} />
-
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Carregando capítulo sorteado...
-          </div>
-        ) : currentChapter ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{
-                  padding: '4px 12px',
-                  borderRadius: '9999px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  background: 'rgba(56, 189, 248, 0.15)',
-                  color: '#38bdf8',
-                  border: '1px solid rgba(56, 189, 248, 0.3)',
-                }}>
-                  SEÇÃO {currentChapter.sectionNumber} — {currentChapter.sectionTitle}
-                </span>
-                {isCurrentRead && (
-                  <span style={{
-                    padding: '4px 12px',
-                    borderRadius: '9999px',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    color: '#34d399',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}>
-                    <CheckCircle2 size={14} /> Lido
-                  </span>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => setShowManualSelectModal(true)}
-                  className="btn-secondary"
-                  style={{ fontSize: '0.88rem', padding: '8px 14px' }}
-                >
-                  <Search size={16} /> Mudar Capítulo
-                </button>
-                <button
-                  onClick={handleDrawNextChapter}
-                  className="btn-secondary"
-                  style={{
-                    fontSize: '0.88rem',
-                    padding: '8px 14px',
-                    borderColor: 'rgba(56, 189, 248, 0.4)',
-                    color: '#38bdf8',
-                  }}
-                >
-                  <Shuffle size={16} /> Sortear de Novo
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: '0.95rem', color: 'var(--text-subtle)', fontWeight: 600, marginBottom: '4px' }}>
-                SUGESTÃO DE LEITURA ATUAL (SORTEIO ALEATÓRIO)
-              </div>
-              <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.25 }}>
-                Capítulo {currentChapter.number}: {currentChapter.title}
-              </h2>
-            </div>
-
-            {/* Actions for current chapter */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              marginTop: '12px',
-              paddingTop: '20px',
-              borderTop: '1px solid var(--border-subtle)',
-              flexWrap: 'wrap',
-            }}>
-              {!isCurrentRead ? (
-                <button
-                  onClick={handleMarkAsRead}
-                  className="btn-primary"
-                  style={{ padding: '12px 24px', fontSize: '0.95rem' }}
-                >
-                  <CheckCircle2 size={18} /> Marcar Capítulo como Lido
-                </button>
-              ) : (
-                <button
-                  onClick={() => router.push(`/testes?chapterId=${currentChapter.id}`)}
-                  className="btn-primary"
-                  style={{ padding: '12px 24px', fontSize: '0.95rem' }}
-                >
-                  <Sparkles size={18} /> Criar Teste Sobre Este Capítulo
-                </button>
-              )}
-
-              <button
-                onClick={handleDrawNextChapter}
-                className="btn-secondary"
-                style={{ padding: '12px 20px', fontSize: '0.95rem' }}
-              >
-                <RefreshCw size={18} /> Sortear Próximo Capítulo
-              </button>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       {/* Modal de confirmação para se testar após concluir leitura */}
