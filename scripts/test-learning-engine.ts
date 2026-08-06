@@ -96,4 +96,32 @@ if (fsrsUpdatedSuccess.stability > statsListRead[0].stability && fsrsUpdatedFail
   console.error('  FAILED: FSRS stability update behavior is incorrect.\n');
 }
 
+// Test 6: AI JSON normalization test (handles options as object and correct_answer as "B")
+import { normalizeQuestionItem } from '../lib/ai/openrouter';
+
+const rawAiOutputObject = {
+  question: "Paciente em PCR...",
+  options: {
+    "A": "Conduta A",
+    "B": "Conduta B",
+    "C": "Conduta C",
+    "D": "Conduta D",
+    "E": "Conduta E"
+  },
+  correct_answer: "B"
+};
+
+const normalized = normalizeQuestionItem(rawAiOutputObject);
+
+console.log(`Test 6 - AI Question Normalization:`);
+console.log(`  Vignette: "${normalized.vignette}"`);
+console.log(`  Options (Array check): ${Array.isArray(normalized.options) ? 'YES' : 'NO'} (${normalized.options?.length} items)`);
+console.log(`  Correct Option Index: ${normalized.correctOption} (Expected: 1 for "B")`);
+
+if (Array.isArray(normalized.options) && normalized.options.length === 5 && normalized.correctOption === 1 && normalized.vignette === rawAiOutputObject.question) {
+  console.log('  PASSED: AI question object safely normalized to expected schema.\n');
+} else {
+  console.error('  FAILED: Question normalization did not produce valid schema.\n');
+}
+
 console.log('=== ALL UNIT TESTS COMPLETED SUCCESSFULLY ===');

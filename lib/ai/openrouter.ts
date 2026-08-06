@@ -117,6 +117,68 @@ export function parseJsonFromMarkdown<T = any>(text: string): T {
 }
 
 /**
+ * Normalizes question objects returned by AI models to handle format variations
+ * (e.g. options as object {A:..., B:...} vs array, correct_answer string "B" vs correctOption index 1).
+ */
+export function normalizeQuestionItem(q: any): QuestionItem {
+  if (!q || typeof q !== 'object') return q;
+
+  // 1. Sanitize vignette / question text
+  if (q.vignette) q.vignette = fixMojibake(String(q.vignette));
+  else if (q.question) q.vignette = fixMojibake(String(q.question));
+
+  if (q.explanation) q.explanation = fixMojibake(String(q.explanation));
+  if (q.promptText) q.promptText = fixMojibake(String(q.promptText));
+  if (q.idealPrescription) q.idealPrescription = fixMojibake(String(q.idealPrescription));
+
+  // 2. Normalize legacy 'prescription' type to 'prescription_complete'
+  if ((q as any).type === 'prescription') {
+    (q as any).type = 'prescription_complete';
+  }
+
+  // 3. Normalize options to string[]
+  if (q.options) {
+    if (Array.isArray(q.options)) {
+      q.options = q.options.map((opt: any) => {
+        if (typeof opt === 'string') {
+          return fixMojibake(opt).replace(/^[A-E][\.\)]\s*/i, '');
+        } else if (opt && typeof opt === 'object') {
+          const textVal = opt.text || opt.label || Object.values(opt)[0] || String(opt);
+          return fixMojibake(String(textVal)).replace(/^[A-E][\.\)]\s*/i, '');
+        }
+        return String(opt);
+      });
+    } else if (typeof q.options === 'object') {
+      const keys = Object.keys(q.options).sort();
+      q.options = keys.map((key) => {
+        const val = q.options[key];
+        return fixMojibake(String(val)).replace(/^[A-E][\.\)]\s*/i, '');
+      });
+    }
+  }
+
+  // 4. Normalize correctOption to 0-indexed number (0=A, 1=B, 2=C, 3=D, 4=E)
+  let rawCorrect = q.correctOption !== undefined ? q.correctOption : (q.correct_answer !== undefined ? q.correct_answer : q.correctAnswer);
+
+  if (typeof rawCorrect === 'string') {
+    const trimmed = rawCorrect.trim().toUpperCase();
+    if (trimmed === 'A') q.correctOption = 0;
+    else if (trimmed === 'B') q.correctOption = 1;
+    else if (trimmed === 'C') q.correctOption = 2;
+    else if (trimmed === 'D') q.correctOption = 3;
+    else if (trimmed === 'E') q.correctOption = 4;
+    else {
+      const parsedNum = parseInt(trimmed, 10);
+      if (!isNaN(parsedNum)) q.correctOption = parsedNum;
+    }
+  } else if (typeof rawCorrect === 'number') {
+    q.correctOption = rawCorrect;
+  }
+
+  return q as QuestionItem;
+}
+
+/**
  * Helper function for executing AI calls with exponential backoff retries per model
  * and multi-model fallback cascade across candidate models.
  */
@@ -125,8 +187,8 @@ export async function executeWithModelCascade<T>(
   fn: (model: string) => Promise<T>,
   options: { maxRetriesPerModel?: number; initialDelayMs?: number } = {}
 ): Promise<T> {
-  const maxRetries = options.maxRetriesPerModel ?? 2;
-  const initialDelay = options.initialDelayMs ?? 500;
+  const maxRetries = options.maxRetriesPerModel ?? 1;
+  const initialDelay = options.initialDelayMs ?? 400;
 
   // Filter out empty or duplicate model names
   const modelList = Array.from(new Set(models.filter(Boolean)));
@@ -233,21 +295,10 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
     } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
-    const parsed = parseJsonFromMarkdown<QuestionItem[]>(content);
-
-    for (const q of parsed) {
-      if (q.vignette) q.vignette = fixMojibake(q.vignette);
-      if (q.explanation) q.explanation = fixMojibake(q.explanation);
-      if (q.promptText) q.promptText = fixMojibake(q.promptText);
-      if (q.idealPrescription) q.idealPrescription = fixMojibake(q.idealPrescription);
-      if (q.options) {
-        q.options = q.options.map(opt => fixMojibake(opt).replace(/^[A-E]\)\s*/i, ''));
-      }
-      // Normalize legacy 'prescription' type to 'prescription_complete'
-      if ((q as any).type === 'prescription') {
-        (q as any).type = 'prescription_complete';
-      }
-    }
+    const parsedRaw = parseJsonFromMarkdown<any[]>(content);
+    const parsed = Array.isArray(parsedRaw)
+      ? parsedRaw.map((q) => normalizeQuestionItem(q))
+      : [];
 
     return parsed;
   });
@@ -351,8 +402,8 @@ export async function generatePlantaoBedQuestionsWithAI({
 ${cleanText ? `\nTEXTO DE REFERÊNCIA DO LIVRO:\n${cleanText}\n` : ''}
 
 Gere exatamente 4 questões sequenciais formando uma narrativa clínica contínua para um paciente atendido neste leito:
-Q1: Múltipla escolha A-E (Triagem / Diagnóstico inicial)
-Q2: Múltipla escolha A-E (Exames / Confirmação diagnóstica)
+Q1: Múltipla escolha A-E (Triagem / Diagnóstico inicial) - "options" DEVE SER UMA ARRAY JSON DE STRINGS ex: ["Opção A", "Opção B", ...], "correctOption" DEVE SER ÍNDICE 0-BASED (0=A, 1=B, 2=C, 3=D, 4=E).
+Q2: Múltipla escolha A-E (Exames / Confirmação diagnóstica) - "options" DEVE SER UMA ARRAY JSON DE STRINGS, "correctOption" DEVE SER ÍNDICE 0-BASED.
 Q3: Prescrição Imediata ("prescription_immediate") - Resgate de emergência
 Q4: Prescrição Completa ("prescription_complete") OU Ventilador Mecânico ("ventilator", se indicado)
 
@@ -373,22 +424,15 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
     } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
-    const parsed = parseJsonFromMarkdown<QuestionItem[]>(content);
-
-    for (const q of parsed) {
-      if (q.vignette) q.vignette = fixMojibake(q.vignette);
-      if (q.explanation) q.explanation = fixMojibake(q.explanation);
-      if (q.promptText) q.promptText = fixMojibake(q.promptText);
-      if (q.idealPrescription) q.idealPrescription = fixMojibake(q.idealPrescription);
-      if (q.options) {
-        q.options = q.options.map((opt) => fixMojibake(opt).replace(/^[A-E]\)\s*/i, ''));
-      }
-      if ((q as any).type === 'prescription') {
-        (q as any).type = 'prescription_complete';
-      }
-      q.chapterId = chapterInfo.id;
-      q.chapterTitle = chapterInfo.title;
-    }
+    const parsedRaw = parseJsonFromMarkdown<any[]>(content);
+    const parsed = Array.isArray(parsedRaw)
+      ? parsedRaw.map((q) => {
+          const norm = normalizeQuestionItem(q);
+          norm.chapterId = chapterInfo.id;
+          norm.chapterTitle = chapterInfo.title;
+          return norm;
+        })
+      : [];
 
     return parsed;
   });
@@ -447,17 +491,8 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
     } as any);
 
     const content = response.choices[0]?.message?.content || '{}';
-    const parsed = parseJsonFromMarkdown<QuestionItem>(content);
-
-    if (parsed.vignette) parsed.vignette = fixMojibake(parsed.vignette);
-    if (parsed.explanation) parsed.explanation = fixMojibake(parsed.explanation);
-    if (parsed.promptText) parsed.promptText = fixMojibake(parsed.promptText);
-    if (parsed.idealPrescription) parsed.idealPrescription = fixMojibake(parsed.idealPrescription);
-    if ((parsed as any).type === 'prescription') {
-      (parsed as any).type = 'prescription_complete';
-    }
-
-    return parsed;
+    const parsedRaw = parseJsonFromMarkdown<any>(content);
+    return normalizeQuestionItem(parsedRaw);
   });
 }
 
