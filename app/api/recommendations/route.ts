@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     // Fetch user progress
     const { data: progressList } = await supabase
       .from('chapter_progress')
-      .select('chapter_id, is_read, read_at')
+      .select('chapter_id, is_read, read_at, read_count, last_read_at')
       .eq('user_id', user.id);
 
     // Fetch review stats (FSRS)

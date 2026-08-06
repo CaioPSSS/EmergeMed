@@ -124,4 +124,20 @@ if (Array.isArray(normalized.options) && normalized.options.length === 5 && norm
   console.error('  FAILED: Question normalization did not produce valid schema.\n');
 }
 
+// Test 7: FSRS Manual Re-read Stability Boost
+import { calculateFSRSManualReadUpdate } from '../lib/learning-engine';
+
+const initialStat = { stability: 4.0, ease_factor: 2.5, times_reviewed: 1 };
+const fsrsManualReadUpdate = calculateFSRSManualReadUpdate(initialStat, t30);
+
+console.log(`Test 7 - FSRS Manual Re-read Update:`);
+console.log(`  Initial Stability: ${initialStat.stability}d`);
+console.log(`  New Stability after Re-read: ${fsrsManualReadUpdate.stability}d`);
+
+if (fsrsManualReadUpdate.stability > initialStat.stability && fsrsManualReadUpdate.last_evidence_at) {
+  console.log('  PASSED: Manual re-reading reinforces FSRS stability and updates last evidence timestamp.\n');
+} else {
+  console.error('  FAILED: Manual re-read stability update behavior is incorrect.\n');
+}
+
 console.log('=== ALL UNIT TESTS COMPLETED SUCCESSFULLY ===');

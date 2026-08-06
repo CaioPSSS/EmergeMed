@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS public.chapter_progress (
   chapter_id INTEGER NOT NULL,
   is_read BOOLEAN DEFAULT FALSE,
   read_at TIMESTAMP WITH TIME ZONE,
+  read_count INTEGER DEFAULT 1,
+  last_read_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id, chapter_id)
@@ -87,6 +89,16 @@ CREATE TABLE IF NOT EXISTS public.chapter_recommendation_events (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Table: chapter_read_logs (Immutable log of chapter reading and re-reading events)
+CREATE TABLE IF NOT EXISTS public.chapter_read_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  chapter_id INTEGER NOT NULL,
+  read_count_snapshot INTEGER NOT NULL DEFAULT 1,
+  source TEXT NOT NULL DEFAULT 'dashboard_recommendation',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Table: user_settings (Stores OpenRouter API key and model preferences)
 CREATE TABLE IF NOT EXISTS public.user_settings (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -107,6 +119,14 @@ ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapter_weights ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapter_review_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapter_recommendation_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chapter_read_logs ENABLE ROW LEVEL SECURITY;
+
+-- Policies for chapter_read_logs
+DROP POLICY IF EXISTS "Users can manage their own chapter read logs" ON public.chapter_read_logs;
+CREATE POLICY "Users can manage their own chapter read logs"
+  ON public.chapter_read_logs
+  FOR ALL
+  USING (auth.uid() = user_id);
 
 -- Policies for chapter_progress
 DROP POLICY IF EXISTS "Users can manage their own chapter progress" ON public.chapter_progress;

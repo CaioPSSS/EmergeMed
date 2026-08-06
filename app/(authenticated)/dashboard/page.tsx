@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CHAPTERS_DATA, Chapter } from '@/lib/chapters-data';
-import { ReadinessEngineSnapshot } from '@/lib/learning-engine';
+import { ReadinessEngineSnapshot, calculateFSRSManualReadUpdate } from '@/lib/learning-engine';
 import {
   Shuffle,
   CheckCircle2,
@@ -289,18 +289,50 @@ export default function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    const newReadIds = [...readChapterIds, currentChapter.id];
+    const isAlreadyRead = readChapterIds.includes(currentChapter.id);
+    const newReadIds = isAlreadyRead ? readChapterIds : Array.from(new Set([...readChapterIds, currentChapter.id]));
     setReadChapterIds(newReadIds);
     setStats((prev) => ({ ...prev, totalRead: newReadIds.length }));
 
+    const currentMetrics = snapshot.chapterMetrics[currentChapter.id];
+    const currentCount = currentMetrics?.readCount || (isAlreadyRead ? 1 : 0);
+    const newCount = isAlreadyRead ? currentCount + 1 : 1;
     const nowIso = new Date().toISOString();
+
+    // 1. Update chapter_progress
     await supabase.from('chapter_progress').upsert({
       user_id: user.id,
       chapter_id: currentChapter.id,
       is_read: true,
-      read_at: nowIso,
+      read_at: currentMetrics?.readAt || nowIso,
+      read_count: newCount,
+      last_read_at: nowIso,
     });
 
+    // 2. Insert into chapter_read_logs
+    await supabase.from('chapter_read_logs').insert({
+      user_id: user.id,
+      chapter_id: currentChapter.id,
+      read_count_snapshot: newCount,
+      source: 'dashboard_recommendation',
+    });
+
+    // 3. Update FSRS chapter_review_stats for manual read
+    const { data: stat } = await supabase
+      .from('chapter_review_stats')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('chapter_id', currentChapter.id)
+      .maybeSingle();
+
+    const fsrsUpdate = calculateFSRSManualReadUpdate(stat);
+    await supabase.from('chapter_review_stats').upsert({
+      user_id: user.id,
+      chapter_id: currentChapter.id,
+      ...fsrsUpdate,
+    });
+
+    // 4. Log recommendation event
     const rec = snapshot.recommendation;
     await fetch('/api/recommendations/events', {
       method: 'POST',
@@ -509,7 +541,7 @@ export default function DashboardPage() {
                   SEÇÃO {currentChapter.sectionNumber} — {currentChapter.sectionTitle}
                 </span>
 
-                {isCurrentRead && (
+                {isCurrentRead ? (
                   <span style={{
                     padding: '4px 12px',
                     borderRadius: '9999px',
@@ -522,7 +554,22 @@ export default function DashboardPage() {
                     alignItems: 'center',
                     gap: '4px',
                   }}>
-                    <CheckCircle2 size={14} /> Lido
+                    <CheckCircle2 size={14} /> Revisão #{currentMetrics?.readCount || 1}
+                  </span>
+                ) : (
+                  <span style={{
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    color: '#fbbf24',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}>
+                    <BookOpen size={14} /> 1ª Leitura
                   </span>
                 )}
               </div>
@@ -619,16 +666,30 @@ export default function DashboardPage() {
                   className="btn-primary"
                   style={{ padding: '12px 24px', fontSize: '0.95rem' }}
                 >
-                  <CheckCircle2 size={18} /> Marcar Capítulo como Lido
+                  <CheckCircle2 size={18} /> Marcar 1ª Leitura como Concluída
                 </button>
               ) : (
-                <button
-                  onClick={() => router.push(`/testes?chapterId=${currentChapter.id}`)}
-                  className="btn-primary"
-                  style={{ padding: '12px 24px', fontSize: '0.95rem' }}
-                >
-                  <Sparkles size={18} /> Criar Teste Sobre Este Capítulo
-                </button>
+                <>
+                  <button
+                    onClick={handleMarkAsRead}
+                    className="btn-primary"
+                    style={{
+                      padding: '12px 24px',
+                      fontSize: '0.95rem',
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    }}
+                  >
+                    <RefreshCw size={18} /> Registrar Releitura Concluída (Revisão #{(currentMetrics?.readCount || 1) + 1})
+                  </button>
+
+                  <button
+                    onClick={() => router.push(`/testes?chapterId=${currentChapter.id}`)}
+                    className="btn-secondary"
+                    style={{ padding: '12px 20px', fontSize: '0.95rem' }}
+                  >
+                    <Sparkles size={18} /> Criar Teste Sobre Este Capítulo
+                  </button>
+                </>
               )}
 
               <button

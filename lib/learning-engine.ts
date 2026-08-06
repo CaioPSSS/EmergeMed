@@ -21,6 +21,8 @@ export interface ChapterProgressItem {
   chapter_id: number;
   is_read: boolean;
   read_at?: string | null;
+  read_count?: number;
+  last_read_at?: string | null;
 }
 
 export interface TestRecordItem {
@@ -65,6 +67,8 @@ export interface ChapterMetrics {
   clinicalWeight: number; // Normalized sum = 1
   isRead: boolean;
   readAt: string | null;
+  readCount: number;
+  lastReadAt: string | null;
   observedAverage: number;
   evidenceCount: number;
   performance: number; // 0-100 Bayesian smoothed
@@ -299,10 +303,16 @@ export function deriveAllTopicMetrics(params: {
 
     const isRead = prog?.is_read || false;
     const readAt = prog?.read_at || null;
+    const readCount = prog?.read_count || (isRead ? 1 : 0);
+    const lastReadAt = prog?.last_read_at || null;
 
-    // Last evidence date = max(readAt, stat.last_reviewed_at, stat.last_evidence_at)
+    // Last evidence date = max(readAt, lastReadAt, stat.last_reviewed_at, stat.last_evidence_at)
     let lastEvidenceDate: Date | null = null;
     if (readAt) lastEvidenceDate = new Date(readAt);
+    if (lastReadAt) {
+      const d = new Date(lastReadAt);
+      if (!lastEvidenceDate || d > lastEvidenceDate) lastEvidenceDate = d;
+    }
     if (stat?.last_reviewed_at) {
       const d = new Date(stat.last_reviewed_at);
       if (!lastEvidenceDate || d > lastEvidenceDate) lastEvidenceDate = d;
@@ -372,6 +382,8 @@ export function deriveAllTopicMetrics(params: {
         clinicalWeight: w.clinicalWeight,
         isRead,
         readAt,
+        readCount,
+        lastReadAt,
         observedAverage: Math.round(observedAverage * 10) / 10,
         evidenceCount: n,
         performance: Math.round(performance * 10) / 10,
@@ -601,10 +613,15 @@ export function buildReadinessSnapshot(params: {
     chosenMetric = candidatesList[0];
   }
 
+  const isReRead = chosenMetric.isRead && chosenMetric.readCount > 0;
+  const readLabel = isReRead ? `Revisão #${chosenMetric.readCount + 1}` : '1ª Leitura';
+
   const reasonMap: Record<string, string> = {
-    remediation: `Déficit de domínio identificado no Capítulo ${chosenMetric.chapterNumber} (Domínio ${chosenMetric.topicReadiness}% vs Limiar ${chosenMetric.dynamicThreshold}%).`,
-    expansion: `Expansão de catálogo recomendada para cobrir lacuna no Capítulo ${chosenMetric.chapterNumber} (${chosenMetric.category}).`,
-    maintenance: `Consolidação de memória agendada pelo FSRS (Vencimento FSRS ${chosenMetric.dueRatio.toFixed(1)}x estabilidade).`,
+    remediation: isReRead
+      ? `Releitura Recomendada (${readLabel}): Déficit de domínio no Capítulo ${chosenMetric.chapterNumber} (Prontidão ${chosenMetric.topicReadiness}% vs Limiar ${chosenMetric.dynamicThreshold}%).`
+      : `Déficit de domínio identificado no Capítulo ${chosenMetric.chapterNumber} (Domínio ${chosenMetric.topicReadiness}% vs Limiar ${chosenMetric.dynamicThreshold}%).`,
+    expansion: `Expansão de catálogo (${readLabel}) recomendada para cobrir lacuna no Capítulo ${chosenMetric.chapterNumber} (${chosenMetric.category}).`,
+    maintenance: `Releitura de Consolidação (${readLabel}) agendada pelo FSRS (Vencimento ${chosenMetric.dueRatio.toFixed(1)}x estabilidade).`,
   };
 
   const snapshot: ReadinessEngineSnapshot = {
@@ -745,6 +762,38 @@ export function calculateFSRSUpdate(
     times_correct: timesCorrect,
     times_incorrect: timesIncorrect,
     last_reviewed_at: now.toISOString(),
+    last_evidence_at: now.toISOString(),
+    next_review_at: nextReviewDate.toISOString(),
+    ease_factor: Math.round(easeFactor * 100) / 100,
+    interval_days: interval,
+    stability: Math.round(stability * 100) / 100,
+    difficulty: Math.round(difficulty * 100) / 100,
+  };
+}
+
+// Calculate FSRS update upon marking a manual re-reading of a chapter
+export function calculateFSRSManualReadUpdate(
+  currentStat: Partial<ChapterReviewStatFSRS> | null,
+  now: Date = new Date()
+) {
+  let easeFactor = currentStat?.ease_factor || 2.5;
+  let stability = currentStat?.stability || 3.0;
+  let difficulty = currentStat?.difficulty || 5.0;
+  let timesReviewed = (currentStat?.times_reviewed || 0) + 1;
+  let timesCorrect = currentStat?.times_correct || 0;
+  let timesIncorrect = currentStat?.times_incorrect || 0;
+
+  // Re-reading reinforces memory stability S by 35% (up to 180 days)
+  stability = Math.min(180.0, Math.max(3.0, stability * 1.35));
+  const interval = Math.max(1, Math.round(stability));
+
+  const nextReviewDate = new Date(now.getTime());
+  nextReviewDate.setDate(nextReviewDate.getDate() + interval);
+
+  return {
+    times_reviewed: timesReviewed,
+    times_correct: timesCorrect,
+    times_incorrect: timesIncorrect,
     last_evidence_at: now.toISOString(),
     next_review_at: nextReviewDate.toISOString(),
     ease_factor: Math.round(easeFactor * 100) / 100,

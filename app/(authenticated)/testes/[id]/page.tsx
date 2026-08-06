@@ -65,6 +65,8 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const [error, setError] = useState<string | null>(null);
   const [showPlantaoTopics, setShowPlantaoTopics] = useState<boolean>(false);
 
+  const [cachedEvaluations, setCachedEvaluations] = useState<Record<number, any>>({});
+
   // Plantão specific state
   const isPlantao = testRecord?.mode === 'plantao';
   const plantaoData = testRecord?.plantao_data || null;
@@ -86,6 +88,9 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         setQuestions(data.questions as QuestionItem[]);
         if (data.answers) {
           setUserAnswers(data.answers);
+        }
+        if (data.results) {
+          setCachedEvaluations(data.results);
         }
       }
       setLoading(false);
@@ -227,19 +232,20 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
     setError(null);
 
     try {
-      const evaluations: Record<number, any> = {};
-      let totalPoints = 0;
-      const maxPoints = questions.length * 10;
-
+      const evaluations: Record<number, any> = { ...cachedEvaluations, ...(testRecord?.results || {}) };
       const aiEvalPromises: Promise<{ id: number; evalData: any; userAnswer: any }>[] = [];
 
       for (const q of questions) {
+        // Skip already evaluated questions to avoid redundant AI calls
+        if (evaluations[q.id] && typeof evaluations[q.id].score === 'number') {
+          continue;
+        }
+
         const answer = userAnswers[q.id];
 
         if (q.type === 'multiple_choice') {
           const isCorrect = answer === q.correctOption;
           const score = isCorrect ? 10 : 0;
-          totalPoints += score;
 
           evaluations[q.id] = {
             userAnswer: answer,
@@ -299,7 +305,6 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
         for (const res of aiResults) {
           const score = Number(res.evalData.evaluation?.score) || 0;
-          totalPoints += score;
 
           evaluations[res.id] = {
             userPrescription: typeof res.userAnswer === 'string' ? res.userAnswer : JSON.stringify(res.userAnswer),
@@ -310,13 +315,17 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         }
       }
 
+      // Save evaluated results in component state
+      setCachedEvaluations(evaluations);
+
       // Check if any bed in Plantão experienced an Adverse Evolution (Q5 Bonus) based on AI evaluations or wrong answers
       if (isPlantao && beds.length > 0) {
         const newlyGeneratedBonusQuestions: QuestionItem[] = [];
         const adverseBedNumbers: number[] = [];
+        const updatedBeds = beds.map((b: any) => ({ ...b }));
 
-        for (const bed of beds) {
-          if (bed.bonusQuestionId) continue; // Already generated
+        for (const bed of updatedBeds) {
+          if (bed.bonusQuestionId) continue; // Already generated, skip!
 
           const bedQs = questions.filter((q) => (bed.questionIds || []).includes(q.id));
 
@@ -376,6 +385,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
               const data = await res.json();
               if (res.ok && data.question) {
+                bed.bonusQuestionId = data.question.id; // Assign bonus question ID to bed
                 newlyGeneratedBonusQuestions.push(data.question);
                 adverseBedNumbers.push(bed.bedNumber);
               }
@@ -385,7 +395,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           }
         }
 
-        // If new Q5 bonus questions were generated during submission, append them and pause test completion!
+        // If new Q5 bonus questions were generated during submission, append them, update DB and pause submission!
         if (newlyGeneratedBonusQuestions.length > 0) {
           const updatedQuestions = [...questions];
           newlyGeneratedBonusQuestions.forEach((q5) => {
@@ -394,7 +404,31 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             }
           });
 
+          const updatedPlantaoData = {
+            ...plantaoData,
+            beds: updatedBeds,
+            adverseEvolutions: (plantaoData?.adverseEvolutions || 0) + newlyGeneratedBonusQuestions.length,
+          };
+
           setQuestions(updatedQuestions);
+          setTestRecord((prev: any) => ({
+            ...prev,
+            questions: updatedQuestions,
+            plantao_data: updatedPlantaoData,
+            results: evaluations,
+          }));
+
+          // Persist updated questions, plantao_data, answers and evaluations to Supabase DB!
+          await supabase
+            .from('tests')
+            .update({
+              questions: updatedQuestions,
+              plantao_data: updatedPlantaoData,
+              answers: userAnswers,
+              results: evaluations,
+            })
+            .eq('id', testId);
+
           setSubmitting(false);
 
           alert(
@@ -410,6 +444,12 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         }
       }
 
+      // Sum total points across all evaluated questions
+      let totalPoints = 0;
+      questions.forEach((q) => {
+        totalPoints += evaluations[q.id]?.score || 0;
+      });
+      const maxPoints = questions.length * 10;
       const finalScore = Math.round((totalPoints / maxPoints) * 100) / 10; // 0.0 to 10.0
 
       const { data: { user } } = await supabase.auth.getUser();
