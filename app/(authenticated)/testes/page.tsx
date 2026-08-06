@@ -76,17 +76,32 @@ function TestGeneratorForm() {
         const readIds = progress ? progress.map((p) => p.chapter_id) : [];
         setReadChapterIds(readIds);
 
-        // Fetch review stats
-        const { data: reviewStats } = await supabase
-          .from('chapter_review_stats')
-          .select('*')
-          .eq('user_id', user.id);
+        try {
+          const res = await fetch('/api/recommendations?surface=plantao');
+          if (res.ok) {
+            const snapshot = await res.json();
+            const readMetrics = Object.values(snapshot.chapterMetrics || {})
+              .filter((m: any) => m.isRead)
+              .map((m: any) => ({
+                chapterId: m.chapterId,
+                chapterNumber: m.chapterNumber,
+                title: m.title,
+                sectionNumber: m.sectionNumber,
+                sectionTitle: m.sectionTitle,
+                frequencyScore: m.frequencyScore,
+                importanceScore: m.importanceScore,
+                daysSinceLastReview: m.daysSinceLastEvidence,
+                accuracyRate: m.confidence,
+                compositeScore: m.recommendationScore,
+                lastReviewedAt: null,
+              }))
+              .sort((a: any, b: any) => b.compositeScore - a.compositeScore);
 
-        const scored = calculateChapterScores({
-          readChapterIds: readIds,
-          reviewStats: reviewStats || [],
-        });
-        setScoredChapters(scored);
+            setScoredChapters(readMetrics);
+          }
+        } catch (err) {
+          console.error('Failed to load plantao recommendation engine preview:', err);
+        }
       }
       setLoadingStats(false);
     }

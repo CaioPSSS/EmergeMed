@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CHAPTERS_DATA, Chapter } from '@/lib/chapters-data';
+import { ReadinessEngineSnapshot } from '@/lib/learning-engine';
 import {
   Shuffle,
   CheckCircle2,
@@ -20,6 +21,11 @@ import {
   TrendingUp,
   RefreshCw,
   HeartPulse,
+  Brain,
+  Info,
+  Clock,
+  Gauge,
+  Flame,
 } from 'lucide-react';
 
 interface SpecialtyScore {
@@ -27,45 +33,16 @@ interface SpecialtyScore {
   score: number; // 0 - 100
   chapterIds: number[];
   color: string;
+  confidence?: number;
 }
-
-// 5 Emergency Medical Specialties for UPA Readiness
-const SPECIALTIES_CONFIG: { name: string; chapterIds: number[]; color: string }[] = [
-  {
-    name: 'Cardiologia',
-    chapterIds: [29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
-    color: '#ef4444', // Red / Rose
-  },
-  {
-    name: 'Pneumologia',
-    chapterIds: [2, 6, 7, 41, 42, 43, 44, 45, 46, 47],
-    color: '#38bdf8', // Sky Blue
-  },
-  {
-    name: 'Infectologia',
-    chapterIds: [9, 48, 49, 50, 51, 52, 71],
-    color: '#10b981', // Emerald Green
-  },
-  {
-    name: 'Traumatologia',
-    chapterIds: [62, 63, 64, 65, 66, 67, 68, 69],
-    color: '#f59e0b', // Amber
-  },
-  {
-    name: 'Terapia Intensiva',
-    chapterIds: [1, 3, 4, 5, 8, 10, 13, 78, 80],
-    color: '#a855f7', // Purple
-  },
-];
 
 // Responsive SVG Radar Chart Component
 function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
   const cx = 200;
   const cy = 200;
   const radius = 110;
-  const numAxes = data.length; // 5
+  const numAxes = data.length || 5;
 
-  // Calculate polygon points
   const points = data.map((item, i) => {
     const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
     const r = radius * (Math.max(10, Math.min(100, item.score)) / 100);
@@ -75,8 +52,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
   });
 
   const polygonPointsStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-
-  // Grid levels (20%, 40%, 60%, 80%, 100%)
   const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
 
   return (
@@ -89,7 +64,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
           </linearGradient>
         </defs>
 
-        {/* Concentric Pentagon Background Grids */}
         {gridLevels.map((level, idx) => {
           const rLevel = radius * level;
           const levelPoints = data
@@ -113,7 +87,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
           );
         })}
 
-        {/* Axis Lines from center */}
         {data.map((_, i) => {
           const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
           const x = cx + radius * Math.cos(angle);
@@ -131,7 +104,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
           );
         })}
 
-        {/* Filled Competence Polygon */}
         <polygon
           points={polygonPointsStr}
           fill="url(#radarGradient)"
@@ -140,7 +112,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
           strokeLinejoin="round"
         />
 
-        {/* Data Point Nodes and Labels */}
         {points.map((p, i) => {
           const labelRadius = radius + 32;
           const lx = cx + labelRadius * Math.cos(p.angle);
@@ -153,7 +124,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
 
           return (
             <g key={`node-${i}`}>
-              {/* Vertex Circle */}
               <circle
                 cx={p.x}
                 cy={p.y}
@@ -162,8 +132,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
                 stroke="#0f172a"
                 strokeWidth="2"
               />
-
-              {/* Score Badge Text on Node */}
               <text
                 x={p.x}
                 y={p.y - 10}
@@ -174,8 +142,6 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
               >
                 {Math.round(p.item.score)}%
               </text>
-
-              {/* Specialty Name Label */}
               <text
                 x={lx}
                 y={ly}
@@ -198,28 +164,64 @@ export default function DashboardPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  const [snapshot, setSnapshot] = useState<ReadinessEngineSnapshot | null>(null);
   const [readChapterIds, setReadChapterIds] = useState<number[]>([]);
   const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [drawingNext, setDrawingNext] = useState<boolean>(false);
   const [stats, setStats] = useState({
     totalRead: 0,
     testsCompleted: 0,
     averageScore: 0,
   });
 
-  const [specialtyScores, setSpecialtyScores] = useState<SpecialtyScore[]>([]);
-
   const [showTestModal, setShowTestModal] = useState<boolean>(false);
   const [showManualSelectModal, setShowManualSelectModal] = useState<boolean>(false);
   const [manualSearch, setManualSearch] = useState<string>('');
 
+  async function fetchEngineRecommendation(chapterIdOverride?: number) {
+    try {
+      const url = chapterIdOverride
+        ? `/api/recommendations?surface=dashboard&chapterId=${chapterIdOverride}`
+        : `/api/recommendations?surface=dashboard`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const snap: ReadinessEngineSnapshot = await res.json();
+        setSnapshot(snap);
+
+        const chosenId = snap.recommendation?.selectedChapterId;
+        const capObj = CHAPTERS_DATA.find((c) => c.id === chosenId);
+        if (capObj) {
+          setCurrentChapter(capObj);
+        }
+
+        // Log shown event
+        await fetch('/api/recommendations/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recommendedChapterId: snap.recommendation.recommendedChapterId,
+            selectedChapterId: chosenId,
+            surface: 'dashboard',
+            mode: snap.recommendation.mode,
+            prioritySnapshot: snap.recommendation.factors,
+            action: 'shown',
+          }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error('Failed to fetch recommendation engine data:', err);
+    }
+  }
+
   useEffect(() => {
     async function loadDashboardData() {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (user) {
-        // Fetch read progress
         const { data: progress } = await supabase
           .from('chapter_progress')
           .select('chapter_id, is_read')
@@ -229,7 +231,6 @@ export default function DashboardPage() {
         const readIds = progress ? progress.map((p) => p.chapter_id) : [];
         setReadChapterIds(readIds);
 
-        // Fetch test stats
         const { data: testsData } = await supabase
           .from('tests')
           .select('score, completed')
@@ -238,9 +239,10 @@ export default function DashboardPage() {
 
         const validTests = testsData ? testsData.filter((t) => t.score !== null && t.score !== undefined) : [];
         const testsCount = validTests.length;
-        const avg = testsCount > 0
-          ? Math.round((validTests.reduce((acc, curr) => acc + Number(curr.score), 0) / testsCount) * 10) / 10
-          : 0;
+        const avg =
+          testsCount > 0
+            ? Math.round((validTests.reduce((acc, curr) => acc + Number(curr.score), 0) / testsCount) * 10) / 10
+            : 0;
 
         setStats({
           totalRead: readIds.length,
@@ -248,53 +250,7 @@ export default function DashboardPage() {
           averageScore: avg,
         });
 
-        // Compute Specialty Scores dynamically based on read progress & test stats
-        const computedScores = SPECIALTIES_CONFIG.map((spec) => {
-          const totalInSpec = spec.chapterIds.length;
-          const readInSpec = spec.chapterIds.filter((id) => readIds.includes(id)).length;
-          const readFraction = totalInSpec > 0 ? readInSpec / totalInSpec : 0;
-
-          // Formula: 40% weight on reading completion + 60% weight on test average or fallback baseline
-          let score = Math.round(readFraction * 40 + (avg > 0 ? (avg / 10) * 60 : 55));
-          score = Math.min(100, Math.max(25, score));
-
-          return {
-            name: spec.name,
-            score,
-            chapterIds: spec.chapterIds,
-            color: spec.color,
-          };
-        });
-
-        setSpecialtyScores(computedScores);
-
-        // Pick initial current chapter from saved setting or random unread
-        const { data: settings } = await supabase
-          .from('user_settings')
-          .select('current_chapter_id')
-          .eq('user_id', user.id)
-          .single();
-
-        let initialCapId = settings?.current_chapter_id;
-        let selectedCap = CHAPTERS_DATA.find((c) => c.id === initialCapId);
-
-        if (!selectedCap) {
-          selectedCap = getRandomUnreadChapter(readIds);
-          await supabase
-            .from('user_settings')
-            .upsert({ user_id: user.id, current_chapter_id: selectedCap.id, updated_at: new Date().toISOString() });
-        }
-
-        setCurrentChapter(selectedCap);
-      } else {
-        // Fallback default scores for unauthenticated preview state
-        const defaultScores = SPECIALTIES_CONFIG.map((spec) => ({
-          name: spec.name,
-          score: 65,
-          chapterIds: spec.chapterIds,
-          color: spec.color,
-        }));
-        setSpecialtyScores(defaultScores);
+        await fetchEngineRecommendation();
       }
       setLoading(false);
     }
@@ -302,112 +258,124 @@ export default function DashboardPage() {
     loadDashboardData();
   }, []);
 
-  function getRandomUnreadChapter(readIds: number[]): Chapter {
-    const unread = CHAPTERS_DATA.filter((c) => !readIds.includes(c.id));
-    if (unread.length === 0) {
-      const randIndex = Math.floor(Math.random() * CHAPTERS_DATA.length);
-      return CHAPTERS_DATA[randIndex];
-    }
-    const randIndex = Math.floor(Math.random() * unread.length);
-    return unread[randIndex];
-  }
-
   const handleDrawNextChapter = async () => {
-    const nextChapter = getRandomUnreadChapter(readChapterIds);
-    setCurrentChapter(nextChapter);
+    if (!snapshot) return;
+    setDrawingNext(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase
-        .from('user_settings')
-        .upsert({ user_id: user.id, current_chapter_id: nextChapter.id, updated_at: new Date().toISOString() });
-    }
+    const rec = snapshot.recommendation;
+    // Log rerolled event for audit without mutating user metrics
+    await fetch('/api/recommendations/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recommendedChapterId: rec.recommendedChapterId,
+        selectedChapterId: rec.selectedChapterId,
+        surface: 'dashboard',
+        mode: rec.mode,
+        prioritySnapshot: rec.factors,
+        action: 'rerolled',
+      }),
+    }).catch(() => {});
+
+    // Fetch next recommendation deterministically
+    await fetchEngineRecommendation();
+    setDrawingNext(false);
   };
 
   const handleMarkAsRead = async () => {
-    if (!currentChapter) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    if (!currentChapter || !snapshot) return;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const newReadIds = [...readChapterIds, currentChapter.id];
     setReadChapterIds(newReadIds);
     setStats((prev) => ({ ...prev, totalRead: newReadIds.length }));
 
+    const nowIso = new Date().toISOString();
     await supabase.from('chapter_progress').upsert({
       user_id: user.id,
       chapter_id: currentChapter.id,
       is_read: true,
-      read_at: new Date().toISOString(),
+      read_at: nowIso,
     });
 
-    // Update specialty scores dynamically
-    const updatedScores = SPECIALTIES_CONFIG.map((spec) => {
-      const totalInSpec = spec.chapterIds.length;
-      const readInSpec = spec.chapterIds.filter((id) => newReadIds.includes(id)).length;
-      const readFraction = totalInSpec > 0 ? readInSpec / totalInSpec : 0;
-      let score = Math.round(readFraction * 40 + (stats.averageScore > 0 ? (stats.averageScore / 10) * 60 : 55));
-      score = Math.min(100, Math.max(25, score));
-      return { name: spec.name, score, chapterIds: spec.chapterIds, color: spec.color };
-    });
-    setSpecialtyScores(updatedScores);
+    const rec = snapshot.recommendation;
+    await fetch('/api/recommendations/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recommendedChapterId: rec.recommendedChapterId,
+        selectedChapterId: currentChapter.id,
+        surface: 'dashboard',
+        mode: rec.mode,
+        prioritySnapshot: rec.factors,
+        action: 'accepted',
+      }),
+    }).catch(() => {});
 
+    await fetchEngineRecommendation(currentChapter.id);
     setShowTestModal(true);
   };
 
   const handleSelectChapterManually = async (cap: Chapter) => {
+    if (!snapshot) return;
     setCurrentChapter(cap);
     setShowManualSelectModal(false);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase
-        .from('user_settings')
-        .upsert({ user_id: user.id, current_chapter_id: cap.id, updated_at: new Date().toISOString() });
-    }
+    const rec = snapshot.recommendation;
+    await fetch('/api/recommendations/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recommendedChapterId: rec.recommendedChapterId,
+        selectedChapterId: cap.id,
+        surface: 'dashboard',
+        mode: rec.mode,
+        prioritySnapshot: rec.factors,
+        action: 'manual_selected',
+      }),
+    }).catch(() => {});
+
+    await fetchEngineRecommendation(cap.id);
   };
 
   const isCurrentRead = currentChapter ? readChapterIds.includes(currentChapter.id) : false;
-  const filteredChapters = CHAPTERS_DATA.filter((c) =>
-    c.title.toLowerCase().includes(manualSearch.toLowerCase()) ||
-    c.sectionTitle.toLowerCase().includes(manualSearch.toLowerCase())
+  const filteredChapters = CHAPTERS_DATA.filter(
+    (c) =>
+      c.title.toLowerCase().includes(manualSearch.toLowerCase()) ||
+      c.sectionTitle.toLowerCase().includes(manualSearch.toLowerCase())
   );
 
-  // Global UPA Readiness Score (Average across 5 specialties)
-  const globalReadinessScore = specialtyScores.length > 0
-    ? Math.round(specialtyScores.reduce((acc, curr) => acc + curr.score, 0) / specialtyScores.length)
-    : 0;
+  const currentMetrics = currentChapter && snapshot?.chapterMetrics
+    ? snapshot.chapterMetrics[currentChapter.id]
+    : null;
 
-  // Determine UPA Readiness Status Badge & Attributes
+  const globalReadinessScore = snapshot ? Math.round(snapshot.globalReadiness) : 0;
+  const confidence = snapshot ? snapshot.globalConfidence : 0;
+
+  // Badge Logic for UPA Readiness
   let readinessBadge = {
-    label: 'APTO — SALA VERMELHA & CASOS CRÍTICOS',
-    color: '#34d399',
-    bg: 'rgba(16, 185, 129, 0.15)',
-    border: 'rgba(16, 185, 129, 0.3)',
-    icon: ShieldCheck,
-    description: 'Prontidão médica excelente para Sala Vermelha, politrauma e intercorrências graves de plantão UPA.',
+    label: snapshot?.readinessStatus.label || 'CAPACITAÇÃO EM ANDAMENTO (ESTIMATIVA INICIAL)',
+    color: snapshot?.readinessStatus.color || '#38bdf8',
+    bg: snapshot?.readinessStatus.bg || 'rgba(14, 165, 233, 0.15)',
+    border: snapshot?.readinessStatus.border || 'rgba(14, 165, 233, 0.3)',
+    icon: confidence < 0.40 ? Brain : globalReadinessScore >= 80 ? ShieldCheck : AlertTriangle,
+    description: snapshot?.readinessStatus.description || 'Avaliação conservadora inicial com baixa confiança acumulada.',
   };
 
-  if (globalReadinessScore < 60) {
-    readinessBadge = {
-      label: 'CAPACITAÇÃO EM ANDAMENTO',
-      color: '#38bdf8',
-      bg: 'rgba(14, 165, 233, 0.15)',
-      border: 'rgba(14, 165, 233, 0.3)',
-      icon: Activity,
-      description: 'Prontidão inicial. Recomendada revisão de condutas em Suporte de Vida e Prescrição de Emergência.',
-    };
-  } else if (globalReadinessScore < 80) {
-    readinessBadge = {
-      label: 'PRONTIDÃO INTERMEDIÁRIA (SOB SUPERVISÃO)',
-      color: '#fbbf24',
-      bg: 'rgba(245, 158, 11, 0.15)',
-      border: 'rgba(245, 158, 11, 0.3)',
-      icon: AlertTriangle,
-      description: 'Capacidade técnica sólida para atendimentos de emergência geral com suporte de preceptoria.',
-    };
-  }
-
   const BadgeIcon = readinessBadge.icon;
+
+  const modeBadgeMap = {
+    remediation: { label: 'Remediação de Lacuna', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.15)' },
+    expansion: { label: 'Expansão de Catálogo', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' },
+    maintenance: { label: 'Manutenção FSRS (Revisão)', color: '#fbbf24', bg: 'rgba(245, 158, 11, 0.15)' },
+  };
+
+  const activeModeBadge = snapshot?.recommendation
+    ? modeBadgeMap[snapshot.recommendation.mode]
+    : modeBadgeMap.remediation;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -416,7 +384,7 @@ export default function DashboardPage() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <span className="pulse-badge">
-              <span className="pulse-dot" /> Sala Vermelha & Emergências UPA
+              <Brain size={14} /> Motor FSRS + Matriz Epidemiológica UPA
             </span>
           </div>
           <h1 style={{ fontSize: '2rem', fontWeight: 800, color: '#f8fafc' }}>
@@ -485,13 +453,13 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Main Chapter Focus Card (Capítulo Sorteado em Destaque) */}
+      {/* Main Engine Recommendation Card */}
       <div
         className="glass-panel"
         style={{
           padding: '36px',
           borderRadius: '20px',
-          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.7) 100%)',
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.75) 100%)',
           border: '1px solid rgba(56, 189, 248, 0.3)',
           boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
           position: 'relative',
@@ -511,12 +479,24 @@ export default function DashboardPage() {
 
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Carregando capítulo sorteado...
+            Calculando próxima prioridade pelo motor FSRS...
           </div>
         ) : currentChapter ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{
+                  padding: '4px 12px',
+                  borderRadius: '9999px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  background: activeModeBadge.bg,
+                  color: activeModeBadge.color,
+                  border: `1px solid ${activeModeBadge.color}`,
+                }}>
+                  MODO {activeModeBadge.label.toUpperCase()}
+                </span>
+
                 <span style={{
                   padding: '4px 12px',
                   borderRadius: '9999px',
@@ -528,6 +508,7 @@ export default function DashboardPage() {
                 }}>
                   SEÇÃO {currentChapter.sectionNumber} — {currentChapter.sectionTitle}
                 </span>
+
                 {isCurrentRead && (
                   <span style={{
                     padding: '4px 12px',
@@ -556,6 +537,7 @@ export default function DashboardPage() {
                 </button>
                 <button
                   onClick={handleDrawNextChapter}
+                  disabled={drawingNext}
                   className="btn-secondary"
                   style={{
                     fontSize: '0.88rem',
@@ -564,19 +546,62 @@ export default function DashboardPage() {
                     color: '#38bdf8',
                   }}
                 >
-                  <Shuffle size={16} /> Sortear de Novo
+                  <Shuffle size={16} /> {drawingNext ? 'Calculando...' : 'Sortear de Novo'}
                 </button>
               </div>
             </div>
 
             <div>
-              <div style={{ fontSize: '0.95rem', color: 'var(--text-subtle)', fontWeight: 600, marginBottom: '4px' }}>
-                SUGESTÃO DE LEITURA ATUAL (SORTEIO ALEATÓRIO)
+              <div style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Brain size={16} /> {snapshot?.recommendation?.reason}
               </div>
               <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.25 }}>
                 Capítulo {currentChapter.number}: {currentChapter.title}
               </h2>
             </div>
+
+            {/* FSRS Factors Breakdown */}
+            {currentMetrics && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: '12px',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600 }}>DOMÍNIO ATUAL</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: currentMetrics.topicReadiness >= currentMetrics.dynamicThreshold ? '#34d399' : '#fb923c' }}>
+                    {currentMetrics.topicReadiness}% <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>/ Alvo {currentMetrics.dynamicThreshold}%</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600 }}>RETENÇÃO FSRS</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#38bdf8' }}>
+                    {currentMetrics.retention}% <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(Est. {currentMetrics.stability}d)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600 }}>EVIDÊNCIA & CONFIANÇA</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#a78bfa' }}>
+                    {Math.round(currentMetrics.confidence * 100)}% <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({currentMetrics.evidenceCount} testes)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600 }}>PESO CLÍNICO UPA</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f59e0b' }}>
+                    Freq {currentMetrics.frequencyScore}/10 • Imp {currentMetrics.importanceScore}/10
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Actions for current chapter */}
             <div style={{
@@ -611,16 +636,16 @@ export default function DashboardPage() {
                 className="btn-secondary"
                 style={{ padding: '12px 20px', fontSize: '0.95rem' }}
               >
-                <RefreshCw size={18} /> Sortear Próximo Capítulo
+                <RefreshCw size={18} /> Sortear Próxima Sugestão
               </button>
             </div>
           </div>
         ) : null}
       </div>
 
-      {/* COMPONENT 2 - DASHBOARD MEDICAL COMPETENCIES RADAR CHART & UPA READINESS INDICATOR */}
+      {/* DASHBOARD MEDICAL COMPETENCIES RADAR CHART & UPA READINESS INDICATOR */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
-        {/* Left Column: UPA Medical Readiness Indicator (Prontidão Médica da UPA) */}
+        {/* Left Column: UPA Medical Readiness Indicator */}
         <div
           className="glass-panel"
           style={{
@@ -650,7 +675,7 @@ export default function DashboardPage() {
                   Prontidão Médica da UPA
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  Indicador Global de Competência de Emergência
+                  Índice Ponderado por Risco & FSRS (0-100)
                 </p>
               </div>
             </div>
@@ -688,13 +713,35 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Pedagogical disclaimer for low confidence */}
+          {confidence < 0.40 && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                fontSize: '0.78rem',
+                color: '#e2e8f0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <Info size={16} color="#38bdf8" style={{ flexShrink: 0 }} />
+              <span>
+                <strong>Estimativa pedagógica inicial:</strong> Realize plantões e simulados para gerar evidências técnicas e elevar o nível de confiança do seu indicador.
+              </span>
+            </div>
+          )}
+
           {/* Per-Specialty Progress Breakdown */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <TrendingUp size={16} style={{ color: '#38bdf8' }} /> Desempenho por Especialidade de Emergência
+              <TrendingUp size={16} style={{ color: '#38bdf8' }} /> Desempenho Ponderado por Especialidade UPA
             </div>
 
-            {specialtyScores.map((spec) => (
+            {(snapshot?.specialtyScores || []).map((spec) => (
               <div key={spec.name} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600 }}>
                   <span style={{ color: 'var(--text-muted)' }}>{spec.name}</span>
@@ -748,11 +795,11 @@ export default function DashboardPage() {
                 fontWeight: 700,
                 padding: '4px 10px',
                 borderRadius: '9999px',
-                background: globalReadinessScore >= 70 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                color: globalReadinessScore >= 70 ? '#34d399' : '#fbbf24',
+                background: globalReadinessScore >= 70 && confidence >= 0.40 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                color: globalReadinessScore >= 70 && confidence >= 0.40 ? '#34d399' : '#fbbf24',
               }}
             >
-              {globalReadinessScore >= 70 ? 'Escala Liberada' : 'Sob Preceptoria'}
+              {globalReadinessScore >= 70 && confidence >= 0.40 ? 'Escala Liberada' : 'Sob Preceptoria'}
             </span>
           </div>
         </div>
@@ -780,7 +827,7 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <MedicalRadarChart data={specialtyScores} />
+          <MedicalRadarChart data={snapshot?.specialtyScores || []} />
         </div>
       </div>
 
@@ -819,13 +866,13 @@ export default function DashboardPage() {
 
           <div>
             <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
-              NÚCLEO DE REPETIÇÃO ESPAÇADA
+              NÚCLEO DE REPETIÇÃO ESPAÇADA FSRS
             </div>
             <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
               Modo Plantão — Leitos UPA & Evolução de Pacientes
             </h3>
             <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', maxWidth: '600px' }}>
-              Revise temas automaticamente priorizados pelo algoritmo SM-2 + matriz epidemiológica. Cada leito traz um caso em 4 etapas continuas.
+              Revise temas automaticamente priorizados pelo algoritmo FSRS + matriz epidemiológica. Cada leito traz um caso em 4 etapas contínuas.
             </p>
           </div>
         </div>

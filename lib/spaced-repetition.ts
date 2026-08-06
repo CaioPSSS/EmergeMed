@@ -1,16 +1,13 @@
 import { DEFAULT_CHAPTER_WEIGHTS, getChapterWeight, ChapterWeight } from './chapter-weights-data';
 import { CHAPTERS_DATA, Chapter } from './chapters-data';
+import {
+  deriveAllTopicMetrics,
+  calculateFSRSUpdate,
+  ChapterReviewStatFSRS,
+} from './learning-engine';
 
-export interface ChapterReviewStat {
-  chapter_id: number;
-  times_reviewed: number;
-  times_correct: number;
-  times_incorrect: number;
-  last_reviewed_at: string | null;
-  next_review_at: string | null;
-  ease_factor: number;
-  interval_days: number;
-}
+export type ChapterReviewStat = ChapterReviewStatFSRS;
+export { calculateFSRSUpdate };
 
 export interface ScoredChapter {
   chapterId: number;
@@ -47,65 +44,39 @@ export interface PlantaoBed {
 }
 
 /**
- * Calculates priority score for each read chapter based on:
- * - 35% Days since last review
- * - 25% Frequency score (from estatistica.md)
- * - 25% Importance score (from estatistica.md)
- * - 15% Error rate (1 - accuracy)
+ * Legacy support function for chapter scoring: delegates to learning-engine metrics.
  */
 export function calculateChapterScores(params: {
   readChapterIds: number[];
   reviewStats: ChapterReviewStat[];
   customWeights?: Record<number, { frequency: number; importance: number }>;
 }): ScoredChapter[] {
-  const { readChapterIds, reviewStats, customWeights } = params;
-  const now = new Date();
+  const { readChapterIds, reviewStats } = params;
 
-  const statsMap = new Map<number, ChapterReviewStat>();
-  reviewStats.forEach((st) => statsMap.set(st.chapter_id, st));
+  const progressList = readChapterIds.map((id) => ({ chapter_id: id, is_read: true }));
+  const metricsMap = deriveAllTopicMetrics({
+    progressList,
+    reviewStatsList: reviewStats,
+    testsList: [],
+  });
 
-  const eligibleChapters = CHAPTERS_DATA.filter((c) => readChapterIds.includes(c.id));
+  const readMetrics = Array.from(metricsMap.values()).filter((m) => m.isRead);
 
-  return eligibleChapters.map((cap) => {
-    const stat = statsMap.get(cap.id);
-    const weight = customWeights?.[cap.id]
-      ? { frequencyScore: customWeights[cap.id].frequency, importanceScore: customWeights[cap.id].importance }
-      : getChapterWeight(cap.id);
-
-    let daysSinceLastReview = 999; // Default max for never-reviewed
-    if (stat?.last_reviewed_at) {
-      const lastDate = new Date(stat.last_reviewed_at);
-      daysSinceLastReview = Math.max(0, (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-    }
-
-    let accuracyRate = 1.0;
-    if (stat && stat.times_reviewed > 0) {
-      accuracyRate = stat.times_correct / (stat.times_correct + stat.times_incorrect || 1);
-    }
-
-    // Normalized factors
-    const timeNorm = Math.min(daysSinceLastReview / 30, 1.0); // Saturates at 30 days
-    const freqNorm = weight.frequencyScore / 10.0;
-    const impNorm = weight.importanceScore / 10.0;
-    const errorNorm = 1.0 - accuracyRate;
-
-    // Weighted composite score (0 to 100)
-    const compositeScore = (0.35 * timeNorm + 0.25 * freqNorm + 0.25 * impNorm + 0.15 * errorNorm) * 100;
-
-    return {
-      chapterId: cap.id,
-      chapterNumber: cap.number,
-      title: cap.title,
-      sectionNumber: cap.sectionNumber,
-      sectionTitle: cap.sectionTitle,
-      frequencyScore: weight.frequencyScore,
-      importanceScore: weight.importanceScore,
-      daysSinceLastReview: Math.round(daysSinceLastReview * 10) / 10,
-      accuracyRate: Math.round(accuracyRate * 100) / 100,
-      compositeScore: Math.round(compositeScore * 10) / 10,
-      lastReviewedAt: stat?.last_reviewed_at || null,
-    };
-  }).sort((a, b) => b.compositeScore - a.compositeScore);
+  return readMetrics
+    .map((m) => ({
+      chapterId: m.chapterId,
+      chapterNumber: m.chapterNumber,
+      title: m.title,
+      sectionNumber: m.sectionNumber,
+      sectionTitle: m.sectionTitle,
+      frequencyScore: m.frequencyScore,
+      importanceScore: m.importanceScore,
+      daysSinceLastReview: m.daysSinceLastEvidence,
+      accuracyRate: m.confidence,
+      compositeScore: m.recommendationScore,
+      lastReviewedAt: null,
+    }))
+    .sort((a, b) => b.compositeScore - a.compositeScore);
 }
 
 /**
@@ -122,33 +93,20 @@ export function selectPlantaoChapters(params: {
     return scoredChapters.map((c) => c.chapterId);
   }
 
-  // Pick from top 50% candidates
-  const topCandidateCount = Math.max(bedCount * 2, Math.ceil(scoredChapters.length * 0.5));
-  const candidates = scoredChapters.slice(0, topCandidateCount);
-
   const selectedChapterIds: number[] = [];
   const sectionCounts = new Map<number, number>();
 
-  // Weighted random pick from candidates
-  const pool = [...candidates];
-
-  while (selectedChapterIds.length < bedCount && pool.length > 0) {
-    // Pick with probability biased towards higher rank
-    const index = Math.floor(Math.pow(Math.random(), 1.5) * pool.length);
-    const chosen = pool[index];
-
-    const currentSecCount = sectionCounts.get(chosen.sectionNumber) || 0;
+  for (const candidate of scoredChapters) {
+    if (selectedChapterIds.length >= bedCount) break;
+    const currentSecCount = sectionCounts.get(candidate.sectionNumber) || 0;
     if (currentSecCount < maxPerSection) {
-      selectedChapterIds.push(chosen.chapterId);
-      sectionCounts.set(chosen.sectionNumber, currentSecCount + 1);
+      selectedChapterIds.push(candidate.chapterId);
+      sectionCounts.set(candidate.sectionNumber, currentSecCount + 1);
     }
-
-    pool.splice(index, 1);
   }
 
-  // Fallback if maxPerSection constrained too much
   if (selectedChapterIds.length < bedCount) {
-    for (const item of candidates) {
+    for (const item of scoredChapters) {
       if (selectedChapterIds.length >= bedCount) break;
       if (!selectedChapterIds.includes(item.chapterId)) {
         selectedChapterIds.push(item.chapterId);
@@ -229,43 +187,6 @@ export function determineBedOutcome(correctCount: number, totalQuestions: number
  * Standard SM-2 Spaced Repetition calculation after completing a bed
  */
 export function calculateSM2Update(currentStat: Partial<ChapterReviewStat> | null, bedScore: number /* 0.0 to 10.0 */) {
-  let easeFactor = currentStat?.ease_factor || 2.5;
-  let interval = currentStat?.interval_days || 1;
-  let timesReviewed = (currentStat?.times_reviewed || 0) + 1;
-  let timesCorrect = currentStat?.times_correct || 0;
-  let timesIncorrect = currentStat?.times_incorrect || 0;
-
-  // Grade from 0 to 5 for SM-2 based on 0-10 score
-  const grade = Math.min(5, Math.max(0, Math.round(bedScore / 2)));
-
-  if (grade >= 3) {
-    timesCorrect += 1;
-    if (interval === 1) {
-      interval = 3;
-    } else if (interval === 3) {
-      interval = 7;
-    } else {
-      interval = Math.round(interval * easeFactor);
-    }
-  } else {
-    timesIncorrect += 1;
-    interval = 1; // Reset to 1 day on failure
-  }
-
-  // SM-2 Ease Factor formula
-  easeFactor = easeFactor + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02));
-  if (easeFactor < 1.3) easeFactor = 1.3;
-
-  const nextReviewDate = new Date();
-  nextReviewDate.setDate(nextReviewDate.getDate() + interval);
-
-  return {
-    times_reviewed: timesReviewed,
-    times_correct: timesCorrect,
-    times_incorrect: timesIncorrect,
-    last_reviewed_at: new Date().toISOString(),
-    next_review_at: nextReviewDate.toISOString(),
-    ease_factor: Math.round(easeFactor * 100) / 100,
-    interval_days: interval,
-  };
+  return calculateFSRSUpdate(currentStat, bedScore);
 }
+

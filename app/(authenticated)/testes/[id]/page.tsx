@@ -4,7 +4,7 @@ import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { QuestionItem } from '@/lib/ai/openrouter';
-import { calculateSM2Update, determineBedOutcome } from '@/lib/spaced-repetition';
+import { calculateSM2Update, calculateFSRSUpdate, determineBedOutcome } from '@/lib/spaced-repetition';
 import {
   ChevronLeft,
   ChevronRight,
@@ -414,33 +414,76 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      // If it's a Plantão, calculate SM-2 updates for each chapter
-      if (isPlantao && beds.length > 0 && user) {
-        for (const bed of beds) {
-          const bedQs = questions.filter(
-            (q) => (bed.questionIds || []).includes(q.id) || bed.bonusQuestionId === q.id
-          );
-          let bedPoints = 0;
-          bedQs.forEach((q) => {
-            bedPoints += evaluations[q.id]?.score || 0;
-          });
-          const bedAvgScore = bedQs.length > 0 ? bedPoints / bedQs.length : 0;
+      if (user) {
+        if (isPlantao && beds.length > 0) {
+          for (const bed of beds) {
+            const bedQs = questions.filter(
+              (q) => (bed.questionIds || []).includes(q.id) || bed.bonusQuestionId === q.id
+            );
+            let bedPoints = 0;
+            bedQs.forEach((q) => {
+              bedPoints += evaluations[q.id]?.score || 0;
+            });
+            const bedAvgScore = bedQs.length > 0 ? bedPoints / bedQs.length : 0;
 
-          // Fetch current stat for this chapter
-          const { data: stat } = await supabase
-            .from('chapter_review_stats')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('chapter_id', bed.chapterId)
-            .single();
+            const { data: stat } = await supabase
+              .from('chapter_review_stats')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('chapter_id', bed.chapterId)
+              .single();
 
-          const update = calculateSM2Update(stat, bedAvgScore);
+            const update = calculateFSRSUpdate(stat, bedAvgScore);
 
-          await supabase.from('chapter_review_stats').upsert({
-            user_id: user.id,
-            chapter_id: bed.chapterId,
-            ...update,
-          });
+            await supabase.from('chapter_review_stats').upsert({
+              user_id: user.id,
+              chapter_id: bed.chapterId,
+              ...update,
+            });
+
+            await fetch('/api/recommendations/events', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                recommendedChapterId: bed.chapterId,
+                selectedChapterId: bed.chapterId,
+                surface: 'plantao',
+                mode: 'remediation',
+                prioritySnapshot: { score: bedAvgScore },
+                action: 'completed',
+              }),
+            }).catch(() => {});
+          }
+        } else if (Array.isArray(testRecord?.chapter_ids)) {
+          for (const chapterId of testRecord.chapter_ids) {
+            const { data: stat } = await supabase
+              .from('chapter_review_stats')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('chapter_id', chapterId)
+              .single();
+
+            const update = calculateFSRSUpdate(stat, finalScore);
+
+            await supabase.from('chapter_review_stats').upsert({
+              user_id: user.id,
+              chapter_id: chapterId,
+              ...update,
+            });
+
+            await fetch('/api/recommendations/events', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                recommendedChapterId: chapterId,
+                selectedChapterId: chapterId,
+                surface: 'dashboard',
+                mode: 'remediation',
+                prioritySnapshot: { score: finalScore },
+                action: 'completed',
+              }),
+            }).catch(() => {});
+          }
         }
       }
 

@@ -6,6 +6,10 @@ import {
   selectPlantaoChapters,
   organizePlantaoBeds,
 } from '@/lib/spaced-repetition';
+import {
+  buildReadinessSnapshot,
+  selectPlantaoBedsWithEngine,
+} from '@/lib/learning-engine';
 import { generatePlantaoBedQuestionsWithAI, QuestionItem } from '@/lib/ai/openrouter';
 
 export async function POST(request: Request) {
@@ -41,22 +45,33 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Fetch user's chapter review stats (SM-2 data)
+    // 2. Fetch user's review stats and test history for snapshot
     const { data: reviewStats } = await supabase
       .from('chapter_review_stats')
       .select('*')
       .eq('user_id', user.id);
 
-    // 3. Calculate scores and select chapters semi-randomly
-    const scoredChapters = calculateChapterScores({
-      readChapterIds,
-      reviewStats: reviewStats || [],
+    const { data: testsList } = await supabase
+      .from('tests')
+      .select('id, chapter_ids, mode, score, completed, completed_at, results, plantao_data')
+      .eq('user_id', user.id);
+
+    // 3. Build snapshot and select beds deterministically for surface 'plantao'
+    const engineSnapshot = buildReadinessSnapshot({
+      progressList: readProgress ? readProgress.map((p) => ({ chapter_id: p.chapter_id, is_read: true })) : [],
+      reviewStatsList: reviewStats || [],
+      testsList: testsList || [],
+      surface: 'plantao',
     });
 
-    const selectedChapterIds = selectPlantaoChapters({
-      scoredChapters,
+    const selectedBedsWithEngine = selectPlantaoBedsWithEngine({
+      snapshot: engineSnapshot,
       bedCount: validBedCount,
+      maxPerSection: 2,
     });
+
+    const selectedChapterIds = selectedBedsWithEngine.map((b) => b.chapterId);
+
 
     // 4. Fetch user AI settings
     const { data: settings } = await supabase
@@ -158,6 +173,8 @@ export async function POST(request: Request) {
           bedCount: validBedCount,
           beds: plantaoBedsData,
           adverseEvolutions: 0,
+          algorithmVersion: engineSnapshot.algorithmVersion,
+          globalReadinessAtStart: engineSnapshot.globalReadiness,
         },
       })
       .select()

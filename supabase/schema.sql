@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS public.chapter_weights (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Table: chapter_review_stats (SM-2 spaced repetition stats per user and chapter)
+-- Table: chapter_review_stats (FSRS / SM-2 spaced repetition stats per user and chapter)
 CREATE TABLE IF NOT EXISTS public.chapter_review_stats (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -63,11 +63,28 @@ CREATE TABLE IF NOT EXISTS public.chapter_review_stats (
   times_correct INTEGER DEFAULT 0,
   times_incorrect INTEGER DEFAULT 0,
   last_reviewed_at TIMESTAMP WITH TIME ZONE,
+  last_evidence_at TIMESTAMP WITH TIME ZONE,
   next_review_at TIMESTAMP WITH TIME ZONE,
   ease_factor NUMERIC(4,2) DEFAULT 2.5,
   interval_days INTEGER DEFAULT 1,
+  stability NUMERIC(6,2) DEFAULT 3.0,
+  difficulty NUMERIC(4,2) DEFAULT 5.0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id, chapter_id)
+);
+
+-- Table: chapter_recommendation_events (Audit events for recommendation engine)
+CREATE TABLE IF NOT EXISTS public.chapter_recommendation_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  recommended_chapter_id INTEGER NOT NULL,
+  selected_chapter_id INTEGER NOT NULL,
+  surface TEXT NOT NULL, -- 'dashboard' | 'plantao'
+  mode TEXT NOT NULL, -- 'remediation' | 'expansion' | 'maintenance'
+  algorithm_version TEXT NOT NULL DEFAULT 'v1.0-fsrs',
+  priority_snapshot JSONB NOT NULL,
+  action TEXT NOT NULL, -- 'shown' | 'accepted' | 'rerolled' | 'manual_selected' | 'completed'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Table: user_settings (Stores OpenRouter API key and model preferences)
@@ -89,6 +106,7 @@ ALTER TABLE public.tests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapter_weights ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapter_review_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chapter_recommendation_events ENABLE ROW LEVEL SECURITY;
 
 -- Policies for chapter_progress
 DROP POLICY IF EXISTS "Users can manage their own chapter progress" ON public.chapter_progress;
@@ -147,4 +165,12 @@ CREATE POLICY "Users can manage their own review stats"
   ON public.chapter_review_stats
   FOR ALL
   USING (auth.uid() = user_id);
+
+-- Policies for chapter_recommendation_events
+DROP POLICY IF EXISTS "Users can manage their own recommendation events" ON public.chapter_recommendation_events;
+CREATE POLICY "Users can manage their own recommendation events"
+  ON public.chapter_recommendation_events
+  FOR ALL
+  USING (auth.uid() = user_id);
+
 
