@@ -691,14 +691,6 @@ export default function DashboardPage() {
                   </button>
                 </>
               )}
-
-              <button
-                onClick={handleDrawNextChapter}
-                className="btn-secondary"
-                style={{ padding: '12px 20px', fontSize: '0.95rem' }}
-              >
-                <RefreshCw size={18} /> Sortear Próxima Sugestão
-              </button>
             </div>
           </div>
         ) : null}
