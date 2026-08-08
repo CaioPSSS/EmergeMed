@@ -19,7 +19,11 @@ import {
   Sparkles,
   Menu,
   X,
+  Compass,
+  Flame,
+  Award,
 } from 'lucide-react';
+import { getGamificationSnapshot } from '@/lib/gamification-engine';
 
 export default function AuthenticatedLayout({
   children,
@@ -33,6 +37,7 @@ export default function AuthenticatedLayout({
   const [userEmail, setUserEmail] = useState<string>('');
   const [readCount, setReadCount] = useState<number>(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [gamification, setGamification] = useState<any>(null);
 
   useEffect(() => {
     async function loadUserData() {
@@ -50,6 +55,14 @@ export default function AuthenticatedLayout({
         if (readProgress) {
           setReadCount(readProgress.length);
         }
+
+        // Fetch gamification stats
+        try {
+          const gSnap = await getGamificationSnapshot(supabase, user.id);
+          setGamification(gSnap);
+        } catch (e) {
+          console.warn('Could not load gamification stats:', e);
+        }
       }
     }
     loadUserData();
@@ -63,6 +76,7 @@ export default function AuthenticatedLayout({
 
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/trilhas', label: '🛤️ Trilhas de Estudo', icon: Compass },
     { href: '/capitulos', label: 'Capítulos (122)', icon: BookOpen },
     { href: '/testes', label: 'Gerar Testes', icon: FileQuestion },
     { href: '/plantoes', label: '🏥 Modo Plantão', icon: Stethoscope },
@@ -176,10 +190,47 @@ export default function AuthenticatedLayout({
           </nav>
         </div>
 
-        {/* Bottom Section: Progress Card & User Profile */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Bottom Section: Gamification, Progress Card & User Profile */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Gamification Widget */}
+          {gamification && (
+            <div
+              className="glass-panel"
+              style={{
+                padding: '12px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(16, 185, 129, 0.1))',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Flame size={14} color="#f59e0b" /> {gamification.currentStreak} dias seguidos
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700 }}>
+                  ⚡ {gamification.totalXp} XP
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#f3f4f6', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                <span>{gamification.levelInfo.currentLevel.icon}</span>
+                <span>Nível {gamification.levelInfo.currentLevel.level}: {gamification.levelInfo.currentLevel.title}</span>
+              </div>
+
+              <div className="progress-bar-bg" style={{ height: '5px', background: 'rgba(255,255,255,0.1)' }}>
+                <div
+                  className="progress-bar-fill"
+                  style={{
+                    width: `${gamification.levelInfo.progressPercent}%`,
+                    background: 'linear-gradient(90deg, #f59e0b, #10b981)',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Progress Card */}
-          <div className="glass-panel" style={{ padding: '14px', borderRadius: '14px', background: 'rgba(15, 23, 42, 0.6)' }}>
+          <div className="glass-panel" style={{ padding: '12px', borderRadius: '14px', background: 'rgba(15, 23, 42, 0.6)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Progresso do Livro</span>
               <span style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: 700 }}>{progressPercent}%</span>

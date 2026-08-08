@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CHAPTERS_DATA, SECTIONS, Chapter } from '@/lib/chapters-data';
 import { calculateFSRSManualReadUpdate } from '@/lib/learning-engine';
+import { recordActivityAndAwardXP } from '@/lib/gamification-engine';
+import { RereadQuizModal } from '@/components/RereadQuizModal';
 import {
   Search,
   CheckCircle2,
@@ -28,6 +30,7 @@ export default function CapitulosPage() {
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
+  const [rereadQuizTarget, setRereadQuizTarget] = useState<Chapter | null>(null);
 
   useEffect(() => {
     async function loadProgress() {
@@ -66,16 +69,22 @@ export default function CapitulosPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const isAlreadyRead = readChapterIds.includes(chapterId);
+    const cap = CHAPTERS_DATA.find((c) => c.id === chapterId);
+
+    if (isAlreadyRead && cap) {
+      setRereadQuizTarget(cap);
+      return;
+    }
+
     setActionLoading((prev) => ({ ...prev, [chapterId]: true }));
 
     try {
       const current = progressMap[chapterId];
-      const isAlreadyRead = readChapterIds.includes(chapterId);
-      const currentCount = current?.read_count || (isAlreadyRead ? 1 : 0);
+      const currentCount = current?.read_count || 0;
       const newCount = currentCount + 1;
       const nowIso = new Date().toISOString();
 
-      // 1. Update chapter_progress
       await supabase.from('chapter_progress').upsert({
         user_id: user.id,
         chapter_id: chapterId,
@@ -85,7 +94,6 @@ export default function CapitulosPage() {
         last_read_at: nowIso,
       });
 
-      // 2. Insert into chapter_read_logs
       await supabase.from('chapter_read_logs').insert({
         user_id: user.id,
         chapter_id: chapterId,
@@ -93,7 +101,6 @@ export default function CapitulosPage() {
         source: 'manual_chapter_list',
       });
 
-      // 3. Update FSRS chapter_review_stats
       const { data: stat } = await supabase
         .from('chapter_review_stats')
         .select('*')
@@ -108,7 +115,8 @@ export default function CapitulosPage() {
         ...fsrsUpdate,
       });
 
-      // 4. Update UI local state
+      await recordActivityAndAwardXP(supabase, user.id, { type: 'first_read' });
+
       setProgressMap((prev) => ({
         ...prev,
         [chapterId]: {
@@ -118,11 +126,9 @@ export default function CapitulosPage() {
         },
       }));
 
-      if (!readChapterIds.includes(chapterId)) {
-        setReadChapterIds((prev) => [...prev, chapterId]);
-      }
+      setReadChapterIds((prev) => Array.from(new Set([...prev, chapterId])));
     } catch (err) {
-      console.error('Erro ao registrar releitura:', err);
+      console.error('Erro ao registrar 1ª leitura:', err);
     } finally {
       setActionLoading((prev) => ({ ...prev, [chapterId]: false }));
     }
@@ -402,6 +408,43 @@ export default function CapitulosPage() {
           );
         })}
       </div>
+
+      {/* Modal de Quiz de Verificação de Releitura (M3) */}
+      {rereadQuizTarget && (
+        <RereadQuizModal
+          chapterId={rereadQuizTarget.id}
+          chapterNumber={rereadQuizTarget.number}
+          chapterTitle={rereadQuizTarget.title}
+          onClose={() => setRereadQuizTarget(null)}
+          onSuccess={async () => {
+            setRereadQuizTarget(null);
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              const { data: progress } = await supabase
+                .from('chapter_progress')
+                .select('chapter_id, is_read, read_count, last_read_at')
+                .eq('user_id', user.id);
+
+              if (progress) {
+                const pMap: Record<number, { is_read: boolean; read_count: number; last_read_at?: string }> = {};
+                const readIds: number[] = [];
+                progress.forEach((p) => {
+                  if (p.is_read) {
+                    readIds.push(p.chapter_id);
+                    pMap[p.chapter_id] = {
+                      is_read: p.is_read,
+                      read_count: p.read_count || 1,
+                      last_read_at: p.last_read_at || undefined,
+                    };
+                  }
+                });
+                setProgressMap(pMap);
+                setReadChapterIds(readIds);
+              }
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

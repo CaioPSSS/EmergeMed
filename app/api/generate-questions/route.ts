@@ -49,16 +49,77 @@ export async function POST(request: Request) {
       });
     }
 
-    // Call OpenRouter AI
-    const questions = await generateQuestionsWithAI({
-      apiKey,
-      model: questionModel,
-      fallbackModel,
-      chaptersInfo,
-      chapterTexts,
-      count,
-      questionType,
-    });
+    // Check existing question bank for matching chapters
+    let bankedQuestions: any[] = [];
+    try {
+      const { data: qBankData } = await supabase
+        .from('question_bank')
+        .select('*')
+        .in('chapter_id', chapterIds)
+        .order('times_shown', { ascending: true })
+        .limit(count);
+      if (qBankData) bankedQuestions = qBankData;
+    } catch (e) {
+      console.warn('question_bank table lookup failed, generating 100% via AI', e);
+    }
+
+    const reuseCount = Math.min(Math.floor(count * 0.6), bankedQuestions.length);
+    const generateCount = count - reuseCount;
+
+    const reusedQuestions = bankedQuestions.slice(0, reuseCount).map((q, idx) => ({
+      id: idx + 1,
+      chapterId: q.chapter_id,
+      type: q.question_type,
+      vignette: q.vignette,
+      options: q.options,
+      correctOption: q.correct_option,
+      explanation: q.explanation,
+      idealPrescription: q.ideal_prescription,
+      evaluationCriteria: q.evaluation_criteria,
+      idealVentilator: q.ideal_ventilator,
+      promptText: q.prompt_text,
+      isFromBank: true,
+    }));
+
+    // Generate remaining questions via AI if needed
+    const newAiQuestions = generateCount > 0
+      ? await generateQuestionsWithAI({
+          apiKey,
+          model: questionModel,
+          fallbackModel,
+          chaptersInfo,
+          chapterTexts,
+          count: generateCount,
+          questionType,
+        })
+      : [];
+
+    // Adjust IDs for combined questions
+    const finalQuestions = [
+      ...reusedQuestions,
+      ...newAiQuestions.map((q, idx) => ({ ...q, id: reuseCount + idx + 1 })),
+    ];
+
+    // Save newly generated AI questions into question_bank asynchronously
+    if (newAiQuestions.length > 0) {
+      const toInsert = newAiQuestions.map((q) => ({
+        chapter_id: q.chapterId,
+        question_type: q.type,
+        vignette: q.vignette,
+        options: q.options || null,
+        correct_option: q.correctOption !== undefined ? q.correctOption : null,
+        explanation: q.explanation || null,
+        ideal_prescription: q.idealPrescription || null,
+        evaluation_criteria: q.evaluationCriteria || null,
+        ideal_ventilator: q.idealVentilator || null,
+        prompt_text: q.promptText || null,
+        source: 'ai_generated',
+      }));
+
+      supabase.from('question_bank').insert(toInsert).then(null, (err: any) => {
+        console.warn('Failed to store new questions into question_bank:', err);
+      });
+    }
 
     // Save newly generated test in Supabase table
     const { data: newTest, error: insertErr } = await supabase
@@ -67,8 +128,8 @@ export async function POST(request: Request) {
         user_id: user.id,
         chapter_ids: chapterIds,
         question_type: questionType,
-        total_questions: questions.length,
-        questions,
+        total_questions: finalQuestions.length,
+        questions: finalQuestions,
         completed: false,
       })
       .select()
@@ -78,7 +139,7 @@ export async function POST(request: Request) {
       throw insertErr || new Error('Erro ao salvar o teste no banco de dados.');
     }
 
-    return NextResponse.json({ testId: newTest.id, questions });
+    return NextResponse.json({ testId: newTest.id, questions: finalQuestions });
   } catch (error: any) {
     console.error('Error generating questions:', error);
     return NextResponse.json(

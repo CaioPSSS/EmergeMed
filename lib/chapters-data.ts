@@ -6,6 +6,7 @@ export interface Chapter {
   sectionTitle: string;
   startPage?: number;
   endPage?: number;
+  prerequisites?: number[];
 }
 
 export interface Section {
@@ -49,7 +50,8 @@ export const CHAPTERS_DATA: Chapter[] = [
     "sectionNumber": 1,
     "sectionTitle": "Abordagem Inicial do Paciente Grave",
     "startPage": 171,
-    "endPage": 192
+    "endPage": 192,
+    "prerequisites": [3]
   },
   {
     "id": 5,
@@ -58,7 +60,8 @@ export const CHAPTERS_DATA: Chapter[] = [
     "sectionNumber": 1,
     "sectionTitle": "Abordagem Inicial do Paciente Grave",
     "startPage": 193,
-    "endPage": 207
+    "endPage": 207,
+    "prerequisites": [3, 4]
   },
   {
     "id": 6,
@@ -76,7 +79,8 @@ export const CHAPTERS_DATA: Chapter[] = [
     "sectionNumber": 1,
     "sectionTitle": "Abordagem Inicial do Paciente Grave",
     "startPage": 229,
-    "endPage": 253
+    "endPage": 253,
+    "prerequisites": [6]
   },
   {
     "id": 8,
@@ -337,7 +341,8 @@ export const CHAPTERS_DATA: Chapter[] = [
     "sectionNumber": 3,
     "sectionTitle": "Emergências Cardiovasculares",
     "startPage": 758,
-    "endPage": 771
+    "endPage": 771,
+    "prerequisites": [31, 8]
   },
   {
     "id": 37,
@@ -415,10 +420,11 @@ export const CHAPTERS_DATA: Chapter[] = [
     "id": 45,
     "number": 45,
     "title": "Tromboembolismo pulmonar",
-    "sectionNumber": 4,
-    "sectionTitle": "Emergências Pulmonares",
-    "startPage": 923,
-    "endPage": 955
+    "sectionNumber": 6,
+    "sectionTitle": "Pneumologia",
+    "startPage": 625,
+    "endPage": 637,
+    "prerequisites": [6, 42]
   },
   {
     "id": 46,
@@ -580,7 +586,8 @@ export const CHAPTERS_DATA: Chapter[] = [
     "sectionNumber": 7,
     "sectionTitle": "Abordagem do Paciente Vítima de Trauma",
     "startPage": 1238,
-    "endPage": 1253
+    "endPage": 1253,
+    "prerequisites": [62]
   },
   {
     "id": 64,
@@ -733,7 +740,8 @@ export const CHAPTERS_DATA: Chapter[] = [
     "sectionNumber": 9,
     "sectionTitle": "Emergências Renais e Distúrbios Hidroeletrolíticos e Acidobásicos",
     "startPage": 1493,
-    "endPage": 1517
+    "endPage": 1517,
+    "prerequisites": [7]
   },
   {
     "id": 81,
@@ -1084,7 +1092,34 @@ export const CHAPTERS_DATA: Chapter[] = [
     "sectionNumber": 20,
     "sectionTitle": "Procedimentos no Departamento de Emergência",
     "startPage": 2223,
-    "endPage": 2514
+    "endPage": 2240
+  },
+  {
+    "id": 120,
+    "number": 120,
+    "title": "Pericardiocentese e cricotireoidostomia de emergência",
+    "sectionNumber": 20,
+    "sectionTitle": "Procedimentos no Departamento de Emergência",
+    "startPage": 2241,
+    "endPage": 2260
+  },
+  {
+    "id": 121,
+    "number": 121,
+    "title": "Imobilizações e procedimentos ortopédicos na UPA",
+    "sectionNumber": 20,
+    "sectionTitle": "Procedimentos no Departamento de Emergência",
+    "startPage": 2261,
+    "endPage": 2280
+  },
+  {
+    "id": 122,
+    "number": 122,
+    "title": "Suturas e manejo de feridas complexas na emergência",
+    "sectionNumber": 20,
+    "sectionTitle": "Procedimentos no Departamento de Emergência",
+    "startPage": 2281,
+    "endPage": 2300
   }
 ];
 
@@ -2276,7 +2311,34 @@ export const SECTIONS: Section[] = [
         "sectionNumber": 20,
         "sectionTitle": "Procedimentos no Departamento de Emergência",
         "startPage": 2223,
-        "endPage": 2514
+        "endPage": 2240
+      },
+      {
+        "id": 120,
+        "number": 120,
+        "title": "Pericardiocentese e cricotireoidostomia de emergência",
+        "sectionNumber": 20,
+        "sectionTitle": "Procedimentos no Departamento de Emergência",
+        "startPage": 2241,
+        "endPage": 2260
+      },
+      {
+        "id": 121,
+        "number": 121,
+        "title": "Imobilizações e procedimentos ortopédicos na UPA",
+        "sectionNumber": 20,
+        "sectionTitle": "Procedimentos no Departamento de Emergência",
+        "startPage": 2261,
+        "endPage": 2280
+      },
+      {
+        "id": 122,
+        "number": 122,
+        "title": "Suturas e manejo de feridas complexas na emergência",
+        "sectionNumber": 20,
+        "sectionTitle": "Procedimentos no Departamento de Emergência",
+        "startPage": 2281,
+        "endPage": 2300
       }
     ]
   }

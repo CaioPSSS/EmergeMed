@@ -1,7 +1,8 @@
 import { CHAPTERS_DATA, Chapter } from './chapters-data';
 import { DEFAULT_CHAPTER_WEIGHTS, getChapterWeight, ChapterWeight } from './chapter-weights-data';
 
-export const ALGORITHM_VERSION = 'v1.0-fsrs';
+export const ALGORITHM_VERSION = 'v2.0-fsrs';
+export const DESIRED_RETENTION = 0.90; // Target retention at review time
 
 export interface ChapterReviewStatFSRS {
   chapter_id: number;
@@ -131,6 +132,7 @@ export interface ReadinessEngineSnapshot {
       dueRatio: number;
     };
   };
+  recommendations?: Array<ReadinessEngineSnapshot['recommendation']>;
 }
 
 export const SPECIALTIES_CONFIG: Array<{ name: string; chapterIds: number[]; color: string }> = [
@@ -336,7 +338,7 @@ export function deriveAllTopicMetrics(params: {
 
     // FSRS Stability S and Difficulty D
     let stability = stat?.stability || (stat?.interval_days && stat?.ease_factor ? stat.interval_days * stat.ease_factor : 3.0);
-    stability = Math.min(180.0, Math.max(1.0, stability));
+    stability = Math.min(365.0, Math.max(1.0, stability));
     const difficulty = Math.min(10.0, Math.max(1.0, stat?.difficulty || 5.0));
 
     // FSRS Retention Curve: R = 100 * exp(-ln(2) * daysSince / S)
@@ -344,7 +346,8 @@ export function deriveAllTopicMetrics(params: {
       ? Math.min(100.0, Math.max(0.0, 100.0 * Math.exp((-Math.LN2 * daysSinceLastEvidence) / stability)))
       : 0.0;
 
-    const dueRatio = isRead ? Math.min(1.5, Math.max(0.0, daysSinceLastEvidence / stability)) : 0.0;
+    const scheduledInterval = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
+    const dueRatio = isRead ? Math.min(2.0, Math.max(0.0, daysSinceLastEvidence / Math.max(1, scheduledInterval))) : 0.0;
 
     // Topic Readiness = 0.60 * performance + 0.40 * retention (for read topic)
     const topicReadiness = isRead ? Math.min(100.0, 0.60 * performance + 0.40 * retention) : 0.0;
@@ -356,9 +359,17 @@ export function deriveAllTopicMetrics(params: {
 
     const isCritical = w.impactNorm >= 0.8 && w.frequencyNorm >= 0.6;
 
+    // Check prerequisites for R6
+    const prereqs = cap.prerequisites || [];
+    const prereqsMet = prereqs.length === 0 || prereqs.every((pId) => {
+      const pProg = progressMap.get(pId);
+      return pProg?.is_read === true;
+    });
+    const prereqPenalty = prereqsMet ? 1.0 : 0.15;
+
     // Mode Scores
     const remediationScore = w.clinicalWeight * remediationGap * (0.65 + 0.35 * confidence);
-    const expansionScore = !isRead ? w.clinicalWeight * (0.70 + 0.30 * w.impactNorm) : 0.0;
+    const expansionScore = !isRead ? w.clinicalWeight * (0.70 + 0.30 * w.impactNorm) * prereqPenalty : 0.0;
     const maintenanceScore = isRead ? w.clinicalWeight * (performance / 100.0) * dueRatio : 0.0;
 
     if (remediationScore > maxRemediation) maxRemediation = remediationScore;
@@ -431,6 +442,7 @@ export function buildReadinessSnapshot(params: {
   recentEvents?: RecommendationEventItem[];
   surface?: 'dashboard' | 'plantao';
   requestedChapterId?: number;
+  excludeChapterIds?: number[];
   now?: Date;
 }): ReadinessEngineSnapshot {
   const now = params.now || new Date();
@@ -557,11 +569,13 @@ export function buildReadinessSnapshot(params: {
   let selectedMode: 'remediation' | 'expansion' | 'maintenance' = 'remediation';
   let chosenMetric: ChapterMetrics | null = null;
 
-  const candidatesList = Array.from(metricsMap.values());
+  const rawCandidatesList = Array.from(metricsMap.values());
+  const excludeSet = new Set(params.excludeChapterIds || []);
+  const candidatesList = rawCandidatesList.filter((m) => !excludeSet.has(m.chapterId));
+  const effectiveCandidates = candidatesList.length > 0 ? candidatesList : rawCandidatesList;
 
   if (surface === 'plantao') {
-    // Plantão MUST only select read chapters
-    const readCandidates = candidatesList.filter((m) => m.isRead);
+    const readCandidates = effectiveCandidates.filter((m) => m.isRead);
     const maintenanceDueCandidate = readCandidates.find((m) => m.dueRatio >= 1.0);
 
     if (maintenanceDueCandidate) {
@@ -574,23 +588,21 @@ export function buildReadinessSnapshot(params: {
       chosenMetric = readCandidates[0] || null;
     }
   } else {
-    // Dashboard: can select remediation, expansion, or maintenance
-    const maintenanceDue = candidatesList.find((m) => m.isRead && m.dueRatio >= 1.0);
+    const maintenanceDue = effectiveCandidates.find((m) => m.isRead && m.dueRatio >= 1.0);
 
-    if (criticalCoverageRatio < 0.85 || (!hasRecentExpansion && candidatesList.some((m) => !m.isRead))) {
+    if (criticalCoverageRatio < 0.85 || (!hasRecentExpansion && effectiveCandidates.some((m) => !m.isRead))) {
       selectedMode = 'expansion';
-      const unreadCandidates = candidatesList.filter((m) => !m.isRead);
+      const unreadCandidates = effectiveCandidates.filter((m) => !m.isRead);
       unreadCandidates.sort((a, b) => b.expansionScore - a.expansionScore || b.clinicalWeight - a.clinicalWeight || a.chapterId - b.chapterId);
       chosenMetric = unreadCandidates[0] || null;
     } else if (maintenanceDue) {
       selectedMode = 'maintenance';
-      const readCandidates = candidatesList.filter((m) => m.isRead);
+      const readCandidates = effectiveCandidates.filter((m) => m.isRead);
       readCandidates.sort((a, b) => b.maintenanceScore - a.maintenanceScore || b.clinicalWeight - a.clinicalWeight || a.chapterId - b.chapterId);
       chosenMetric = readCandidates[0] || null;
     } else {
-      // Pick highest recommendationScore
-      candidatesList.sort((a, b) => b.recommendationScore - a.recommendationScore || b.clinicalWeight - a.clinicalWeight || a.chapterId - b.chapterId);
-      chosenMetric = candidatesList[0] || null;
+      effectiveCandidates.sort((a, b) => b.recommendationScore - a.recommendationScore || b.clinicalWeight - a.clinicalWeight || a.chapterId - b.chapterId);
+      chosenMetric = effectiveCandidates[0] || null;
 
       if (chosenMetric) {
         if (!chosenMetric.isRead) {
@@ -604,25 +616,108 @@ export function buildReadinessSnapshot(params: {
     }
   }
 
-  // If specific chapter was requested manually
   if (params.requestedChapterId && metricsMap.has(params.requestedChapterId)) {
     chosenMetric = metricsMap.get(params.requestedChapterId)!;
   }
 
   if (!chosenMetric) {
-    chosenMetric = candidatesList[0];
+    chosenMetric = effectiveCandidates[0] || rawCandidatesList[0];
   }
 
-  const isReRead = chosenMetric.isRead && chosenMetric.readCount > 0;
-  const readLabel = isReRead ? `Revisão #${chosenMetric.readCount + 1}` : '1ª Leitura';
+  const buildRecObj = (metric: ChapterMetrics, mode: 'remediation' | 'expansion' | 'maintenance') => {
+    const isReRead = metric.isRead && metric.readCount > 0;
+    const readLabel = isReRead ? `Revisão #${metric.readCount + 1}` : '1ª Leitura';
+    const reasonMap: Record<string, string> = {
+      remediation: isReRead
+        ? `Releitura Recomendada (${readLabel}): Déficit de domínio no Capítulo ${metric.chapterNumber} (Prontidão ${metric.topicReadiness}% vs Limiar ${metric.dynamicThreshold}%).`
+        : `Déficit de domínio identificado no Capítulo ${metric.chapterNumber} (Domínio ${metric.topicReadiness}% vs Limiar ${metric.dynamicThreshold}%).`,
+      expansion: `Expansão de catálogo (${readLabel}) recomendada para cobrir lacuna no Capítulo ${metric.chapterNumber} (${metric.category}).`,
+      maintenance: `Releitura de Consolidação (${readLabel}) agendada pelo FSRS (Vencimento ${metric.dueRatio.toFixed(1)}x estabilidade).`,
+    };
 
-  const reasonMap: Record<string, string> = {
-    remediation: isReRead
-      ? `Releitura Recomendada (${readLabel}): Déficit de domínio no Capítulo ${chosenMetric.chapterNumber} (Prontidão ${chosenMetric.topicReadiness}% vs Limiar ${chosenMetric.dynamicThreshold}%).`
-      : `Déficit de domínio identificado no Capítulo ${chosenMetric.chapterNumber} (Domínio ${chosenMetric.topicReadiness}% vs Limiar ${chosenMetric.dynamicThreshold}%).`,
-    expansion: `Expansão de catálogo (${readLabel}) recomendada para cobrir lacuna no Capítulo ${chosenMetric.chapterNumber} (${chosenMetric.category}).`,
-    maintenance: `Releitura de Consolidação (${readLabel}) agendada pelo FSRS (Vencimento ${chosenMetric.dueRatio.toFixed(1)}x estabilidade).`,
+    return {
+      recommendedChapterId: metric.chapterId,
+      selectedChapterId: metric.chapterId,
+      surface,
+      mode,
+      score: metric.recommendationScore,
+      reason: reasonMap[mode] || 'Sugestão clínica do recomendador.',
+      factors: {
+        clinicalWeight: metric.clinicalWeight,
+        readiness: metric.topicReadiness,
+        dynamicThreshold: metric.dynamicThreshold,
+        gap: metric.remediationGap,
+        retention: metric.retention,
+        confidence: metric.confidence,
+        dueRatio: metric.dueRatio,
+      },
+    };
   };
+
+  // Build top recommendations for each mode with unique chapter IDs
+  const usedChapterIds = new Set<number>();
+  const recommendations: Array<ReadinessEngineSnapshot['recommendation']> = [];
+
+  // 1. Remediation: prefers read chapters with remediationGap > 0
+  const remediationCandidates = effectiveCandidates
+    .filter((m) => m.isRead)
+    .sort((a, b) => {
+      const aGap = a.remediationGap > 0 ? 1 : 0;
+      const bGap = b.remediationGap > 0 ? 1 : 0;
+      if (bGap !== aGap) return bGap - aGap;
+      return b.remediationScore - a.remediationScore;
+    });
+  const remediationMatch = remediationCandidates.find((c) => !usedChapterIds.has(c.chapterId));
+  if (remediationMatch) {
+    recommendations.push(buildRecObj(remediationMatch, 'remediation'));
+    usedChapterIds.add(remediationMatch.chapterId);
+  }
+
+  // 2. Expansion: prefers unread chapters
+  const expansionCandidates = effectiveCandidates
+    .filter((m) => !m.isRead)
+    .sort((a, b) => b.expansionScore - a.expansionScore);
+  const expansionMatch = expansionCandidates.find((c) => !usedChapterIds.has(c.chapterId));
+  if (expansionMatch) {
+    recommendations.push(buildRecObj(expansionMatch, 'expansion'));
+    usedChapterIds.add(expansionMatch.chapterId);
+  }
+
+  // 3. Maintenance: prefers read chapters with dueRatio >= 0.8
+  const maintenanceCandidates = effectiveCandidates
+    .filter((m) => m.isRead)
+    .sort((a, b) => {
+      const aDue = a.dueRatio >= 0.8 ? 1 : 0;
+      const bDue = b.dueRatio >= 0.8 ? 1 : 0;
+      if (bDue !== aDue) return bDue - aDue;
+      return b.maintenanceScore - a.maintenanceScore;
+    });
+  const maintenanceMatch = maintenanceCandidates.find((c) => !usedChapterIds.has(c.chapterId));
+  if (maintenanceMatch) {
+    recommendations.push(buildRecObj(maintenanceMatch, 'maintenance'));
+    usedChapterIds.add(maintenanceMatch.chapterId);
+  }
+
+  // Fallback if fewer than 3 recommendations were found
+  if (recommendations.length < 3) {
+    const fallbackList = [...effectiveCandidates].sort((a, b) => b.recommendationScore - a.recommendationScore);
+    for (const cand of fallbackList) {
+      if (recommendations.length >= 3) break;
+      if (!usedChapterIds.has(cand.chapterId)) {
+        const mode: 'remediation' | 'expansion' | 'maintenance' = cand.isRead
+          ? (cand.dueRatio >= 0.8 ? 'maintenance' : 'remediation')
+          : 'expansion';
+        recommendations.push(buildRecObj(cand, mode));
+        usedChapterIds.add(cand.chapterId);
+      }
+    }
+  }
+
+  if (recommendations.length === 0 && chosenMetric) {
+    recommendations.push(buildRecObj(chosenMetric, selectedMode));
+  }
+
+  const primaryRec = buildRecObj(chosenMetric, selectedMode);
 
   const snapshot: ReadinessEngineSnapshot = {
     calculatedAt: now.toISOString(),
@@ -637,23 +732,8 @@ export function buildReadinessSnapshot(params: {
     totalEvaluations,
     specialtyScores,
     chapterMetrics: Object.fromEntries(metricsMap),
-    recommendation: {
-      recommendedChapterId: chosenMetric.chapterId,
-      selectedChapterId: chosenMetric.chapterId,
-      surface,
-      mode: selectedMode,
-      score: chosenMetric.recommendationScore,
-      reason: reasonMap[selectedMode] || 'Sugestão clínica do recomendador.',
-      factors: {
-        clinicalWeight: chosenMetric.clinicalWeight,
-        readiness: chosenMetric.topicReadiness,
-        dynamicThreshold: chosenMetric.dynamicThreshold,
-        gap: chosenMetric.remediationGap,
-        retention: chosenMetric.retention,
-        confidence: chosenMetric.confidence,
-        dueRatio: chosenMetric.dueRatio,
-      },
-    },
+    recommendation: primaryRec,
+    recommendations,
   };
 
   return snapshot;
@@ -720,7 +800,15 @@ export function calculateFSRSUpdate(
   let timesCorrect = currentStat?.times_correct || 0;
   let timesIncorrect = currentStat?.times_incorrect || 0;
 
-  const isSuccess = bedScore >= 6.0;
+  // Grade G on scale 1-4
+  // Score 0-3.9 -> Grade 1 (Again), Score 4-5.9 -> Grade 2 (Hard), Score 6-7.9 -> Grade 3 (Good), Score 8-10 -> Grade 4 (Easy)
+  let grade: number;
+  if (bedScore < 4.0) grade = 1;
+  else if (bedScore < 6.0) grade = 2;
+  else if (bedScore < 8.0) grade = 3;
+  else grade = 4;
+
+  const isSuccess = grade >= 2;
 
   if (isSuccess) {
     timesCorrect += 1;
@@ -737,15 +825,14 @@ export function calculateFSRSUpdate(
 
   // FSRS 4.5 Update Rules
   if (isSuccess) {
-    // Grade G on scale 1-4
-    const grade = Math.min(4, Math.max(2, Math.round(bedScore / 2.5)));
     difficulty = Math.min(10.0, Math.max(1.0, difficulty - 0.4 * (grade - 3)));
 
     const retentionAtReview = Math.exp(-Math.LN2 * elapsedDays / stability);
     const growthFactor = 1.0 + 2.5 * (1.0 - retentionAtReview) * Math.exp(0.08 * (10.0 - difficulty));
 
-    stability = Math.min(180.0, Math.max(1.0, stability * growthFactor));
-    interval = Math.max(1, Math.round(stability));
+    stability = Math.min(365.0, Math.max(1.0, stability * growthFactor));
+    const intervalFromRetention = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
+    interval = Math.max(1, Math.round(intervalFromRetention));
     easeFactor = Math.min(3.5, Math.max(1.3, easeFactor + 0.1));
   } else {
     difficulty = Math.min(10.0, Math.max(1.0, difficulty + 0.8));
@@ -783,9 +870,57 @@ export function calculateFSRSManualReadUpdate(
   let timesCorrect = currentStat?.times_correct || 0;
   let timesIncorrect = currentStat?.times_incorrect || 0;
 
-  // Re-reading reinforces memory stability S by 35% (up to 180 days)
-  stability = Math.min(180.0, Math.max(3.0, stability * 1.35));
-  const interval = Math.max(1, Math.round(stability));
+  // Re-reading reinforces memory stability S by 35% (up to 365 days)
+  stability = Math.min(365.0, Math.max(3.0, stability * 1.35));
+  const intervalFromRetention = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
+  const interval = Math.max(1, Math.round(intervalFromRetention));
+
+  const nextReviewDate = new Date(now.getTime());
+  nextReviewDate.setDate(nextReviewDate.getDate() + interval);
+
+  return {
+    times_reviewed: timesReviewed,
+    times_correct: timesCorrect,
+    times_incorrect: timesIncorrect,
+    last_evidence_at: now.toISOString(),
+    next_review_at: nextReviewDate.toISOString(),
+    ease_factor: Math.round(easeFactor * 100) / 100,
+    interval_days: interval,
+    stability: Math.round(stability * 100) / 100,
+    difficulty: Math.round(difficulty * 100) / 100,
+  };
+}
+
+/**
+ * FSRS update upon completing a re-read verification quiz.
+ * Full bonus (S*1.35) if quizScore >= 66%, partial (S*1.10) otherwise.
+ */
+export function calculateFSRSRereadWithQuiz(
+  currentStat: Partial<ChapterReviewStatFSRS> | null,
+  quizCorrect: number,
+  quizTotal: number,
+  now: Date = new Date()
+) {
+  const passRate = quizTotal > 0 ? quizCorrect / quizTotal : 0;
+  const stabilityMultiplier = passRate >= 0.66 ? 1.35 : 1.10;
+
+  let stability = currentStat?.stability || 3.0;
+  let easeFactor = currentStat?.ease_factor || 2.5;
+  let difficulty = currentStat?.difficulty || 5.0;
+  let timesReviewed = (currentStat?.times_reviewed || 0) + 1;
+  let timesCorrect = (currentStat?.times_correct || 0) + quizCorrect;
+  let timesIncorrect = (currentStat?.times_incorrect || 0) + (quizTotal - quizCorrect);
+
+  stability = Math.min(365.0, Math.max(3.0, stability * stabilityMultiplier));
+
+  if (passRate >= 0.66) {
+    difficulty = Math.max(1.0, difficulty - 0.2);
+  } else {
+    difficulty = Math.min(10.0, difficulty + 0.3);
+  }
+
+  const intervalFromRetention = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
+  const interval = Math.max(1, Math.round(intervalFromRetention));
 
   const nextReviewDate = new Date(now.getTime());
   nextReviewDate.setDate(nextReviewDate.getDate() + interval);

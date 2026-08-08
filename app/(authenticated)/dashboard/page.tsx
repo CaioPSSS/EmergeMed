@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CHAPTERS_DATA, Chapter } from '@/lib/chapters-data';
-import { ReadinessEngineSnapshot, calculateFSRSManualReadUpdate } from '@/lib/learning-engine';
+import { ReadinessEngineSnapshot, calculateFSRSRereadWithQuiz } from '@/lib/learning-engine';
+import { recordActivityAndAwardXP, getGamificationSnapshot } from '@/lib/gamification-engine';
+import { RereadQuizModal } from '@/components/RereadQuizModal';
 import {
   Shuffle,
   CheckCircle2,
@@ -179,11 +181,16 @@ export default function DashboardPage() {
   const [showManualSelectModal, setShowManualSelectModal] = useState<boolean>(false);
   const [manualSearch, setManualSearch] = useState<string>('');
 
-  async function fetchEngineRecommendation(chapterIdOverride?: number) {
+  const [excludedFromSession, setExcludedFromSession] = useState<number[]>([]);
+  const [rereadQuizTarget, setRereadQuizTarget] = useState<Chapter | null>(null);
+  const [gamificationData, setGamificationData] = useState<any>(null);
+
+  async function fetchEngineRecommendation(chapterIdOverride?: number, excludeStr?: string) {
     try {
-      const url = chapterIdOverride
-        ? `/api/recommendations?surface=dashboard&chapterId=${chapterIdOverride}`
-        : `/api/recommendations?surface=dashboard`;
+      let url = '/api/recommendations?surface=dashboard';
+      if (chapterIdOverride) url += `&chapterId=${chapterIdOverride}`;
+      if (excludeStr) url += `&exclude=${excludeStr}`;
+
       const res = await fetch(url);
       if (res.ok) {
         const snap: ReadinessEngineSnapshot = await res.json();
@@ -250,6 +257,13 @@ export default function DashboardPage() {
           averageScore: avg,
         });
 
+        try {
+          const gSnap = await getGamificationSnapshot(supabase, user.id);
+          setGamificationData(gSnap);
+        } catch (e) {
+          console.warn('Failed to load gamification snapshot:', e);
+        }
+
         await fetchEngineRecommendation();
       }
       setLoading(false);
@@ -262,93 +276,41 @@ export default function DashboardPage() {
     if (!snapshot) return;
     setDrawingNext(true);
 
-    const rec = snapshot.recommendation;
-    // Log rerolled event for audit without mutating user metrics
-    await fetch('/api/recommendations/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recommendedChapterId: rec.recommendedChapterId,
-        selectedChapterId: rec.selectedChapterId,
-        surface: 'dashboard',
-        mode: rec.mode,
-        prioritySnapshot: rec.factors,
-        action: 'rerolled',
-      }),
-    }).catch(() => {});
+    const currentlyDisplayed = (snapshot.recommendations || [snapshot.recommendation])
+      .filter(Boolean)
+      .map((r) => r.selectedChapterId);
 
-    // Fetch next recommendation deterministically
-    await fetchEngineRecommendation();
+    const newExcluded = Array.from(
+      new Set([...excludedFromSession, ...currentlyDisplayed, ...(currentChapter ? [currentChapter.id] : [])])
+    );
+    setExcludedFromSession(newExcluded);
+
+    const excludeParam = newExcluded.join(',');
+    const rec = snapshot.recommendation;
+    if (rec) {
+      await fetch('/api/recommendations/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recommendedChapterId: rec.recommendedChapterId,
+          selectedChapterId: rec.selectedChapterId,
+          surface: 'dashboard',
+          mode: rec.mode,
+          prioritySnapshot: rec.factors,
+          action: 'rerolled',
+        }),
+      }).catch(() => {});
+    }
+
+    await fetchEngineRecommendation(undefined, excludeParam);
     setDrawingNext(false);
   };
 
-  const handleMarkAsRead = async () => {
-    if (!currentChapter || !snapshot) return;
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const isAlreadyRead = readChapterIds.includes(currentChapter.id);
-    const newReadIds = isAlreadyRead ? readChapterIds : Array.from(new Set([...readChapterIds, currentChapter.id]));
-    setReadChapterIds(newReadIds);
-    setStats((prev) => ({ ...prev, totalRead: newReadIds.length }));
-
-    const currentMetrics = snapshot.chapterMetrics[currentChapter.id];
-    const currentCount = currentMetrics?.readCount || (isAlreadyRead ? 1 : 0);
-    const newCount = isAlreadyRead ? currentCount + 1 : 1;
-    const nowIso = new Date().toISOString();
-
-    // 1. Update chapter_progress
-    await supabase.from('chapter_progress').upsert({
-      user_id: user.id,
-      chapter_id: currentChapter.id,
-      is_read: true,
-      read_at: currentMetrics?.readAt || nowIso,
-      read_count: newCount,
-      last_read_at: nowIso,
-    });
-
-    // 2. Insert into chapter_read_logs
-    await supabase.from('chapter_read_logs').insert({
-      user_id: user.id,
-      chapter_id: currentChapter.id,
-      read_count_snapshot: newCount,
-      source: 'dashboard_recommendation',
-    });
-
-    // 3. Update FSRS chapter_review_stats for manual read
-    const { data: stat } = await supabase
-      .from('chapter_review_stats')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('chapter_id', currentChapter.id)
-      .maybeSingle();
-
-    const fsrsUpdate = calculateFSRSManualReadUpdate(stat);
-    await supabase.from('chapter_review_stats').upsert({
-      user_id: user.id,
-      chapter_id: currentChapter.id,
-      ...fsrsUpdate,
-    });
-
-    // 4. Log recommendation event
-    const rec = snapshot.recommendation;
-    await fetch('/api/recommendations/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recommendedChapterId: rec.recommendedChapterId,
-        selectedChapterId: currentChapter.id,
-        surface: 'dashboard',
-        mode: rec.mode,
-        prioritySnapshot: rec.factors,
-        action: 'accepted',
-      }),
-    }).catch(() => {});
-
-    await fetchEngineRecommendation(currentChapter.id);
-    setShowTestModal(true);
+  const handleMarkAsRead = (chapter?: Chapter) => {
+    const target = chapter || currentChapter;
+    if (target) {
+      setRereadQuizTarget(target);
+    }
   };
 
   const handleSelectChapterManually = async (cap: Chapter) => {
@@ -484,6 +446,174 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+        
+        {/* TOP 3 RECOMENDAÇÕES DIÁRIAS (Remediação, Expansão, Manutenção) */}
+      {snapshot?.recommendations && snapshot.recommendations.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sparkles size={18} color="#38bdf8" />
+              <span>Recomendações Clínicas Prioritárias (Top 3 por Modo)</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setShowManualSelectModal(true)}
+                className="btn-secondary"
+                style={{ fontSize: '0.85rem', padding: '8px 14px' }}
+              >
+                <Search size={16} /> Mudar Capítulo
+              </button>
+              <button
+                onClick={handleDrawNextChapter}
+                disabled={drawingNext}
+                className="btn-secondary"
+                style={{
+                  fontSize: '0.85rem',
+                  padding: '8px 14px',
+                  borderColor: 'rgba(56, 189, 248, 0.4)',
+                  color: '#38bdf8',
+                }}
+              >
+                <Shuffle size={16} /> {drawingNext ? 'Calculando...' : 'Sortear de Novo'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+            {snapshot.recommendations.map((recItem: any) => {
+              const cap = CHAPTERS_DATA.find((c) => c.id === recItem.selectedChapterId || c.id === recItem.recommendedChapterId);
+              if (!cap) return null;
+
+              const isSelected = currentChapter?.id === cap.id;
+              const modeMeta = modeBadgeMap[recItem.mode as keyof typeof modeBadgeMap] || modeBadgeMap.remediation;
+              const isRead = readChapterIds.includes(cap.id);
+              const factors = recItem.factors;
+
+              return (
+                <div
+                  key={`${recItem.mode}-${cap.id}`}
+                  className="glass-panel"
+                  style={{
+                    padding: '24px',
+                    borderRadius: '16px',
+                    border: isSelected ? `2px solid ${modeMeta.color}` : '1px solid var(--border-subtle)',
+                    background: isSelected
+                      ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.9) 100%)'
+                      : 'rgba(15, 23, 42, 0.65)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '16px',
+                    boxShadow: isSelected ? `0 10px 30px ${modeMeta.bg}` : 'none',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div>
+                    {/* Header Row: Mode Badge + Section */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <span
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          background: modeMeta.bg,
+                          color: modeMeta.color,
+                          border: `1px solid ${modeMeta.color}`,
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        MODO {modeMeta.label.toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
+                        Seção {cap.sectionNumber}
+                      </span>
+                    </div>
+
+                    {/* Chapter Title */}
+                    <h3
+                      onClick={() => {
+                        setCurrentChapter(cap);
+                        fetchEngineRecommendation(cap.id);
+                      }}
+                      style={{
+                        fontSize: '1.15rem',
+                        fontWeight: 800,
+                        color: '#ffffff',
+                        marginBottom: '6px',
+                        cursor: 'pointer',
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      Cap. {cap.number}: {cap.title}
+                    </h3>
+
+                    {/* Reason */}
+                    <p style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 600, marginBottom: '14px', lineHeight: 1.4 }}>
+                      💡 {recItem.reason}
+                    </p>
+
+                    {/* FSRS Factors Breakdown */}
+                    {factors && (
+                      <div
+                        style={{
+                          fontSize: '0.78rem',
+                          color: 'var(--text-muted)',
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '8px',
+                          background: 'rgba(0, 0, 0, 0.25)',
+                          padding: '12px',
+                          borderRadius: '10px',
+                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                        }}
+                      >
+                        <div>
+                          Domínio:{' '}
+                          <strong style={{ color: factors.readiness >= factors.dynamicThreshold ? '#34d399' : '#fb923c' }}>
+                            {factors.readiness}%
+                          </strong>
+                        </div>
+                        <div>
+                          Limiar: <strong style={{ color: '#fff' }}>{factors.dynamicThreshold}%</strong>
+                        </div>
+                        <div>
+                          Retenção: <strong style={{ color: '#38bdf8' }}>{factors.retention}%</strong>
+                        </div>
+                        <div>
+                          Vencimento: <strong style={{ color: '#fbbf24' }}>{factors.dueRatio}x</strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                    <button
+                      onClick={() => {
+                        setCurrentChapter(cap);
+                        setRereadQuizTarget(cap);
+                      }}
+                      className="btn-primary"
+                      style={{ flex: 1, padding: '10px 12px', fontSize: '0.82rem', justifyContent: 'center' }}
+                    >
+                      <RefreshCw size={15} /> {isRead ? 'Releitura (+Quiz)' : 'Marcar Leitura (+Quiz)'}
+                    </button>
+                    <button
+                      onClick={() => router.push(`/testes?chapterId=${cap.id}`)}
+                      className="btn-secondary"
+                      style={{ padding: '10px 12px', fontSize: '0.82rem' }}
+                    >
+                      <Sparkles size={15} /> Testar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Main Engine Recommendation Card */}
       <div
@@ -662,7 +792,7 @@ export default function DashboardPage() {
             }}>
               {!isCurrentRead ? (
                 <button
-                  onClick={handleMarkAsRead}
+                  onClick={() => handleMarkAsRead()}
                   className="btn-primary"
                   style={{ padding: '12px 24px', fontSize: '0.95rem' }}
                 >
@@ -671,7 +801,7 @@ export default function DashboardPage() {
               ) : (
                 <>
                   <button
-                    onClick={handleMarkAsRead}
+                    onClick={() => handleMarkAsRead()}
                     className="btn-primary"
                     style={{
                       padding: '12px 24px',
@@ -939,6 +1069,116 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Gamification Badges & XP Rewards Section (M5 / Requirement R5) */}
+      <div className="glass-panel" style={{ padding: '28px', borderRadius: '20px', marginTop: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: 'rgba(245, 158, 11, 0.15)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#f59e0b',
+            }}>
+              <Award size={22} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                Conquistas & Nível da Emergência
+              </h2>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
+                Badges desbloqueadas e progressão de XP no sistema de gamificação médica
+              </p>
+            </div>
+          </div>
+
+          {gamificationData && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: 700, color: '#f59e0b' }}>
+                <Flame size={18} color="#f59e0b" />
+                <span>{gamificationData.currentStreak} dias seguidos</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: 700, color: '#10b981' }}>
+                <Zap size={18} color="#10b981" />
+                <span>{gamificationData.totalXp} XP</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Level Progress Banner */}
+        {gamificationData?.levelInfo && (
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(16, 185, 129, 0.08))',
+              border: '1px solid rgba(245, 158, 11, 0.2)',
+              marginBottom: '20px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc' }}>
+                <span style={{ fontSize: '1.2rem' }}>{gamificationData.levelInfo.currentLevel.icon}</span>
+                <span>Nível {gamificationData.levelInfo.currentLevel.level}: {gamificationData.levelInfo.currentLevel.title}</span>
+              </div>
+              <span style={{ fontSize: '0.82rem', color: '#10b981', fontWeight: 700 }}>
+                {gamificationData.levelInfo.nextLevel
+                  ? `Próximo Nível: ${gamificationData.levelInfo.nextLevel.title} (${gamificationData.levelInfo.nextLevel.xp} XP)`
+                  : 'Nível Máximo Alcançado! 👑'}
+              </span>
+            </div>
+
+            <div className="progress-bar-bg" style={{ height: '8px', background: 'rgba(255, 255, 255, 0.1)' }}>
+              <div
+                className="progress-bar-fill"
+                style={{
+                  width: `${gamificationData.levelInfo.progressPercent}%`,
+                  background: 'linear-gradient(90deg, #f59e0b, #10b981)',
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Achievements Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+          {(gamificationData?.achievements || []).map((ach: any) => (
+            <div
+              key={ach.key}
+              style={{
+                padding: '14px',
+                borderRadius: '14px',
+                background: ach.unlocked ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.5)',
+                border: ach.unlocked ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255, 255, 255, 0.06)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                opacity: ach.unlocked ? 1 : 0.65,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span style={{ fontSize: '2rem', flexShrink: 0 }}>{ach.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: ach.unlocked ? '#f8fafc' : '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {ach.title}
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: '2px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {ach.desc}
+                </div>
+                <div style={{ marginTop: '6px', fontSize: '0.7rem', fontWeight: 600, color: ach.unlocked ? '#34d399' : '#64748b' }}>
+                  {ach.unlocked ? '✅ Desbloqueado' : '🔒 Bloqueado'}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Modal de confirmação para se testar após concluir leitura */}
       {showTestModal && currentChapter && (
         <div style={{
@@ -1089,6 +1329,21 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Quiz de Releitura (M3) */}
+      {rereadQuizTarget && (
+        <RereadQuizModal
+          chapterId={rereadQuizTarget.id}
+          chapterNumber={rereadQuizTarget.number}
+          chapterTitle={rereadQuizTarget.title}
+          onClose={() => setRereadQuizTarget(null)}
+          onSuccess={async () => {
+            setRereadQuizTarget(null);
+            await fetchEngineRecommendation();
+            setShowTestModal(true);
+          }}
+        />
       )}
     </div>
   );

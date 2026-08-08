@@ -17,6 +17,10 @@ export async function GET(request: Request) {
     const surfaceParam = searchParams.get('surface');
     const surface = surfaceParam === 'plantao' ? 'plantao' : 'dashboard';
     const requestedChapterId = searchParams.get('chapterId') ? Number(searchParams.get('chapterId')) : undefined;
+    const excludeParam = searchParams.get('exclude');
+    const excludeChapterIds = excludeParam
+      ? excludeParam.split(',').map(Number).filter((n) => !isNaN(n))
+      : undefined;
 
     // Fetch user progress
     const { data: progressList } = await supabase
@@ -51,6 +55,7 @@ export async function GET(request: Request) {
       recentEvents: (recentEvents as any[]) || [],
       surface,
       requestedChapterId,
+      excludeChapterIds,
     });
 
     return NextResponse.json(snapshot);

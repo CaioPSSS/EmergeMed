@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { QuestionItem } from '@/lib/ai/openrouter';
 import { calculateSM2Update, calculateFSRSUpdate, determineBedOutcome } from '@/lib/spaced-repetition';
+import { recordActivityAndAwardXP } from '@/lib/gamification-engine';
 import {
   ChevronLeft,
   ChevronRight,
@@ -129,8 +130,13 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
     b.bonusQuestionId === questions[currentIndex]?.id
   );
 
+  const [adverseCheckedBeds, setAdverseCheckedBeds] = useState<Set<number>>(new Set());
+
   const triggerAdverseEvolutionIfNeeded = async (bed: any, customEvals?: Record<number, any>) => {
     if (!bed || bed.bonusQuestionId) return; // Already has bonus question
+    if (adverseCheckedBeds.has(bed.bedNumber)) return; // Already checked for adverse evolution
+    setAdverseCheckedBeds((prev) => new Set([...prev, bed.bedNumber]));
+
     const evals = customEvals || {};
 
     const bedQuestions = questions.filter(
@@ -496,6 +502,18 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           }
         } else if (Array.isArray(testRecord?.chapter_ids)) {
           for (const chapterId of testRecord.chapter_ids) {
+            const chapterQuestions = questions.filter((q) => q.chapterId === chapterId);
+            let chapterScore: number;
+            if (chapterQuestions.length > 0) {
+              let chapterPoints = 0;
+              chapterQuestions.forEach((q) => {
+                chapterPoints += evaluations[q.id]?.score || 0;
+              });
+              chapterScore = Math.round((chapterPoints / (chapterQuestions.length * 10)) * 100) / 10;
+            } else {
+              chapterScore = finalScore;
+            }
+
             const { data: stat } = await supabase
               .from('chapter_review_stats')
               .select('*')
@@ -503,7 +521,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
               .eq('chapter_id', chapterId)
               .single();
 
-            const update = calculateFSRSUpdate(stat, finalScore);
+            const update = calculateFSRSUpdate(stat, chapterScore);
 
             await supabase.from('chapter_review_stats').upsert({
               user_id: user.id,
@@ -519,7 +537,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                 selectedChapterId: chapterId,
                 surface: 'dashboard',
                 mode: 'remediation',
-                prioritySnapshot: { score: finalScore },
+                prioritySnapshot: { score: chapterScore },
                 action: 'completed',
               }),
             }).catch(() => {});
@@ -538,6 +556,13 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           completed_at: new Date().toISOString(),
         })
         .eq('id', testId);
+
+      if (user) {
+        await recordActivityAndAwardXP(supabase, user.id, {
+          type: isPlantao ? 'plantao_complete' : 'test_complete',
+          plantaoScore: finalScore,
+        }).catch(() => {});
+      }
 
       // Generate AI preceptor general feedback
       const evaluationsSummary = questions.map((q) => {

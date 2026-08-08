@@ -405,7 +405,14 @@ FORMATO DE RESPOSTA (JSON VÁLIDO OBRIGATÓRIO)
     "Pontos de melhoria, omissões ou erros (obrigatório preencher quando houver falhas ou veredito Requer Ajustes / Inadequado)"
   ],
   "detailedFeedback": "Análise crítica em Markdown explicando por que o veredito/nota foi atribuído, detalhando os riscos clínicos dos erros e como corrigi-los.",
-  "idealPrescription": "Prescrição/configuração de referência completa — a resposta que seria nota 10 para este caso."
+  "idealPrescription": "Prescrição/configuração de referência completa — a resposta que seria nota 10 para este caso.",
+  "errorTags": [
+    {
+      "competency": "farmacologia | diagnostico | conduta | ventilacao | prescricao_geral",
+      "severity": "critico | moderado | leve",
+      "description": "Descrição sucinta do erro cometido"
+    }
+  ]
 }`;
 
 export const SYSTEM_PROMPT_PLANTAO_GENERATOR = `Você é um preceptor sênior em Medicina de Emergência criando uma simulação de LEITO DE UPA para o Modo Plantão.
