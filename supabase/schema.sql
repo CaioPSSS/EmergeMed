@@ -193,4 +193,110 @@ CREATE POLICY "Users can manage their own recommendation events"
   FOR ALL
   USING (auth.uid() = user_id);
 
+-- ═══════════════════════════════════════════════════════════
+-- V2 TABLES (Gamification, Question Bank, Error Patterns)
+-- ═══════════════════════════════════════════════════════════
+
+-- Table: question_bank (Reusable curated questions)
+CREATE TABLE IF NOT EXISTS public.question_bank (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  chapter_id INTEGER NOT NULL,
+  question_type TEXT NOT NULL,
+  vignette TEXT NOT NULL,
+  options JSONB,
+  correct_option INTEGER,
+  explanation TEXT,
+  ideal_prescription TEXT,
+  evaluation_criteria JSONB,
+  ideal_ventilator JSONB,
+  prompt_text TEXT,
+  times_shown INTEGER DEFAULT 0,
+  times_correct INTEGER DEFAULT 0,
+  times_incorrect INTEGER DEFAULT 0,
+  avg_score NUMERIC(4,2) DEFAULT 0.0,
+  difficulty_computed NUMERIC(4,2) DEFAULT 5.0,
+  is_curated BOOLEAN DEFAULT FALSE,
+  source TEXT DEFAULT 'ai_generated',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Table: error_pattern_tags (Transversal competency error tracking)
+CREATE TABLE IF NOT EXISTS public.error_pattern_tags (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  test_id UUID NOT NULL REFERENCES public.tests(id) ON DELETE CASCADE,
+  question_id INTEGER NOT NULL,
+  chapter_id INTEGER NOT NULL,
+  competency TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  error_description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Table: user_daily_activity (Streaks and daily stats)
+CREATE TABLE IF NOT EXISTS public.user_daily_activity (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  activity_date DATE NOT NULL,
+  chapters_read INTEGER DEFAULT 0,
+  chapters_reread INTEGER DEFAULT 0,
+  tests_completed INTEGER DEFAULT 0,
+  plantoes_completed INTEGER DEFAULT 0,
+  questions_answered INTEGER DEFAULT 0,
+  questions_correct INTEGER DEFAULT 0,
+  study_events INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, activity_date)
+);
+
+-- Table: user_achievements (Badges / conquistas)
+CREATE TABLE IF NOT EXISTS public.user_achievements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  achievement_key TEXT NOT NULL,
+  unlocked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, achievement_key)
+);
+
+-- Table: user_gamification_stats (Consolidated XP, level, streaks)
+CREATE TABLE IF NOT EXISTS public.user_gamification_stats (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  current_streak INTEGER DEFAULT 0,
+  max_streak INTEGER DEFAULT 0,
+  total_xp INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  last_activity_date DATE,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes for new tables
+CREATE INDEX IF NOT EXISTS idx_qbank_chapter ON public.question_bank(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_qbank_type ON public.question_bank(question_type);
+CREATE INDEX IF NOT EXISTS idx_error_patterns_user ON public.error_pattern_tags(user_id, competency);
+CREATE INDEX IF NOT EXISTS idx_daily_activity ON public.user_daily_activity(user_id, activity_date);
+CREATE INDEX IF NOT EXISTS idx_tests_user_mode ON public.tests(user_id, mode);
+CREATE INDEX IF NOT EXISTS idx_tests_user_completed ON public.tests(user_id, completed);
+CREATE INDEX IF NOT EXISTS idx_review_stats_next_review ON public.chapter_review_stats(user_id, next_review_at);
+CREATE INDEX IF NOT EXISTS idx_rec_events_user_date ON public.chapter_recommendation_events(user_id, created_at DESC);
+
+-- RLS for new tables
+ALTER TABLE public.question_bank ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.error_pattern_tags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_daily_activity ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_achievements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_gamification_stats ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can read questions"
+  ON public.question_bank FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can manage questions"
+  ON public.question_bank FOR ALL TO authenticated USING (true);
+CREATE POLICY "Users can manage own error patterns"
+  ON public.error_pattern_tags FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users manage own daily activity"
+  ON public.user_daily_activity FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users manage own achievements"
+  ON public.user_achievements FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users manage own gamification stats"
+  ON public.user_gamification_stats FOR ALL USING (auth.uid() = user_id);
 

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { CHAPTERS_DATA, Chapter } from '@/lib/chapters-data';
 import { ReadinessEngineSnapshot, calculateFSRSRereadWithQuiz } from '@/lib/learning-engine';
 import { recordActivityAndAwardXP, getGamificationSnapshot } from '@/lib/gamification-engine';
+import { analyzeErrorPatterns, ErrorPatternReport } from '@/lib/error-pattern-analyzer';
 import { RereadQuizModal } from '@/components/RereadQuizModal';
 import {
   Shuffle,
@@ -184,6 +185,7 @@ export default function DashboardPage() {
   const [excludedFromSession, setExcludedFromSession] = useState<number[]>([]);
   const [rereadQuizTarget, setRereadQuizTarget] = useState<Chapter | null>(null);
   const [gamificationData, setGamificationData] = useState<any>(null);
+  const [errorPatternReport, setErrorPatternReport] = useState<ErrorPatternReport | null>(null);
 
   async function fetchEngineRecommendation(chapterIdOverride?: number, excludeStr?: string) {
     try {
@@ -262,6 +264,20 @@ export default function DashboardPage() {
           setGamificationData(gSnap);
         } catch (e) {
           console.warn('Failed to load gamification snapshot:', e);
+        }
+
+        try {
+          const { data: errorTagsData } = await supabase
+            .from('error_pattern_tags')
+            .select('*')
+            .eq('user_id', user.id);
+
+          if (errorTagsData && errorTagsData.length > 0) {
+            const report = analyzeErrorPatterns(errorTagsData);
+            setErrorPatternReport(report);
+          }
+        } catch (e) {
+          console.warn('Failed to load error pattern tags:', e);
         }
 
         await fetchEngineRecommendation();
@@ -1178,6 +1194,64 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* Padrões de Erro Transversais (M11 / Requirement) */}
+      {errorPatternReport && errorPatternReport.summaries.length > 0 && (
+        <div className="glass-panel" style={{ padding: '28px', borderRadius: '20px', marginTop: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ef4444',
+            }}>
+              <AlertTriangle size={22} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                Padrões de Erro Transversais & Competências
+              </h2>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
+                Análise clínica de lacunas recorrentes detectadas em prescrições e simulados
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+            {errorPatternReport.summaries.map((s) => (
+              <div
+                key={s.competency}
+                style={{
+                  padding: '16px',
+                  borderRadius: '14px',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{s.icon}</span> {s.label}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', padding: '2px 8px', borderRadius: '9999px', background: 'rgba(239, 68, 68, 0.15)' }}>
+                    {s.errorCount} erros ({s.criticalCount} críticos)
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+                  {s.recommendation}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Modal de confirmação para se testar após concluir leitura */}
       {showTestModal && currentChapter && (

@@ -562,6 +562,46 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           type: isPlantao ? 'plantao_complete' : 'test_complete',
           plantaoScore: finalScore,
         }).catch(() => {});
+
+        // Save error pattern tags into error_pattern_tags table
+        const errorPatternRows: any[] = [];
+        questions.forEach((q) => {
+          const evalObj = evaluations[q.id];
+          const tags = evalObj?.evaluation?.errorTags;
+          if (tags && Array.isArray(tags)) {
+            tags.forEach((tag: any) => {
+              if (tag.competency) {
+                errorPatternRows.push({
+                  user_id: user.id,
+                  test_id: testId,
+                  question_id: q.id,
+                  chapter_id: q.chapterId || (Array.isArray(testRecord?.chapter_ids) ? testRecord.chapter_ids[0] : 1),
+                  competency: tag.competency,
+                  severity: tag.severity || 'moderado',
+                  error_description: tag.description || 'Erro em prescrição/conduta',
+                });
+              }
+            });
+          } else if (q.type === 'multiple_choice' && evalObj && !evalObj.isCorrect) {
+            errorPatternRows.push({
+              user_id: user.id,
+              test_id: testId,
+              question_id: q.id,
+              chapter_id: q.chapterId || (Array.isArray(testRecord?.chapter_ids) ? testRecord.chapter_ids[0] : 1),
+              competency: 'diagnostico',
+              severity: 'moderado',
+              error_description: `Erro na questão de múltipla escolha: ${q.vignette ? q.vignette.slice(0, 100) : ''}`,
+            });
+          }
+        });
+
+        if (errorPatternRows.length > 0) {
+          try {
+            await supabase.from('error_pattern_tags').insert(errorPatternRows);
+          } catch (e) {
+            console.warn('Failed to insert error pattern tags:', e);
+          }
+        }
       }
 
       // Generate AI preceptor general feedback

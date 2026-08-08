@@ -39,6 +39,11 @@ export interface PrescriptionEvaluation {
   improvements: string[];
   detailedFeedback: string;
   idealPrescription: string;
+  errorTags?: Array<{
+    competency: 'farmacologia' | 'diagnostico' | 'conduta' | 'ventilacao' | 'prescricao_geral';
+    severity: 'critico' | 'moderado' | 'leve';
+    description: string;
+  }>;
 }
 
 export { fixMojibake };
