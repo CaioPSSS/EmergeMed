@@ -68,6 +68,23 @@ export default function AuthenticatedLayout({
     loadUserData();
   }, [pathname]);
 
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileMenuOpen]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
@@ -88,45 +105,46 @@ export default function AuthenticatedLayout({
   const progressPercent = Math.round((readCount / totalChapters) * 100);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Mobile Toggle Button */}
-      <button
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        style={{
-          position: 'fixed',
-          top: '16px',
-          right: '16px',
-          zIndex: 50,
-          background: 'rgba(15, 23, 42, 0.9)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: '10px',
-          padding: '10px',
-          color: '#fff',
-          cursor: 'pointer',
-          display: 'none',
-        }}
-        className="mobile-menu-btn"
-      >
-        {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
+    <div className="app-layout">
+      {/* Mobile Top Bar */}
+      <div className="mobile-topbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(16, 185, 129, 0.25))',
+            border: '1px solid rgba(56, 189, 248, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#38bdf8',
+          }}>
+            <Stethoscope size={18} />
+          </div>
+          <span className="text-gradient" style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+            EmergeMed
+          </span>
+        </div>
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="mobile-menu-btn"
+          aria-label="Toggle menu"
+        >
+          {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+      </div>
+
+      {/* Mobile Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="mobile-overlay"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
 
       {/* Sidebar */}
-      <aside
-        style={{
-          width: '280px',
-          backgroundColor: 'var(--bg-sidebar)',
-          borderRight: '1px solid var(--border-subtle)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          padding: '24px 16px',
-          position: 'fixed',
-          top: 0,
-          bottom: 0,
-          left: 0,
-          zIndex: 40,
-        }}
-      >
+      <aside className={`sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
         <div>
           {/* Brand Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 8px', marginBottom: '32px' }}>
@@ -140,6 +158,7 @@ export default function AuthenticatedLayout({
               alignItems: 'center',
               justifyContent: 'center',
               color: '#38bdf8',
+              flexShrink: 0,
             }}>
               <Stethoscope size={24} />
             </div>
@@ -283,13 +302,7 @@ export default function AuthenticatedLayout({
       </aside>
 
       {/* Main Content Area */}
-      <main style={{
-        flex: 1,
-        marginLeft: '280px',
-        padding: '32px 40px',
-        maxWidth: '1280px',
-        width: '100%',
-      }}>
+      <main className="main-content">
         {children}
       </main>
     </div>

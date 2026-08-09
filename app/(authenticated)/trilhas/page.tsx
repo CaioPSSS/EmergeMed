@@ -38,19 +38,35 @@ export default async function TrilhasPage() {
   const readSet = new Set((progressList || []).filter((p) => p.is_read).map((p) => p.chapter_id));
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      {/* Header */}
       <div>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-3">
-          <Sparkles className="w-3.5 h-3.5" />
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '4px 12px',
+          borderRadius: '9999px',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          background: 'rgba(16, 185, 129, 0.1)',
+          color: '#34d399',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          marginBottom: '12px',
+        }}>
+          <Sparkles size={14} />
           <span>Roadmap Visual RPG</span>
         </div>
-        <h1 className="text-3xl font-bold text-slate-100">Trilhas de Aprendizagem por Especialidade</h1>
-        <p className="text-slate-400 mt-1">
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 800, color: '#f1f5f9' }}>
+          Trilhas de Aprendizagem por Especialidade
+        </h1>
+        <p style={{ color: 'var(--text-muted)', marginTop: '4px', fontSize: '0.95rem' }}>
           Sequências estruturadas de estudo da Sala Vermelha até procedimentos de alta complexidade.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Tracks Grid */}
+      <div className="trilhas-grid">
         {LEARNING_TRACKS.map((track) => {
           const trackChapters = track.chapters.map((id) => CHAPTERS_DATA.find((c) => c.id === id)).filter(Boolean);
           const completedCount = track.chapters.filter((id) => readSet.has(id)).length;
@@ -59,39 +75,86 @@ export default async function TrilhasPage() {
           return (
             <div
               key={track.id}
-              className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition flex flex-col justify-between"
+              className="glass-panel glass-panel-hover"
+              style={{
+                padding: '24px',
+                borderRadius: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
             >
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
+                {/* Track Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                     <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-inner"
-                      style={{ backgroundColor: `${track.color}20`, border: `1px solid ${track.color}40` }}
+                      style={{
+                        width: '48px',
+                        height: '48px',
+                        minWidth: '48px',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1.5rem',
+                        backgroundColor: `${track.color}20`,
+                        border: `1px solid ${track.color}40`,
+                      }}
                     >
                       {track.icon}
                     </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-100">{track.name}</h2>
-                      <p className="text-xs text-slate-400">{track.description}</p>
+                    <div style={{ minWidth: 0 }}>
+                      <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f1f5f9', lineHeight: 1.2 }}>{track.name}</h2>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>{track.description}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-lg font-bold text-slate-200">{progressPercent}%</span>
-                    <span className="text-xs text-slate-500 block">concluído</span>
+                  <div style={{ textAlign: 'right', marginLeft: '12px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '1.15rem', fontWeight: 700, color: '#e2e8f0' }}>{progressPercent}%</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block' }}>concluído</span>
                   </div>
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full bg-slate-800 rounded-full h-2 mb-6 overflow-hidden">
+                <div style={{
+                  width: '100%',
+                  height: '6px',
+                  background: 'rgba(30, 41, 59, 0.8)',
+                  borderRadius: '9999px',
+                  overflow: 'hidden',
+                  marginBottom: '20px',
+                }}>
                   <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${progressPercent}%`, backgroundColor: track.color }}
+                    style={{
+                      width: `${progressPercent}%`,
+                      height: '100%',
+                      borderRadius: '9999px',
+                      backgroundColor: track.color,
+                      transition: 'width 0.5s ease',
+                    }}
                   />
                 </div>
 
                 {/* Vertical Skill Tree Nodes */}
-                <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-800">
-                  {trackChapters.map((cap, idx) => {
+                <div style={{
+                  position: 'relative',
+                  paddingLeft: '28px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}>
+                  {/* Vertical line */}
+                  <div style={{
+                    position: 'absolute',
+                    left: '11px',
+                    top: '14px',
+                    bottom: '14px',
+                    width: '2px',
+                    background: 'rgba(30, 41, 59, 0.8)',
+                    borderRadius: '1px',
+                  }} />
+
+                  {trackChapters.map((cap) => {
                     if (!cap) return null;
                     const isCompleted = readSet.has(cap.id);
                     const prereqs = cap.prerequisites || [];
@@ -100,65 +163,161 @@ export default async function TrilhasPage() {
                     const metric = snapshot.chapterMetrics[cap.id];
                     const readiness = metric ? Math.round(metric.topicReadiness) : 0;
 
+                    // Node dot styles
+                    const dotBase: React.CSSProperties = {
+                      position: 'absolute',
+                      left: '-28px',
+                      top: '8px',
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 2,
+                    };
+
+                    const dotStyle: React.CSSProperties = isCompleted
+                      ? {
+                        ...dotBase,
+                        backgroundColor: '#10b981',
+                        color: '#0f172a',
+                        boxShadow: '0 0 0 4px #0f172a, 0 0 8px rgba(16, 185, 129, 0.4)',
+                      }
+                      : isLocked
+                        ? {
+                          ...dotBase,
+                          backgroundColor: '#1e293b',
+                          color: '#64748b',
+                          border: '1px solid #334155',
+                          boxShadow: '0 0 0 4px #0f172a',
+                        }
+                        : {
+                          ...dotBase,
+                          backgroundColor: '#06b6d4',
+                          color: '#0f172a',
+                          boxShadow: '0 0 0 4px rgba(6, 182, 212, 0.15), 0 0 12px rgba(6, 182, 212, 0.3)',
+                          animation: 'pulse-ring 1.8s infinite cubic-bezier(0.66, 0, 0, 1)',
+                        };
+
+                    // Card styles
+                    const cardStyle: React.CSSProperties = isCompleted
+                      ? {
+                        flex: 1,
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        background: 'rgba(16, 185, 129, 0.06)',
+                        border: '1px solid rgba(16, 185, 129, 0.15)',
+                        color: '#cbd5e1',
+                        transition: 'all 0.2s ease',
+                      }
+                      : isLocked
+                        ? {
+                          flex: 1,
+                          padding: '12px 14px',
+                          borderRadius: '12px',
+                          background: 'rgba(2, 6, 23, 0.4)',
+                          border: '1px solid rgba(30, 41, 59, 0.6)',
+                          color: '#64748b',
+                          transition: 'all 0.2s ease',
+                        }
+                        : {
+                          flex: 1,
+                          padding: '12px 14px',
+                          borderRadius: '12px',
+                          background: 'rgba(6, 182, 212, 0.06)',
+                          border: '1px solid rgba(6, 182, 212, 0.2)',
+                          color: '#e2e8f0',
+                          transition: 'all 0.2s ease',
+                        };
+
                     return (
-                      <div key={cap.id} className="relative flex items-start gap-4 group">
+                      <div key={cap.id} style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                         {/* Node Status Dot */}
-                        <div
-                          className={`absolute -left-6 top-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition ${
-                            isCompleted
-                              ? 'bg-emerald-500 text-slate-950 ring-4 ring-slate-900'
-                              : isLocked
-                              ? 'bg-slate-800 text-slate-500 border border-slate-700 ring-4 ring-slate-900'
-                              : 'bg-cyan-500 text-slate-950 ring-4 ring-cyan-500/20 animate-pulse'
-                          }`}
-                        >
+                        <div style={dotStyle}>
                           {isCompleted ? (
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <CheckCircle2 size={13} />
                           ) : isLocked ? (
-                            <Lock className="w-3 h-3" />
+                            <Lock size={12} />
                           ) : (
-                            <BookOpen className="w-3 h-3" />
+                            <BookOpen size={12} />
                           )}
                         </div>
 
                         {/* Node Card */}
-                        <div
-                          className={`flex-1 p-3.5 rounded-xl border transition ${
-                            isCompleted
-                              ? 'bg-emerald-950/20 border-emerald-500/20 text-slate-300'
-                              : isLocked
-                              ? 'bg-slate-950/40 border-slate-800/80 text-slate-500'
-                              : 'bg-cyan-950/20 border-cyan-500/30 text-slate-200 hover:border-cyan-500/60'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
+                        <div style={cardStyle}>
+                          <div className="trilha-node-content">
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{
+                                fontSize: '0.62rem',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.06em',
+                                fontWeight: 600,
+                                opacity: 0.7,
+                              }}>
                                 Cap {cap.number} • {cap.sectionTitle}
                               </span>
-                              <h3 className="text-sm font-semibold mt-0.5">{cap.title}</h3>
+                              <h3 style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: '2px' }}>{cap.title}</h3>
                             </div>
                             {isCompleted ? (
-                              <span className="text-xs text-emerald-400 font-medium px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                              <span style={{
+                                fontSize: '0.7rem',
+                                color: '#34d399',
+                                fontWeight: 500,
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(16, 185, 129, 0.1)',
+                                border: '1px solid rgba(16, 185, 129, 0.2)',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                              }}>
                                 Concluído
                               </span>
                             ) : isLocked ? (
-                              <span className="text-xs text-slate-500 font-medium px-2 py-0.5 rounded bg-slate-800 border border-slate-700 flex items-center gap-1">
-                                <Lock className="w-3 h-3" /> Requer Cap {prereqs.join(', ')}
+                              <span style={{
+                                fontSize: '0.7rem',
+                                color: '#64748b',
+                                fontWeight: 500,
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(30, 41, 59, 0.6)',
+                                border: '1px solid #334155',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                              }}>
+                                <Lock size={11} /> Requer Cap {prereqs.join(', ')}
                               </span>
                             ) : (
                               <Link
                                 href={`/capitulos?cap=${cap.id}`}
-                                className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center gap-1 transition"
+                                style={{
+                                  fontSize: '0.7rem',
+                                  color: '#22d3ee',
+                                  fontWeight: 600,
+                                  padding: '5px 10px',
+                                  borderRadius: '8px',
+                                  background: 'rgba(6, 182, 212, 0.1)',
+                                  border: '1px solid rgba(6, 182, 212, 0.3)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  textDecoration: 'none',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  transition: 'all 0.2s ease',
+                                }}
                               >
-                                Estudar <ArrowRight className="w-3 h-3" />
+                                Estudar <ArrowRight size={12} />
                               </Link>
                             )}
                           </div>
 
                           {isCompleted && (
-                            <div className="mt-2 flex items-center gap-4 text-xs text-slate-400">
-                              <span>Prontidão: <strong className="text-emerald-400">{readiness}%</strong></span>
+                            <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                              <span>Prontidão: <strong style={{ color: '#34d399' }}>{readiness}%</strong></span>
                             </div>
                           )}
                         </div>
