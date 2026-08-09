@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CHAPTERS_DATA, Chapter } from '@/lib/chapters-data';
-import { ReadinessEngineSnapshot, calculateFSRSRereadWithQuiz } from '@/lib/learning-engine';
+import { ReadinessEngineSnapshot, calculateFSRSRereadWithQuiz, calculateFSRSManualReadUpdate } from '@/lib/learning-engine';
 import { recordActivityAndAwardXP, getGamificationSnapshot } from '@/lib/gamification-engine';
 import { analyzeErrorPatterns, ErrorPatternReport } from '@/lib/error-pattern-analyzer';
 import { RereadQuizModal } from '@/components/RereadQuizModal';
@@ -322,11 +322,61 @@ export default function DashboardPage() {
     setDrawingNext(false);
   };
 
-  const handleMarkAsRead = (chapter?: Chapter) => {
+  const handleMarkAsRead = async (chapter?: Chapter) => {
     const target = chapter || currentChapter;
-    if (target) {
-      setRereadQuizTarget(target);
+    if (!target) return;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const isAlreadyRead = readChapterIds.includes(target.id);
+      const { data: currentProg } = await supabase
+        .from('chapter_progress')
+        .select('read_count, last_read_at')
+        .eq('user_id', user.id)
+        .eq('chapter_id', target.id)
+        .maybeSingle();
+
+      const currentCount = currentProg?.read_count || (isAlreadyRead ? 1 : 0);
+      const newCount = currentCount + 1;
+      const nowIso = new Date().toISOString();
+
+      await supabase.from('chapter_progress').upsert({
+        user_id: user.id,
+        chapter_id: target.id,
+        is_read: true,
+        read_at: currentProg?.last_read_at || nowIso,
+        read_count: newCount,
+        last_read_at: nowIso,
+      });
+
+      await supabase.from('chapter_read_logs').insert({
+        user_id: user.id,
+        chapter_id: target.id,
+        read_count_snapshot: newCount,
+        source: isAlreadyRead ? 'reread_dashboard' : 'first_read_dashboard',
+      });
+
+      const { data: stat } = await supabase
+        .from('chapter_review_stats')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('chapter_id', target.id)
+        .maybeSingle();
+
+      const fsrsUpdate = calculateFSRSManualReadUpdate(stat);
+      await supabase.from('chapter_review_stats').upsert({
+        user_id: user.id,
+        chapter_id: target.id,
+        ...fsrsUpdate,
+      });
+
+      await recordActivityAndAwardXP(supabase, user.id, { type: 'first_read' });
     }
+
+    router.push(`/testes?chapterId=${target.id}`);
   };
 
   const handleSelectChapterManually = async (cap: Chapter) => {
@@ -607,14 +657,11 @@ export default function DashboardPage() {
                   {/* Footer Actions */}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
                     <button
-                      onClick={() => {
-                        setCurrentChapter(cap);
-                        setRereadQuizTarget(cap);
-                      }}
+                      onClick={() => handleMarkAsRead(cap)}
                       className="btn-primary"
                       style={{ flex: 1, padding: '10px 12px', fontSize: '0.82rem', justifyContent: 'center' }}
                     >
-                      <RefreshCw size={15} /> {isRead ? 'Releitura (+Quiz)' : 'Marcar Leitura (+Quiz)'}
+                      <RefreshCw size={15} /> {isRead ? 'Registrar Releitura & Ir para Testes' : 'Marcar 1ª Leitura & Ir para Testes'}
                     </button>
                     <button
                       onClick={() => router.push(`/testes?chapterId=${cap.id}`)}
@@ -812,7 +859,7 @@ export default function DashboardPage() {
                   className="btn-primary"
                   style={{ padding: '12px 24px', fontSize: '0.95rem' }}
                 >
-                  <CheckCircle2 size={18} /> Marcar 1ª Leitura como Concluída
+                  <CheckCircle2 size={18} /> Marcar 1ª Leitura & Ir para Testes
                 </button>
               ) : (
                 <>
@@ -825,7 +872,7 @@ export default function DashboardPage() {
                       background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                     }}
                   >
-                    <RefreshCw size={18} /> Registrar Releitura Concluída (Revisão #{(currentMetrics?.readCount || 1) + 1})
+                    <RefreshCw size={18} /> Registrar Releitura (Revisão #{(currentMetrics?.readCount || 1) + 1}) & Ir para Testes
                   </button>
 
                   <button

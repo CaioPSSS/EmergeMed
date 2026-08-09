@@ -65,23 +65,16 @@ export default function CapitulosPage() {
     loadProgress();
   }, []);
 
-  const handleRegisterReRead = async (chapterId: number) => {
+  const handleRegisterReadAndGoToTest = async (chapterId: number) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
-    const isAlreadyRead = readChapterIds.includes(chapterId);
-    const cap = CHAPTERS_DATA.find((c) => c.id === chapterId);
-
-    if (isAlreadyRead && cap) {
-      setRereadQuizTarget(cap);
-      return;
-    }
 
     setActionLoading((prev) => ({ ...prev, [chapterId]: true }));
 
     try {
+      const isAlreadyRead = readChapterIds.includes(chapterId);
       const current = progressMap[chapterId];
-      const currentCount = current?.read_count || 0;
+      const currentCount = current?.read_count || (isAlreadyRead ? 1 : 0);
       const newCount = currentCount + 1;
       const nowIso = new Date().toISOString();
 
@@ -98,7 +91,7 @@ export default function CapitulosPage() {
         user_id: user.id,
         chapter_id: chapterId,
         read_count_snapshot: newCount,
-        source: 'manual_chapter_list',
+        source: isAlreadyRead ? 'reread_manual_chapter_list' : 'first_read_manual_chapter_list',
       });
 
       const { data: stat } = await supabase
@@ -128,17 +121,19 @@ export default function CapitulosPage() {
 
       setReadChapterIds((prev) => Array.from(new Set([...prev, chapterId])));
     } catch (err) {
-      console.error('Erro ao registrar 1ª leitura:', err);
+      console.error('Erro ao registrar leitura/releitura:', err);
     } finally {
       setActionLoading((prev) => ({ ...prev, [chapterId]: false }));
     }
+
+    router.push(`/testes?chapterId=${chapterId}`);
   };
 
   const toggleChapterRead = async (chapterId: number) => {
     const isCurrentlyRead = readChapterIds.includes(chapterId);
     if (!isCurrentlyRead) {
-      // First time reading -> register as read
-      await handleRegisterReRead(chapterId);
+      // First time reading -> register as read and go to test
+      await handleRegisterReadAndGoToTest(chapterId);
     } else {
       // Unmark read status
       const updated = readChapterIds.filter((id) => id !== chapterId);
@@ -376,7 +371,7 @@ export default function CapitulosPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           {isRead && (
                             <button
-                              onClick={() => handleRegisterReRead(cap.id)}
+                              onClick={() => handleRegisterReadAndGoToTest(cap.id)}
                               disabled={isLoadingThis}
                               className="btn-secondary"
                               style={{
@@ -385,9 +380,9 @@ export default function CapitulosPage() {
                                 color: '#34d399',
                                 borderColor: 'rgba(52, 211, 153, 0.4)',
                               }}
-                              title="Registrar releitura/revisão manual deste capítulo para o FSRS"
+                              title="Registrar releitura e ir para gerador de testes"
                             >
-                              <RefreshCw size={14} className={isLoadingThis ? 'animate-spin' : ''} /> {isLoadingThis ? 'Salvando...' : '+ Releitura'}
+                              <RefreshCw size={14} className={isLoadingThis ? 'animate-spin' : ''} /> {isLoadingThis ? 'Salvando...' : '+ Releitura & Testar'}
                             </button>
                           )}
 
