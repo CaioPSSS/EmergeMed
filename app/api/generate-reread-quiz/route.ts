@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { CHAPTERS_DATA } from '@/lib/chapters-data';
+import { getChapterMetadata } from '@/lib/chapters-service';
 import { generateQuestionsWithAI } from '@/lib/ai/openrouter';
 
 export async function POST(request: Request) {
@@ -14,7 +14,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'chapterId é obrigatório' }, { status: 400 });
     }
 
-    const capInfo = CHAPTERS_DATA.filter(c => c.id === chapterId);
+    const cap = await getChapterMetadata(supabase, Number(chapterId), user.id);
+    const capInfo = cap ? [cap] : [];
     
     const { data: settings } = await supabase
       .from('user_settings')

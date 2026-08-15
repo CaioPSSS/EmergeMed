@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CHAPTERS_DATA, Chapter } from '@/lib/chapters-data';
+import { getUnifiedChapters } from '@/lib/chapters-service';
 import { ReadinessEngineSnapshot, calculateFSRSRereadWithQuiz, calculateFSRSManualReadUpdate } from '@/lib/learning-engine';
 import { recordActivityAndAwardXP, getGamificationSnapshot } from '@/lib/gamification-engine';
 import { analyzeErrorPatterns, ErrorPatternReport } from '@/lib/error-pattern-analyzer';
@@ -168,6 +169,7 @@ export default function DashboardPage() {
   const supabase = createClient();
 
   const [snapshot, setSnapshot] = useState<ReadinessEngineSnapshot | null>(null);
+  const [chaptersList, setChaptersList] = useState<Chapter[]>(CHAPTERS_DATA);
   const [readChapterIds, setReadChapterIds] = useState<number[]>([]);
   const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -199,7 +201,22 @@ export default function DashboardPage() {
         setSnapshot(snap);
 
         const chosenId = snap.recommendation?.selectedChapterId;
-        const capObj = CHAPTERS_DATA.find((c) => c.id === chosenId);
+        const metric = snap.chapterMetrics && chosenId ? snap.chapterMetrics[chosenId] : null;
+        const capObj =
+          chaptersList.find((c) => c.id === chosenId) ||
+          (metric
+            ? {
+                id: metric.chapterId,
+                number: metric.chapterNumber,
+                title: metric.title,
+                sectionNumber: metric.sectionNumber,
+                sectionTitle: metric.sectionTitle,
+                category: metric.category,
+                frequencyScore: metric.frequencyScore,
+                importanceScore: metric.importanceScore,
+              }
+            : null);
+
         if (capObj) {
           setCurrentChapter(capObj);
         }
@@ -231,22 +248,25 @@ export default function DashboardPage() {
       } = await supabase.auth.getUser();
 
       if (user) {
-        const { data: progress } = await supabase
-          .from('chapter_progress')
-          .select('chapter_id, is_read')
-          .eq('user_id', user.id)
-          .eq('is_read', true);
+        const [progress, testsData, unified] = await Promise.all([
+          supabase
+            .from('chapter_progress')
+            .select('chapter_id, is_read')
+            .eq('user_id', user.id)
+            .eq('is_read', true),
+          supabase
+            .from('tests')
+            .select('score, completed')
+            .eq('user_id', user.id)
+            .eq('completed', true),
+          getUnifiedChapters(supabase, user.id),
+        ]);
 
-        const readIds = progress ? progress.map((p) => p.chapter_id) : [];
+        setChaptersList(unified);
+        const readIds = progress.data ? progress.data.map((p) => p.chapter_id) : [];
         setReadChapterIds(readIds);
 
-        const { data: testsData } = await supabase
-          .from('tests')
-          .select('score, completed')
-          .eq('user_id', user.id)
-          .eq('completed', true);
-
-        const validTests = testsData ? testsData.filter((t) => t.score !== null && t.score !== undefined) : [];
+        const validTests = testsData.data ? testsData.data.filter((t) => t.score !== null && t.score !== undefined) : [];
         const testsCount = validTests.length;
         const avg =
           testsCount > 0
@@ -402,10 +422,11 @@ export default function DashboardPage() {
   };
 
   const isCurrentRead = currentChapter ? readChapterIds.includes(currentChapter.id) : false;
-  const filteredChapters = CHAPTERS_DATA.filter(
+  const filteredChapters = chaptersList.filter(
     (c) =>
       c.title.toLowerCase().includes(manualSearch.toLowerCase()) ||
-      c.sectionTitle.toLowerCase().includes(manualSearch.toLowerCase())
+      c.sectionTitle.toLowerCase().includes(manualSearch.toLowerCase()) ||
+      (c.sourceBook && c.sourceBook.toLowerCase().includes(manualSearch.toLowerCase()))
   );
 
   const currentMetrics = currentChapter && snapshot?.chapterMetrics
@@ -796,7 +817,7 @@ export default function DashboardPage() {
                 <Brain size={16} /> {snapshot?.recommendation?.reason}
               </div>
               <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.25 }}>
-                Capítulo {currentChapter.number}: {currentChapter.title}
+                {currentChapter.isCustom ? currentChapter.title : `Capítulo ${currentChapter.number}: ${currentChapter.title}`}
               </h2>
             </div>
 

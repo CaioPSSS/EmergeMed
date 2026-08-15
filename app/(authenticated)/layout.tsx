@@ -94,7 +94,7 @@ export default function AuthenticatedLayout({
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/trilhas', label: '🛤️ Trilhas de Estudo', icon: Compass },
-    { href: '/capitulos', label: 'Capítulos (122)', icon: BookOpen },
+    { href: '/capitulos', label: 'Capítulos & Livros', icon: BookOpen },
     { href: '/testes', label: 'Gerar Testes', icon: FileQuestion },
     { href: '/plantoes', label: '🏥 Modo Plantão', icon: Stethoscope },
     { href: '/historico', label: 'Histórico & Evolução', icon: History },

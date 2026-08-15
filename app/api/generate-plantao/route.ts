@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { CHAPTERS_DATA } from '@/lib/chapters-data';
+import { getUnifiedChapters, getUnifiedChapterWeights } from '@/lib/chapters-service';
 import {
   calculateChapterScores,
   selectPlantaoChapters,
@@ -56,11 +57,19 @@ export async function POST(request: Request) {
       .select('id, chapter_ids, mode, score, completed, completed_at, results, plantao_data')
       .eq('user_id', user.id);
 
+    // Fetch unified chapters and weights
+    const [chaptersList, customWeights] = await Promise.all([
+      getUnifiedChapters(supabase, user.id),
+      getUnifiedChapterWeights(supabase, user.id),
+    ]);
+
     // 3. Build snapshot and select beds deterministically for surface 'plantao'
     const engineSnapshot = buildReadinessSnapshot({
       progressList: readProgress ? readProgress.map((p) => ({ chapter_id: p.chapter_id, is_read: true })) : [],
       reviewStatsList: reviewStats || [],
       testsList: testsList || [],
+      chaptersList,
+      customWeights,
       surface: 'plantao',
     });
 
@@ -71,7 +80,6 @@ export async function POST(request: Request) {
     });
 
     const selectedChapterIds = selectedBedsWithEngine.map((b) => b.chapterId);
-
 
     // 4. Fetch user AI settings
     const { data: settings } = await supabase
@@ -98,14 +106,14 @@ export async function POST(request: Request) {
     }
 
     // 6. Generate 4 questions per bed using OpenRouter AI in parallel
-    const beds = organizePlantaoBeds(selectedChapterIds);
+    const beds = organizePlantaoBeds(selectedChapterIds, chaptersList, customWeights);
     const allQuestions: QuestionItem[] = [];
     const plantaoBedsData: any[] = [];
 
     let globalQuestionIdCounter = 1;
 
     const bedPromises = beds.map(async (bed) => {
-      const capInfo = CHAPTERS_DATA.find((c) => c.id === bed.chapterId);
+      const capInfo = chaptersList.find((c) => c.id === bed.chapterId);
       if (!capInfo) return null;
 
       const questions = await generatePlantaoBedQuestionsWithAI({

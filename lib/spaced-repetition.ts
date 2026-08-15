@@ -120,18 +120,23 @@ export function selectPlantaoChapters(params: {
 /**
  * Organizes selected chapters into beds with a 4-question clinical continuous sequence
  */
-export function organizePlantaoBeds(selectedChapterIds: number[]): PlantaoBed[] {
+export function organizePlantaoBeds(
+  selectedChapterIds: number[],
+  chaptersList?: Chapter[],
+  customWeights?: Record<number, ChapterWeight>
+): PlantaoBed[] {
+  const chapters = chaptersList && chaptersList.length > 0 ? chaptersList : CHAPTERS_DATA;
   return selectedChapterIds.map((chapterId, idx) => {
-    const cap = CHAPTERS_DATA.find((c) => c.id === chapterId);
-    const weight = getChapterWeight(chapterId);
+    const cap = chapters.find((c) => c.id === chapterId);
+    const weight = customWeights && customWeights[chapterId] ? customWeights[chapterId] : getChapterWeight(chapterId);
 
     return {
       bedNumber: idx + 1,
       chapterId,
       chapterTitle: cap?.title || `Capítulo ${chapterId}`,
       sectionTitle: cap?.sectionTitle || 'Emergência',
-      frequencyScore: weight.frequencyScore,
-      importanceScore: weight.importanceScore,
+      frequencyScore: cap?.frequencyScore || weight.frequencyScore,
+      importanceScore: cap?.importanceScore || weight.importanceScore,
       questionSequence: [
         'multiple_choice',       // Q1: Triagem / Diagnóstico inicial
         'multiple_choice',       // Q2: Conduta diagnóstica / Exames

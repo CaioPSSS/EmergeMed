@@ -7,7 +7,19 @@ import {
   SYSTEM_PROMPT_ADVERSE_EVOLUTION,
   SYSTEM_PROMPT_GENERAL_FEEDBACK,
   SYSTEM_PROMPT_PLANTAO_FEEDBACK,
+  SYSTEM_PROMPT_CUSTOM_CHAPTER_ANALYZER,
 } from './prompts';
+
+export interface CustomChapterAnalysisResult {
+  title: string;
+  sourceBook: string;
+  sectionTitle: string;
+  category: string;
+  summary: string;
+  cleanedContent: string;
+  frequencyScore: number;
+  importanceScore: number;
+}
 
 export interface QuestionOption {
   text: string;
@@ -589,3 +601,66 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
     return fixMojibake(content.trim());
   });
 }
+
+/**
+ * Analyzes, extracts structured medical metadata, and formats raw text pasted from any book chapter.
+ */
+export async function analyzeCustomChapterWithAI({
+  apiKey,
+  model = 'openai/gpt-4o-mini',
+  fallbackModel = 'google/gemini-2.5-flash',
+  rawText,
+  suggestedBookTitle,
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  rawText: string;
+  suggestedBookTitle?: string;
+}): Promise<CustomChapterAnalysisResult> {
+  const openai = getOpenAIClient(apiKey);
+
+  const userPrompt = `Analise, extraia metadados e estruture o texto médico colado abaixo:
+${suggestedBookTitle ? `LIVRO / FONTE SUGERIDA PELO USUÁRIO: "${suggestedBookTitle}"\n` : ''}
+TEXTO MÉDICO BRUTO:
+"""
+${rawText}
+"""
+
+Retorne ESTRITAMENTE o JSON estruturado conforme as instruções do prompt de sistema.`;
+
+  const modelsCascade = [
+    model,
+    fallbackModel,
+    'openai/gpt-4o-mini',
+    'google/gemini-2.5-flash',
+    'deepseek/deepseek-chat',
+    'meta-llama/llama-3.3-70b-instruct:free',
+  ];
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
+    const response = await openai.chat.completions.create({
+      model: selectedModel,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT_CUSTOM_CHAPTER_ANALYZER },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.2,
+      max_tokens: 16000,
+    } as any);
+
+    const content = response.choices[0]?.message?.content || '';
+    const parsed = parseJsonFromMarkdown<CustomChapterAnalysisResult>(content);
+    return {
+      title: fixMojibake(parsed.title || 'Capítulo Sem Título'),
+      sourceBook: fixMojibake(parsed.sourceBook || suggestedBookTitle || 'Livro Personalizado'),
+      sectionTitle: fixMojibake(parsed.sectionTitle || 'Capítulos Personalizados'),
+      category: parsed.category || 'Geral',
+      summary: fixMojibake(parsed.summary || ''),
+      cleanedContent: fixMojibake(parsed.cleanedContent || rawText),
+      frequencyScore: Math.min(10, Math.max(1, Number(parsed.frequencyScore) || 5.0)),
+      importanceScore: Math.min(10, Math.max(1, Number(parsed.importanceScore) || 5.0)),
+    };
+  });
+}
+

@@ -163,15 +163,19 @@ export const SPECIALTIES_CONFIG: Array<{ name: string; chapterIds: number[]; col
   },
 ];
 
-// Helper: Normalize weights for all 122 chapters
-export function getNormalizedClinicalWeights(): Map<number, { impactNorm: number; frequencyNorm: number; rawWeight: number; clinicalWeight: number }> {
+// Helper: Normalize weights for all chapters (official + custom)
+export function getNormalizedClinicalWeights(
+  chaptersList?: Chapter[],
+  customWeights?: Record<number, ChapterWeight>
+): Map<number, { impactNorm: number; frequencyNorm: number; rawWeight: number; clinicalWeight: number }> {
+  const chapters = chaptersList && chaptersList.length > 0 ? chaptersList : CHAPTERS_DATA;
   const result = new Map<number, { impactNorm: number; frequencyNorm: number; rawWeight: number; clinicalWeight: number }>();
   let sumRaw = 0;
 
-  CHAPTERS_DATA.forEach((cap) => {
-    const weight = getChapterWeight(cap.id);
-    const frequencyNorm = Math.min(1.0, Math.max(0.1, weight.frequencyScore / 10.0));
-    const impactNorm = Math.min(1.0, Math.max(0.1, weight.importanceScore / 10.0));
+  chapters.forEach((cap) => {
+    const weight = customWeights && customWeights[cap.id] ? customWeights[cap.id] : getChapterWeight(cap.id);
+    const frequencyNorm = Math.min(1.0, Math.max(0.1, (cap.frequencyScore || weight.frequencyScore) / 10.0));
+    const impactNorm = Math.min(1.0, Math.max(0.1, (cap.importanceScore || weight.importanceScore) / 10.0));
     const rawWeight = 0.45 * impactNorm + 0.35 * frequencyNorm + 0.20 * impactNorm * frequencyNorm;
     sumRaw += rawWeight;
 
@@ -184,7 +188,7 @@ export function getNormalizedClinicalWeights(): Map<number, { impactNorm: number
   });
 
   // Renormalize so sum = 1.0
-  CHAPTERS_DATA.forEach((cap) => {
+  chapters.forEach((cap) => {
     const item = result.get(cap.id)!;
     item.clinicalWeight = item.rawWeight / (sumRaw || 1.0);
   });
@@ -270,15 +274,18 @@ export function extractChapterPerformanceEvidence(
   return result;
 }
 
-// Compute metrics for all 122 chapters
+// Compute metrics for all chapters (official + custom)
 export function deriveAllTopicMetrics(params: {
   progressList: ChapterProgressItem[];
   reviewStatsList: ChapterReviewStatFSRS[];
   testsList: TestRecordItem[];
+  chaptersList?: Chapter[];
+  customWeights?: Record<number, ChapterWeight>;
   now?: Date;
 }): Map<number, ChapterMetrics> {
   const now = params.now || new Date();
-  const weightsMap = getNormalizedClinicalWeights();
+  const chapters = params.chaptersList && params.chaptersList.length > 0 ? params.chaptersList : CHAPTERS_DATA;
+  const weightsMap = getNormalizedClinicalWeights(chapters, params.customWeights);
   const evidenceMap = extractChapterPerformanceEvidence(params.testsList, now);
 
   const progressMap = new Map<number, ChapterProgressItem>();
@@ -296,9 +303,11 @@ export function deriveAllTopicMetrics(params: {
 
   const rawMetricsList: Array<{ cap: Chapter; metric: Partial<ChapterMetrics> }> = [];
 
-  CHAPTERS_DATA.forEach((cap) => {
+  chapters.forEach((cap) => {
     const w = weightsMap.get(cap.id)!;
-    const weightInfo = getChapterWeight(cap.id);
+    const weightInfo = params.customWeights && params.customWeights[cap.id]
+      ? params.customWeights[cap.id]
+      : getChapterWeight(cap.id);
     const prog = progressMap.get(cap.id);
     const stat = statsMap.get(cap.id);
     const ev = evidenceMap.get(cap.id);
@@ -443,6 +452,8 @@ export function buildReadinessSnapshot(params: {
   surface?: 'dashboard' | 'plantao';
   requestedChapterId?: number;
   excludeChapterIds?: number[];
+  chaptersList?: Chapter[];
+  customWeights?: Record<number, ChapterWeight>;
   now?: Date;
 }): ReadinessEngineSnapshot {
   const now = params.now || new Date();
@@ -451,6 +462,8 @@ export function buildReadinessSnapshot(params: {
     progressList: params.progressList,
     reviewStatsList: params.reviewStatsList,
     testsList: params.testsList,
+    chaptersList: params.chaptersList,
+    customWeights: params.customWeights,
     now,
   });
 

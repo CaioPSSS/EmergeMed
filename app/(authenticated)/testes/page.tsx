@@ -3,7 +3,8 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { CHAPTERS_DATA } from '@/lib/chapters-data';
+import { CHAPTERS_DATA, Chapter } from '@/lib/chapters-data';
+import { getUnifiedChapters } from '@/lib/chapters-service';
 import { calculateChapterScores, ScoredChapter } from '@/lib/spaced-repetition';
 import {
   Sparkles,
@@ -19,6 +20,7 @@ import {
   Flame,
   Eye,
   EyeOff,
+  Bookmark,
 } from 'lucide-react';
 
 function TestGeneratorForm() {
@@ -29,6 +31,7 @@ function TestGeneratorForm() {
   const initialMode = searchParams.get('mode') === 'plantao' ? 'plantao' : 'classic';
 
   const [activeTab, setActiveTab] = useState<'classic' | 'plantao'>(initialMode);
+  const [chaptersList, setChaptersList] = useState<Chapter[]>(CHAPTERS_DATA);
 
   // Classic mode state
   const [selectedChapterIds, setSelectedChapterIds] = useState<number[]>([]);
@@ -50,13 +53,24 @@ function TestGeneratorForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    async function loadChapters() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const unified = await getUnifiedChapters(supabase, user.id);
+        setChaptersList(unified);
+      }
+    }
+    loadChapters();
+  }, []);
+
+  useEffect(() => {
     if (preselectedChapterId) {
       const capId = Number(preselectedChapterId);
-      if (!isNaN(capId) && CHAPTERS_DATA.some((c) => c.id === capId)) {
+      if (!isNaN(capId) && chaptersList.some((c) => c.id === capId)) {
         setSelectedChapterIds([capId]);
       }
     }
-  }, [preselectedChapterId]);
+  }, [preselectedChapterId, chaptersList]);
 
   useEffect(() => {
     async function loadDataForPlantao() {
@@ -175,10 +189,12 @@ function TestGeneratorForm() {
     }
   };
 
-  const filteredChapters = CHAPTERS_DATA.filter(
+  const filteredChapters = chaptersList.filter(
     (c) =>
       c.title.toLowerCase().includes(chapterSearch.toLowerCase()) ||
-      c.sectionTitle.toLowerCase().includes(chapterSearch.toLowerCase())
+      c.sectionTitle.toLowerCase().includes(chapterSearch.toLowerCase()) ||
+      (c.sourceBook && c.sourceBook.toLowerCase().includes(chapterSearch.toLowerCase())) ||
+      (c.category && c.category.toLowerCase().includes(chapterSearch.toLowerCase()))
   );
 
   return (
@@ -645,9 +661,28 @@ function TestGeneratorForm() {
                         fontSize: '0.88rem',
                         color: isSelected ? '#38bdf8' : '#e2e8f0',
                         fontWeight: isSelected ? 600 : 400,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      Cap. {cap.number}: {cap.title}
+                      <span>{cap.isCustom ? cap.title : `Cap. ${cap.number}: ${cap.title}`}</span>
+                      {cap.isCustom && (
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '6px',
+                            background: 'rgba(168, 85, 247, 0.2)',
+                            color: '#c084fc',
+                            border: '1px solid rgba(168, 85, 247, 0.3)',
+                          }}
+                        >
+                          📘 {cap.sourceBook || 'Personalizado'}
+                        </span>
+                      )}
                     </div>
                     <div
                       style={{

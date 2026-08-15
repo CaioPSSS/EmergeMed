@@ -7,12 +7,22 @@ export interface Chapter {
   startPage?: number;
   endPage?: number;
   prerequisites?: number[];
+  sourceBook?: string;
+  category?: string;
+  isCustom?: boolean;
+  summary?: string;
+  frequencyScore?: number;
+  importanceScore?: number;
+  wordCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Section {
   number: number;
   title: string;
   chapters: Chapter[];
+  isCustom?: boolean;
 }
 
 export const CHAPTERS_DATA: Chapter[] = [

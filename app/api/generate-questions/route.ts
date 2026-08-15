@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { CHAPTERS_DATA } from '@/lib/chapters-data';
+import { getUnifiedChapters } from '@/lib/chapters-service';
 import { generateQuestionsWithAI } from '@/lib/ai/openrouter';
 
 export async function POST(request: Request) {
@@ -33,8 +33,9 @@ export async function POST(request: Request) {
     const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
     const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
-    // Get chapter titles and section info
-    const chaptersInfo = CHAPTERS_DATA.filter((c) => chapterIds.includes(c.id));
+    // Get chapter titles and section info (Official + Custom)
+    const allChapters = await getUnifiedChapters(supabase, user.id);
+    const chaptersInfo = allChapters.filter((c) => chapterIds.includes(c.id));
 
     // Get optional saved chapter text contents from Supabase
     const { data: contents } = await supabase

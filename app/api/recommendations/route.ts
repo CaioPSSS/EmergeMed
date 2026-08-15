@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { buildReadinessSnapshot } from '@/lib/learning-engine';
+import { getUnifiedChapters, getUnifiedChapterWeights } from '@/lib/chapters-service';
 
 export async function GET(request: Request) {
   try {
@@ -48,6 +49,12 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    // Fetch unified chapters and weights (Official + Custom)
+    const [chaptersList, customWeights] = await Promise.all([
+      getUnifiedChapters(supabase, user.id),
+      getUnifiedChapterWeights(supabase, user.id),
+    ]);
+
     const snapshot = buildReadinessSnapshot({
       progressList: progressList || [],
       reviewStatsList: reviewStatsList || [],
@@ -56,6 +63,8 @@ export async function GET(request: Request) {
       surface,
       requestedChapterId,
       excludeChapterIds,
+      chaptersList,
+      customWeights,
     });
 
     return NextResponse.json(snapshot);
