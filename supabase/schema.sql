@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS public.tests (
   answers JSONB,
   results JSONB,
   completed BOOLEAN DEFAULT FALSE,
+  draft_index INTEGER DEFAULT 0,
   mode TEXT DEFAULT 'standard', -- 'standard' | 'plantao'
   plantao_data JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.tests (
 -- Ensure new columns exist on tests table if it was created previously
 ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS mode TEXT DEFAULT 'standard';
 ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS plantao_data JSONB;
+ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS draft_index INTEGER DEFAULT 0;
 
 -- Table: chapter_weights (Stores frequency and importance weights per chapter)
 CREATE TABLE IF NOT EXISTS public.chapter_weights (

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { QuestionItem } from '@/lib/ai/openrouter';
 import { calculateSM2Update, calculateFSRSUpdate, determineBedOutcome } from '@/lib/spaced-repetition';
 import { recordActivityAndAwardXP } from '@/lib/gamification-engine';
+import { useAutoSave } from '@/lib/hooks/useAutoSave';
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,6 +22,8 @@ import {
   Flame,
   Eye,
   EyeOff,
+  Bookmark,
+  Cloud,
 } from 'lucide-react';
 
 const VENTILATOR_FIELD_LABELS: Record<string, { label: string; unit: string; placeholder: string }> = {
@@ -65,8 +68,19 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const [generatingAdverse, setGeneratingAdverse] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [showPlantaoTopics, setShowPlantaoTopics] = useState<boolean>(false);
+  const [restoredDraftInfo, setRestoredDraftInfo] = useState<{ count: number; index: number } | null>(null);
 
   const [cachedEvaluations, setCachedEvaluations] = useState<Record<number, any>>({});
+
+  // Auto-Save hook: persistent dual-layer saving (Supabase + localStorage mirror)
+  const { saveStatus, lastSavedAt, forceSave, clearDraft, getLocalBackup } = useAutoSave({
+    testId,
+    supabase,
+    userAnswers,
+    currentIndex,
+    enabled: !testRecord?.completed && !submitting && !loading,
+    debounceMs: 2500,
+  });
 
   // Plantão specific state
   const isPlantao = testRecord?.mode === 'plantao';
@@ -86,10 +100,38 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         setError('Simulado ou Plantão não encontrado.');
       } else {
         setTestRecord(data);
-        setQuestions(data.questions as QuestionItem[]);
-        if (data.answers) {
-          setUserAnswers(data.answers);
+        const qs = (data.questions || []) as QuestionItem[];
+        setQuestions(qs);
+
+        let restoredAnswers = data.answers || null;
+        let restoredIndex = typeof data.draft_index === 'number' ? data.draft_index : 0;
+
+        // Fallback: If Supabase has no answers, check local mirror
+        if (!restoredAnswers || Object.keys(restoredAnswers).length === 0) {
+          const localBackup = getLocalBackup();
+          if (localBackup && localBackup.answers && Object.keys(localBackup.answers).length > 0) {
+            restoredAnswers = localBackup.answers;
+            if (typeof localBackup.currentIndex === 'number') {
+              restoredIndex = localBackup.currentIndex;
+            }
+          }
         }
+
+        if (restoredAnswers && Object.keys(restoredAnswers).length > 0) {
+          setUserAnswers(restoredAnswers);
+          if (!data.completed) {
+            const answeredCount = Object.keys(restoredAnswers).length;
+            setRestoredDraftInfo({
+              count: answeredCount,
+              index: restoredIndex < qs.length ? restoredIndex : 0,
+            });
+          }
+        }
+
+        if (!data.completed && restoredIndex > 0 && restoredIndex < qs.length) {
+          setCurrentIndex(restoredIndex);
+        }
+
         if (data.results) {
           setCachedEvaluations(data.results);
         }
@@ -98,6 +140,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
     }
 
     loadTest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testId]);
 
   const handleSelectOption = (questionId: number, optionIndex: number) => {
@@ -210,13 +253,21 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   };
 
   const handleNext = async () => {
+    await forceSave();
     if (isPlantao && currentBed) {
       await triggerAdverseEvolutionIfNeeded(currentBed);
     }
     setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1));
   };
 
+  const handlePrev = async () => {
+    await forceSave();
+    setCurrentIndex((prev) => Math.max(0, prev - 1));
+  };
+
   const handleSubmitTest = async () => {
+    await forceSave();
+
     const unansweredCount = questions.filter((q) => {
       const answer = userAnswers[q.id];
       if (answer === undefined || answer === null) return true;
@@ -643,6 +694,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         console.warn('Failed to generate general feedback:', fbErr);
       }
 
+      clearDraft();
       router.push(`/testes/${testId}/resultado`);
     } catch (err: any) {
       setError(err.message || 'Erro ao submeter e avaliar o teste.');
@@ -740,7 +792,8 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                 return (
                   <div
                     key={bed.bedNumber}
-                    onClick={() => {
+                    onClick={async () => {
+                      await forceSave();
                       // Navigate to first question of this bed
                       const firstQIndex = questions.findIndex((q) => q.id === bedQuestionIds[0]);
                       if (firstQIndex !== -1) setCurrentIndex(firstQIndex);
@@ -803,6 +856,8 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             alignItems: 'center',
             justifyContent: 'space-between',
             borderRadius: '16px',
+            flexWrap: 'wrap',
+            gap: '12px',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -812,7 +867,81 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            {/* Discrete Auto-Save status badge */}
+            {!testRecord?.completed && (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {saveStatus === 'saving' && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '0.75rem',
+                      color: '#38bdf8',
+                      background: 'rgba(56, 189, 248, 0.12)',
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(56, 189, 248, 0.25)',
+                    }}
+                  >
+                    <Loader2 size={12} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                    Salvando rascunho...
+                  </span>
+                )}
+                {saveStatus === 'saved' && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '0.75rem',
+                      color: '#34d399',
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                    }}
+                  >
+                    <CheckCircle2 size={12} />
+                    Rascunho salvo
+                  </span>
+                )}
+                {saveStatus === 'error' && (
+                  <span
+                    onClick={() => forceSave()}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '0.75rem',
+                      color: '#fda4af',
+                      background: 'rgba(244, 63, 94, 0.12)',
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(244, 63, 94, 0.25)',
+                      cursor: 'pointer',
+                    }}
+                    title="Clique para tentar salvar agora"
+                  >
+                    <AlertCircle size={12} />
+                    Erro ao salvar (clique para tentar)
+                  </span>
+                )}
+                {saveStatus === 'idle' && lastSavedAt && (
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-subtle)',
+                      opacity: 0.8,
+                    }}
+                  >
+                    Salvo às {lastSavedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+            )}
+
             <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               Questão {currentIndex + 1} de {questions.length}
             </span>
@@ -824,6 +953,45 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             </div>
           </div>
         </div>
+
+        {/* Restored Draft Banner */}
+        {restoredDraftInfo && (
+          <div
+            style={{
+              padding: '12px 18px',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(16, 185, 129, 0.12))',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              fontSize: '0.86rem',
+              color: '#e2e8f0',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Bookmark size={18} color="#38bdf8" />
+              <span>
+                <strong>Rascunho recuperado com sucesso:</strong> Você já preencheu {restoredDraftInfo.count} resposta(s)/conduta(s). Continuando de onde você parou!
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRestoredDraftInfo(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-subtle)',
+                cursor: 'pointer',
+                fontSize: '0.82rem',
+                padding: '4px 8px',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {generatingAdverse && (
           <div
@@ -1199,7 +1367,7 @@ Se sem acesso: Midazolam 10mg IM`}
           {/* Bottom Navigation & Submit Buttons */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)' }}>
             <button
-              onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+              onClick={handlePrev}
               disabled={currentIndex === 0 || submitting}
               className="btn-secondary"
               style={{ opacity: currentIndex === 0 ? 0.5 : 1 }}
