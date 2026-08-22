@@ -17,6 +17,18 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/historico') ||
     request.nextUrl.pathname.startsWith('/configuracoes') ||
     request.nextUrl.pathname.startsWith('/plantoes');
+  const isProtectedApi = request.nextUrl.pathname.startsWith('/api/');
+  const isMaintenancePage = request.nextUrl.pathname === '/maintenance';
+
+  // Fast path: skip Supabase entirely for non-protected, non-auth routes
+  if (!isAuthPage && !isProtectedPage && !isProtectedApi && !isMaintenancePage) {
+    return supabaseResponse;
+  }
+
+  // Allow maintenance page to render without auth
+  if (isMaintenancePage) {
+    return supabaseResponse;
+  }
 
   if (!supabaseUrl || !supabaseAnonKey) {
     // If Supabase is not configured, block protected pages instead of silently allowing access
@@ -49,11 +61,38 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Attempt auth check with timeout protection
+  // If Supabase is paused/down, this prevents the 504 MIDDLEWARE_INVOCATION_TIMEOUT
+  let user = null;
+  let supabaseDown = false;
 
-  const isProtectedApi = request.nextUrl.pathname.startsWith('/api/');
+  try {
+    // AbortController with 4s timeout to prevent middleware from hanging
+    // Vercel middleware timeout is ~25s, but we want to fail fast
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    const { data, error } = await supabase.auth.getUser();
+    clearTimeout(timeoutId);
+
+    if (!error) {
+      user = data.user;
+    }
+  } catch (error: any) {
+    console.error('Middleware: Supabase auth check failed:', error?.message || error);
+    supabaseDown = true;
+  }
+
+  // If Supabase is down and user is trying to access protected content,
+  // redirect to maintenance page instead of showing a 504
+  if (supabaseDown) {
+    if (isProtectedPage || isProtectedApi) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/maintenance';
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
+  }
 
   if (!user && isProtectedPage) {
     const url = request.nextUrl.clone();
