@@ -245,7 +245,7 @@ export function getOpenAIClient(userApiKey?: string) {
 export async function generateQuestionsWithAI({
   apiKey,
   model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  fallbackModel = 'minimax/minimax-m3',
   chaptersInfo,
   chapterTexts,
   count = 5,
@@ -297,7 +297,7 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
   // Scale max_tokens dynamically: ~1200 tokens per question, minimum 6000, maximum 24000
   const calculatedMaxTokens = Math.min(24000, Math.max(6000, count * 1200));
 
-  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -324,7 +324,7 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
 export async function evaluatePrescriptionWithAI({
   apiKey,
   model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  fallbackModel = 'minimax/minimax-m3',
   vignette,
   userPrescription,
   idealPrescription,
@@ -372,7 +372,7 @@ ${cleanChapterText ? `TEXTO COMPLETO DE REFERÊNCIA DO LIVRO:\n${cleanChapterTex
 
 Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markdown extra.`;
 
-  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -400,7 +400,7 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
 export async function generatePlantaoBedQuestionsWithAI({
   apiKey,
   model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  fallbackModel = 'minimax/minimax-m3',
   bedNumber,
   chapterInfo,
   chapterText,
@@ -426,7 +426,7 @@ Q4: Prescrição Completa ("prescription_complete") OU Ventilador Mecânico ("ve
 
 Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato especificado. Sem explicações ou markdown adicional.`;
 
-  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -458,7 +458,7 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
 export async function generateAdverseEvolutionQuestionWithAI({
   apiKey,
   model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  fallbackModel = 'deepseek/deepseek-v4-flash-0731',
   bedNumber,
   chapterTitle,
   originalVignette,
@@ -493,7 +493,7 @@ Gere UMA única questão bônus (tipo "prescription_immediate" ou "multiple_choi
 
 Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdown extra.`;
 
-  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+  const modelsCascade = [model, fallbackModel, 'thinkingmachines/inkling-small:free'];
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -515,8 +515,8 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
 
 export async function generateGeneralFeedbackWithAI({
   apiKey,
-  model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  model = 'deepseek/deepseek-v4-flash-0731',
+  fallbackModel = 'openai/gpt-5.6-luna',
   overallScore,
   totalQuestions,
   evaluationsSummary,
@@ -582,7 +582,7 @@ ${isPlantao ? 'Gere o Feedback de Passagem de Plantão Noturno em Markdown.' : '
 
 Responda diretamente em Markdown sem blocos de código JSON.`;
 
-  const modelsCascade = [model, fallbackModel, 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct:free'];
+  const modelsCascade = [model, fallbackModel, 'minimax/minimax-m3', 'thinkingmachines/inkling-small:free'];
   const systemPrompt = isPlantao ? SYSTEM_PROMPT_PLANTAO_FEEDBACK : SYSTEM_PROMPT_GENERAL_FEEDBACK;
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
@@ -607,8 +607,8 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
  */
 export async function analyzeCustomChapterWithAI({
   apiKey,
-  model = 'openai/gpt-4o-mini',
-  fallbackModel = 'google/gemini-2.5-flash',
+  model = 'deepseek/deepseek-v4-flash-0731',
+  fallbackModel = 'openai/gpt-5.6-luna',
   rawText,
   suggestedBookTitle,
 }: {
@@ -632,10 +632,7 @@ Retorne ESTRITAMENTE o JSON estruturado conforme as instruções do prompt de si
   const modelsCascade = [
     model,
     fallbackModel,
-    'openai/gpt-4o-mini',
-    'google/gemini-2.5-flash',
-    'deepseek/deepseek-chat',
-    'meta-llama/llama-3.3-70b-instruct:free',
+    'thinkingmachines/inkling-small:free',
   ];
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
