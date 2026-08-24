@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateAdverseEvolutionQuestionWithAI, QuestionItem } from '@/lib/ai/openrouter';
+import { parsePrescriptionDrugs, formatDrugFactsForPrompt } from '@/lib/ai/drug-math-validator';
 
 export async function POST(request: Request) {
   try {
@@ -13,13 +14,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const { testId, bedNumber, chapterTitle, originalVignette, errorsContext } =
+    const { testId, bedNumber, chapterTitle, originalVignette, errorsContext, mathFactsText } =
       (await request.json()) as {
         testId: string;
         bedNumber: number;
         chapterTitle: string;
         originalVignette: string;
         errorsContext: { questionType: string; vignette: string; userText: string; idealText?: string }[];
+        mathFactsText?: string;
       };
 
     if (!testId || !bedNumber) {
@@ -60,9 +62,24 @@ export async function POST(request: Request) {
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
     const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
-    const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    const fallbackModel = settings?.fallback_model || 'minimax/minimax-m3';
 
-    // 3. Generate Q5 bonus question
+    // 3. Compute math facts if not provided
+    let finalMathFactsText = mathFactsText || '';
+    if (!finalMathFactsText && errorsContext && errorsContext.length > 0) {
+      const weightMatch = originalVignette.match(/(\d{2,3})\s*kg\b/i);
+      const patientWeight = weightMatch ? parseInt(weightMatch[1], 10) : 70;
+      const allCalcs: any[] = [];
+      for (const err of errorsContext) {
+        if (err.userText) {
+          const calcs = parsePrescriptionDrugs(err.userText, patientWeight);
+          allCalcs.push(...calcs);
+        }
+      }
+      finalMathFactsText = formatDrugFactsForPrompt(allCalcs);
+    }
+
+    // 4. Generate Q5 bonus question
     const q5Question = await generateAdverseEvolutionQuestionWithAI({
       apiKey,
       model: questionModel,
@@ -71,6 +88,7 @@ export async function POST(request: Request) {
       chapterTitle,
       originalVignette,
       errorsContext,
+      mathFactsText: finalMathFactsText,
     });
 
     const currentQuestions = (testRecord.questions as QuestionItem[]) || [];

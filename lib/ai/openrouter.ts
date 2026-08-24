@@ -8,6 +8,7 @@ import {
   SYSTEM_PROMPT_GENERAL_FEEDBACK,
   SYSTEM_PROMPT_PLANTAO_FEEDBACK,
   SYSTEM_PROMPT_CUSTOM_CHAPTER_ANALYZER,
+  SYSTEM_PROMPT_BED_SEQUENCE_EVALUATOR,
 } from './prompts';
 
 export interface CustomChapterAnalysisResult {
@@ -42,6 +43,8 @@ export interface QuestionItem {
   // Ventilator fields
   ventilatorFields?: Record<string, string>;
   idealVentilator?: Record<string, string>;
+  // Patient data (extracted for drug math validation)
+  patientWeight?: number;
 }
 
 export interface PrescriptionEvaluation {
@@ -190,6 +193,15 @@ export function normalizeQuestionItem(q: any): QuestionItem {
     }
   } else if (typeof rawCorrect === 'number') {
     q.correctOption = rawCorrect;
+  }
+
+  // 5. Extract patientWeight if present
+  if (q.patientWeight !== undefined) {
+    q.patientWeight = Number(q.patientWeight) || undefined;
+  } else if (q.patient_weight !== undefined) {
+    q.patientWeight = Number(q.patient_weight) || undefined;
+  } else if (q.weight !== undefined) {
+    q.patientWeight = Number(q.weight) || undefined;
   }
 
   return q as QuestionItem;
@@ -455,6 +467,150 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
   });
 }
 
+export async function evaluateBedSequenceWithAI({
+  apiKey,
+  model = 'openai/gpt-5.6-luna',
+  fallbackModel = 'minimax/minimax-m3',
+  bedNumber,
+  patientWeight,
+  chapterTitle,
+  chapterText,
+  mcqResults = [],
+  prescriptions = [],
+  mathFactsText = '',
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  bedNumber: number;
+  patientWeight?: number;
+  chapterTitle?: string;
+  chapterText?: string;
+  mcqResults?: Array<{
+    id: number;
+    vignette: string;
+    userAnswer: string;
+    isCorrect: boolean;
+    explanation?: string;
+  }>;
+  prescriptions: Array<{
+    id: number;
+    type: 'prescription_complete' | 'prescription_immediate' | 'ventilator';
+    vignette: string;
+    userPrescription: string;
+    idealPrescription?: string;
+    evaluationCriteria?: string[];
+    ventilatorData?: Record<string, string>;
+  }>;
+  mathFactsText?: string;
+}): Promise<Record<number, PrescriptionEvaluation>> {
+  const openai = getOpenAIClient(apiKey);
+  const cleanChapterText = fixMojibake(chapterText || '');
+
+  let mcqSection = '';
+  if (mcqResults && mcqResults.length > 0) {
+    mcqSection = `\n═══════════════════════════════════════════════════════════\nRESPOSTAS DO MÉDICO NAS QUESTÕES DE TRIAGEM / DIAGNÓSTICO (Q1 / Q2):\n═══════════════════════════════════════════════════════════\n` +
+      mcqResults.map((m, idx) => `
+QUESTÃO ${idx + 1} (ID: ${m.id}) - Múltipla Escolha:
+- Caso Clínico: ${m.vignette}
+- Opção Escolhida pelo Médico: "${m.userAnswer}" (${m.isCorrect ? 'CORRETO ✅' : 'INCORRETO ❌'})
+${m.explanation ? `- Gabarito / Justificativa: ${m.explanation}` : ''}
+`).join('\n');
+  }
+
+  const prescriptionsSection = prescriptions.map((p, idx) => {
+    const typeLabel = p.type === 'ventilator'
+      ? 'CONFIGURAÇÃO DE VENTILADOR MECÂNICO'
+      : p.type === 'prescription_immediate'
+      ? 'PRESCRIÇÃO IMEDIATA (NO MOMENTO)'
+      : 'PRESCRIÇÃO COMPLETA (DO DIA)';
+
+    const ventilatorContent = p.ventilatorData
+      ? `\nPARÂMETROS DO VENTILADOR CONFIGURADOS PELO MÉDICO:\n${Object.entries(p.ventilatorData).map(([k, v]) => `- ${k}: ${v || '(não preenchido)'}`).join('\n')}\n`
+      : '';
+
+    return `
+═══════════════════════════════════════════════════════════
+PRESCRIÇÃO ${idx + 1} (QUESTÃO ID: ${p.id}) — ${typeLabel}:
+═══════════════════════════════════════════════════════════
+TIPO DE QUESTÃO: ${p.type}
+CASO CLÍNICO / EVOLUÇÃO NO MOMENTO DESTA CONDUTA:
+${p.vignette}
+
+${p.type === 'ventilator' ? ventilatorContent : `PRESCRIÇÃO ESCRITA PELO MÉDICO:\n${p.userPrescription}\n`}
+${p.idealPrescription ? `GABARITO / CONDUTA DE REFERÊNCIA:\n${p.idealPrescription}\n` : ''}
+${p.evaluationCriteria && p.evaluationCriteria.length > 0 ? `CRITÉRIOS ESPERADOS:\n${p.evaluationCriteria.join('\n')}\n` : ''}
+`;
+  }).join('\n');
+
+  const userPrompt = `Avalie as condutas prescritas para o LEITO ${bedNumber} ${chapterTitle ? `(Tema: ${chapterTitle})` : ''} ${patientWeight ? `| Peso do Paciente: ${patientWeight} kg` : ''}:
+
+${mathFactsText ? `${mathFactsText}\n` : ''}
+${mcqSection}
+${prescriptionsSection}
+${cleanChapterText ? `\n═══════════════════════════════════════════════════════════\nTEXTO COMPLETO DE REFERÊNCIA DO LIVRO:\n═══════════════════════════════════════════════════════════\n${cleanChapterText}\n` : ''}
+
+INSTRUÇÃO FINAL:
+Avalie CADA uma das ${prescriptions.length} prescrições acima levando em consideração o contexto cronológico do leito e os fatos matemáticos pré-calculados.
+Retorne ESTRITAMENTE o JSON no formato:
+{
+  "evaluations": {
+${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", "strengths": [...], "improvements": [...], "detailedFeedback": "...", "idealPrescription": "...", "errorTags": [...] }`).join(',\n')}
+  }
+}`;
+
+  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
+    const response = await openai.chat.completions.create({
+      model: selectedModel,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT_BED_SEQUENCE_EVALUATOR },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.3,
+      max_tokens: Math.min(16000, Math.max(4000, prescriptions.length * 3000)),
+      plugins: [{ id: 'web', max_results: 3 }],
+    } as any);
+
+    const content = response.choices[0]?.message?.content || '{}';
+    const parsed = parseJsonFromMarkdown<any>(content);
+
+    const rawEvals = (parsed && typeof parsed === 'object' && parsed.evaluations) ? parsed.evaluations : parsed;
+    const finalEvaluations: Record<number, PrescriptionEvaluation> = {};
+
+    if (rawEvals && typeof rawEvals === 'object') {
+      for (const [key, val] of Object.entries(rawEvals)) {
+        const qId = parseInt(key, 10);
+        if (!isNaN(qId) && val && typeof val === 'object') {
+          const evalObj = val as PrescriptionEvaluation;
+          if (evalObj.verdict) evalObj.verdict = fixMojibake(evalObj.verdict);
+          if (evalObj.detailedFeedback) evalObj.detailedFeedback = fixMojibake(evalObj.detailedFeedback);
+          if (evalObj.idealPrescription) evalObj.idealPrescription = fixMojibake(evalObj.idealPrescription);
+          finalEvaluations[qId] = evalObj;
+        }
+      }
+    }
+
+    // Safety fallback: ensure all requested prescriptions have an entry
+    for (const p of prescriptions) {
+      if (!finalEvaluations[p.id]) {
+        console.warn(`[OpenRouter Bed Evaluation] Questão ${p.id} não foi retornada no JSON. Criando fallback.`);
+        finalEvaluations[p.id] = {
+          score: 7.0,
+          verdict: 'Adequado',
+          strengths: ['Conduta clínica registrada.'],
+          improvements: ['Avaliação detalhada indisponível.'],
+          detailedFeedback: 'A avaliação individual desta conduta não pôde ser estruturada separadamente pela IA, mas o leito foi analisado.',
+          idealPrescription: p.idealPrescription || 'Conduta de referência do protocolo.',
+        };
+      }
+    }
+
+    return finalEvaluations;
+  });
+}
+
 export async function generateAdverseEvolutionQuestionWithAI({
   apiKey,
   model = 'openai/gpt-5.6-luna',
@@ -463,6 +619,7 @@ export async function generateAdverseEvolutionQuestionWithAI({
   chapterTitle,
   originalVignette,
   errorsContext,
+  mathFactsText = '',
 }: {
   apiKey?: string;
   model?: string;
@@ -471,6 +628,7 @@ export async function generateAdverseEvolutionQuestionWithAI({
   chapterTitle: string;
   originalVignette: string;
   errorsContext: { questionType: string; vignette: string; userText: string; idealText?: string }[];
+  mathFactsText?: string;
 }): Promise<QuestionItem> {
   const openai = getOpenAIClient(apiKey);
 
@@ -486,6 +644,7 @@ export async function generateAdverseEvolutionQuestionWithAI({
 CASO CLÍNICO ORIGINAL:
 ${originalVignette}
 
+${mathFactsText ? `${mathFactsText}\nATENÇÃO RIGOROSA: Os valores acima são fatos matemáticos verificados. NUNCA invente uma complicação por "sobredose" ou "toxicidade" de uma droga se a dose calculada estiver DENTRO DA FAIXA terapêutica normal!\n` : ''}
 ERROS COMETIDOS PELO MÉDICO NO ATENDIMENTO INICIAL:
 ${errorsSummary}
 

@@ -290,85 +290,182 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
     try {
       const evaluations: Record<number, any> = { ...cachedEvaluations, ...(testRecord?.results || {}) };
-      const aiEvalPromises: Promise<{ id: number; evalData: any; userAnswer: any }>[] = [];
 
+      // 1. Evaluate multiple choice questions locally
       for (const q of questions) {
-        // Skip already evaluated questions to avoid redundant AI calls
         if (evaluations[q.id] && typeof evaluations[q.id].score === 'number') {
           continue;
         }
-
-        const answer = userAnswers[q.id];
-
         if (q.type === 'multiple_choice') {
+          const answer = userAnswers[q.id];
           const isCorrect = answer === q.correctOption;
           const score = isCorrect ? 10 : 0;
-
           evaluations[q.id] = {
             userAnswer: answer,
             isCorrect,
             score,
             explanation: q.explanation,
           };
-        } else if (q.type === 'prescription_complete' || q.type === 'prescription_immediate') {
-          const userPrescription = answer || 'Sem resposta enviada';
+        }
+      }
 
-          aiEvalPromises.push(
-            fetch('/api/evaluate-prescription', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                vignette: q.vignette,
-                userPrescription,
-                idealPrescription: q.idealPrescription,
-                evaluationCriteria: q.evaluationCriteria,
-                chapterId: q.chapterId,
-                questionType: q.type,
-              }),
-            })
-              .then((res) => res.json())
-              .then((evalData) => ({ id: q.id, evalData, userAnswer: userPrescription }))
+      // 2. Evaluate prescriptions
+      if (isPlantao && beds.length > 0) {
+        // PLANTÃO MODE: Unified batch evaluation per bed with cumulative context and math facts
+        for (const bed of beds) {
+          const bedQs = questions.filter((q) => (bed.questionIds || []).includes(q.id));
+          const unEvaluatedPrescs = bedQs.filter(
+            (q) => q.type !== 'multiple_choice' && !(evaluations[q.id] && typeof evaluations[q.id].score === 'number')
           );
-        } else if (q.type === 'ventilator') {
-          const ventilatorData = (answer as Record<string, string>) || {};
-          const userPrescription = Object.entries(ventilatorData)
-            .map(([k, v]) => `${k}: ${v || '(vazio)'}`)
-            .join('\n');
 
-          aiEvalPromises.push(
-            fetch('/api/evaluate-prescription', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+          if (unEvaluatedPrescs.length === 0) continue;
+
+          // Extract patient weight from structured field or regex fallback
+          const patientWeight =
+            bedQs.find((q) => q.patientWeight)?.patientWeight ||
+            (bedQs[0]?.vignette?.match(/(\d{2,3})\s*kg\b/i) ? parseInt(bedQs[0].vignette.match(/(\d{2,3})\s*kg\b/i)![1], 10) : 70);
+
+          const mcqResults = bedQs
+            .filter((q) => q.type === 'multiple_choice')
+            .map((q) => ({
+              id: q.id,
+              vignette: q.vignette,
+              userAnswer: q.options?.[userAnswers[q.id]] || 'Não respondida',
+              isCorrect: userAnswers[q.id] === q.correctOption,
+              explanation: q.explanation,
+            }));
+
+          const prescriptionsPayload = unEvaluatedPrescs.map((q) => {
+            if (q.type === 'ventilator') {
+              const ventilatorData = (userAnswers[q.id] as Record<string, string>) || {};
+              const userPrescription = Object.entries(ventilatorData)
+                .map(([k, v]) => `${k}: ${v || '(vazio)'}`)
+                .join('\n');
+              return {
+                id: q.id,
+                type: q.type,
                 vignette: q.vignette,
                 userPrescription,
                 idealPrescription: q.idealVentilator
                   ? Object.entries(q.idealVentilator).map(([k, v]) => `${k}: ${v}`).join('\n')
                   : undefined,
                 evaluationCriteria: q.evaluationCriteria,
-                chapterId: q.chapterId,
-                questionType: 'ventilator',
                 ventilatorData,
+              };
+            } else {
+              const userPrescription = userAnswers[q.id] || 'Sem resposta enviada';
+              return {
+                id: q.id,
+                type: q.type,
+                vignette: q.vignette,
+                userPrescription,
+                idealPrescription: q.idealPrescription,
+                evaluationCriteria: q.evaluationCriteria,
+              };
+            }
+          });
+
+          try {
+            const bedRes = await fetch('/api/evaluate-bed', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                bedNumber: bed.bedNumber,
+                patientWeight,
+                chapterId: bedQs[0]?.chapterId,
+                chapterTitle: bed.chapterTitle,
+                mcqResults,
+                prescriptions: prescriptionsPayload,
               }),
-            })
-              .then((res) => res.json())
-              .then((evalData) => ({ id: q.id, evalData, userAnswer: ventilatorData }))
-          );
+            });
+
+            const bedData = await bedRes.json();
+            if (bedRes.ok && bedData.evaluations) {
+              for (const p of prescriptionsPayload) {
+                const evalObj = bedData.evaluations[p.id];
+                if (evalObj) {
+                  evaluations[p.id] = {
+                    userPrescription: p.userPrescription,
+                    ventilatorData: p.ventilatorData,
+                    evaluation: evalObj,
+                    score: Number(evalObj.score) || 0,
+                  };
+                }
+              }
+            } else {
+              console.error(`Falha ao avaliar Leito ${bed.bedNumber}:`, bedData.error);
+            }
+          } catch (bedErr) {
+            console.error(`Erro de rede ao avaliar Leito ${bed.bedNumber}:`, bedErr);
+          }
         }
-      }
+      } else {
+        // SIMULADO MODE: Individual parallel evaluation per question
+        const aiEvalPromises: Promise<{ id: number; evalData: any; userAnswer: any }>[] = [];
 
-      if (aiEvalPromises.length > 0) {
-        const aiResults = await Promise.all(aiEvalPromises);
+        for (const q of questions) {
+          if (evaluations[q.id] && typeof evaluations[q.id].score === 'number') {
+            continue;
+          }
+          const answer = userAnswers[q.id];
 
-        for (const res of aiResults) {
-          const score = Number(res.evalData.evaluation?.score) || 0;
+          if (q.type === 'prescription_complete' || q.type === 'prescription_immediate') {
+            const userPrescription = answer || 'Sem resposta enviada';
+            aiEvalPromises.push(
+              fetch('/api/evaluate-prescription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  vignette: q.vignette,
+                  userPrescription,
+                  idealPrescription: q.idealPrescription,
+                  evaluationCriteria: q.evaluationCriteria,
+                  chapterId: q.chapterId,
+                  questionType: q.type,
+                }),
+              })
+                .then((res) => res.json())
+                .then((evalData) => ({ id: q.id, evalData, userAnswer: userPrescription }))
+            );
+          } else if (q.type === 'ventilator') {
+            const ventilatorData = (answer as Record<string, string>) || {};
+            const userPrescription = Object.entries(ventilatorData)
+              .map(([k, v]) => `${k}: ${v || '(vazio)'}`)
+              .join('\n');
 
-          evaluations[res.id] = {
-            userPrescription: typeof res.userAnswer === 'string' ? res.userAnswer : JSON.stringify(res.userAnswer),
-            ventilatorData: typeof res.userAnswer === 'object' ? res.userAnswer : undefined,
-            evaluation: res.evalData.evaluation,
-            score,
-          };
+            aiEvalPromises.push(
+              fetch('/api/evaluate-prescription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  vignette: q.vignette,
+                  userPrescription,
+                  idealPrescription: q.idealVentilator
+                    ? Object.entries(q.idealVentilator).map(([k, v]) => `${k}: ${v}`).join('\n')
+                    : undefined,
+                  evaluationCriteria: q.evaluationCriteria,
+                  chapterId: q.chapterId,
+                  questionType: 'ventilator',
+                  ventilatorData,
+                }),
+              })
+                .then((res) => res.json())
+                .then((evalData) => ({ id: q.id, evalData, userAnswer: ventilatorData }))
+            );
+          }
+        }
+
+        if (aiEvalPromises.length > 0) {
+          const aiResults = await Promise.all(aiEvalPromises);
+          for (const res of aiResults) {
+            const score = Number(res.evalData.evaluation?.score) || 0;
+            evaluations[res.id] = {
+              userPrescription: typeof res.userAnswer === 'string' ? res.userAnswer : JSON.stringify(res.userAnswer),
+              ventilatorData: typeof res.userAnswer === 'object' ? res.userAnswer : undefined,
+              evaluation: res.evalData.evaluation,
+              score,
+            };
+          }
         }
       }
 
