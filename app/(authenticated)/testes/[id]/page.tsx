@@ -313,7 +313,9 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       if (isPlantao && beds.length > 0) {
         // PLANTÃO MODE: Unified batch evaluation per bed with cumulative context and math facts
         for (const bed of beds) {
-          const bedQs = questions.filter((q) => (bed.questionIds || []).includes(q.id));
+          const bedQs = questions.filter(
+            (q) => (bed.questionIds || []).includes(q.id) || bed.bonusQuestionId === q.id
+          );
           const unEvaluatedPrescs = bedQs.filter(
             (q) => q.type !== 'multiple_choice' && !(evaluations[q.id] && typeof evaluations[q.id].score === 'number')
           );
@@ -404,6 +406,26 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           } catch (bedErr) {
             console.error(`Erro de rede ao avaliar Leito ${bed.bedNumber}:`, bedErr);
           }
+        }
+
+        // Check if any prescription questions failed evaluation in Plantão mode
+        const failedPrescQuestions = questions.filter(
+          (q) => q.type !== 'multiple_choice' && typeof evaluations[q.id]?.score !== 'number'
+        );
+
+        if (failedPrescQuestions.length > 0) {
+          // Persist whatever succeeded so the user doesn't lose progress, but stop the submission
+          // and let them retry — do not finalize the test with missing/fabricated scores.
+          setCachedEvaluations(evaluations);
+          await supabase
+            .from('tests')
+            .update({ answers: userAnswers, results: evaluations })
+            .eq('id', testId);
+          setSubmitting(false);
+          setError(
+            `A IA não conseguiu avaliar ${failedPrescQuestions.length} conduta(s) do plantão (possível instabilidade do modelo ou resposta truncada). Nenhuma nota foi zerada indevidamente — clique em "Finalizar" novamente para tentar reavaliar apenas essas questões.`
+          );
+          return;
         }
       } else {
         // SIMULADO MODE: Individual parallel evaluation per question

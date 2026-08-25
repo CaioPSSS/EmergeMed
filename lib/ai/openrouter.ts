@@ -611,18 +611,16 @@ ${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", 
       }
     }
 
-    // Safety fallback: ensure all requested prescriptions have an entry
+    // Validate that every requested prescription has a complete, valid evaluation with a numeric score.
+    // If any prescription was omitted by the AI model or returned without a valid numeric score,
+    // throw an error so the cascade can retry with the next model instead of masking failures with a fabricated score.
     for (const p of prescriptions) {
-      if (!finalEvaluations[p.id]) {
-        console.warn(`[OpenRouter Bed Evaluation] Questão ${p.id} não foi retornada no JSON. Criando fallback.`);
-        finalEvaluations[p.id] = {
-          score: 7.0,
-          verdict: 'Adequado',
-          strengths: ['Conduta clínica registrada.'],
-          improvements: ['Avaliação detalhada indisponível.'],
-          detailedFeedback: 'A avaliação individual desta conduta não pôde ser estruturada separadamente pela IA, mas o leito foi analisado.',
-          idealPrescription: p.idealPrescription || 'Conduta de referência do protocolo.',
-        };
+      const evalObj = finalEvaluations[p.id];
+      if (!evalObj) {
+        throw new Error(`Resposta da IA não contém avaliação para a questão/prescrição ID ${p.id} do leito ${bedNumber} (modelo '${selectedModel}').`);
+      }
+      if (typeof evalObj.score !== 'number' || Number.isNaN(evalObj.score)) {
+        throw new Error(`Avaliação da questão ID ${p.id} do leito ${bedNumber} não possui um "score" numérico válido (modelo '${selectedModel}').`);
       }
     }
 
