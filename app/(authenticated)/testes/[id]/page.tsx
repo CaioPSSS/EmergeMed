@@ -383,14 +383,20 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             if (bedRes.ok && bedData.evaluations) {
               for (const p of prescriptionsPayload) {
                 const evalObj = bedData.evaluations[p.id];
-                if (evalObj) {
+                const rawScore = evalObj?.score;
+                const hasValidScore = typeof rawScore === 'number' && !Number.isNaN(rawScore);
+                if (evalObj && hasValidScore) {
                   evaluations[p.id] = {
                     userPrescription: p.userPrescription,
                     ventilatorData: p.ventilatorData,
                     evaluation: evalObj,
-                    score: Number(evalObj.score) || 0,
+                    score: rawScore,
                   };
+                } else if (evalObj) {
+                  console.error(`Avaliação sem score numérico válido para questão ${p.id} do Leito ${bed.bedNumber}:`, evalObj);
                 }
+                // If evalObj is missing entirely, leave the question unevaluated (do not fabricate a 0)
+                // so the next submission attempt retries it instead of permanently zeroing the grade.
               }
             } else {
               console.error(`Falha ao avaliar Leito ${bed.bedNumber}:`, bedData.error);
@@ -457,14 +463,43 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
         if (aiEvalPromises.length > 0) {
           const aiResults = await Promise.all(aiEvalPromises);
+          const failedQuestionIds: number[] = [];
+
           for (const res of aiResults) {
-            const score = Number(res.evalData.evaluation?.score) || 0;
+            const rawScore = res.evalData?.evaluation?.score;
+            const hasValidScore = typeof rawScore === 'number' && !Number.isNaN(rawScore);
+
+            if (!hasValidScore) {
+              // The AI evaluation failed (truncated response, network error, malformed JSON, etc).
+              // Never cache a fabricated 0 here — that would silently zero out a real question and
+              // permanently "stick" because later re-submissions skip questions that already have a
+              // numeric score cached. Leave it unevaluated so the user can retry.
+              console.error(`Falha ao avaliar questão ${res.id}:`, res.evalData?.error || res.evalData);
+              failedQuestionIds.push(res.id);
+              continue;
+            }
+
             evaluations[res.id] = {
               userPrescription: typeof res.userAnswer === 'string' ? res.userAnswer : JSON.stringify(res.userAnswer),
               ventilatorData: typeof res.userAnswer === 'object' ? res.userAnswer : undefined,
               evaluation: res.evalData.evaluation,
-              score,
+              score: rawScore,
             };
+          }
+
+          if (failedQuestionIds.length > 0) {
+            // Persist whatever succeeded so the user doesn't lose progress, but stop the submission
+            // and let them retry — do not finalize the test with missing/fabricated scores.
+            setCachedEvaluations(evaluations);
+            await supabase
+              .from('tests')
+              .update({ answers: userAnswers, results: evaluations })
+              .eq('id', testId);
+            setSubmitting(false);
+            setError(
+              `A IA não conseguiu avaliar ${failedQuestionIds.length} questão(ões) (possível instabilidade do modelo ou resposta truncada). Nenhuma nota foi zerada indevidamente — clique em "Finalizar" novamente para tentar reavaliar apenas essas questões.`
+            );
+            return;
           }
         }
       }

@@ -394,12 +394,25 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.3,
-      max_tokens: 4000,
+      max_tokens: 8000,
       plugins: [{ id: 'web', max_results: 3 }],
     } as any);
 
+    const finishReason = response.choices[0]?.finish_reason;
     const content = response.choices[0]?.message?.content || '{}';
+
+    if (finishReason === 'length') {
+      // Response was truncated before completing the JSON payload — never trust a partial
+      // parse here, force the cascade to retry with a fresh attempt/model instead of silently
+      // returning a malformed (and possibly score-less) evaluation.
+      throw new Error(`Resposta da IA truncada por limite de tokens (finish_reason=length) no modelo '${selectedModel}'.`);
+    }
+
     const result = parseJsonFromMarkdown<PrescriptionEvaluation>(content);
+
+    if (typeof result.score !== 'number' || Number.isNaN(result.score)) {
+      throw new Error(`Resposta da IA não contém um "score" numérico válido (modelo '${selectedModel}').`);
+    }
 
     if (result.verdict) result.verdict = fixMojibake(result.verdict);
     if (result.detailedFeedback) result.detailedFeedback = fixMojibake(result.detailedFeedback);
@@ -569,11 +582,17 @@ ${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", 
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.3,
-      max_tokens: Math.min(16000, Math.max(4000, prescriptions.length * 3000)),
+      max_tokens: Math.min(24000, Math.max(8000, prescriptions.length * 4000)),
       plugins: [{ id: 'web', max_results: 3 }],
     } as any);
 
+    const finishReason = response.choices[0]?.finish_reason;
     const content = response.choices[0]?.message?.content || '{}';
+
+    if (finishReason === 'length') {
+      throw new Error(`Resposta da IA truncada por limite de tokens (finish_reason=length) no modelo '${selectedModel}' ao avaliar leito.`);
+    }
+
     const parsed = parseJsonFromMarkdown<any>(content);
 
     const rawEvals = (parsed && typeof parsed === 'object' && parsed.evaluations) ? parsed.evaluations : parsed;
