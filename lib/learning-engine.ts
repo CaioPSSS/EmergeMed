@@ -237,9 +237,14 @@ export function extractChapterPerformanceEvidence(
   tests.forEach((test) => {
     if (!test.completed || !test.completed_at) return;
     const testDate = new Date(test.completed_at);
+    if (isNaN(testDate.getTime())) return;
     const daysAgo = Math.max(0, (now.getTime() - testDate.getTime()) / (1000 * 60 * 60 * 24));
     // Exponential decay half-life = 90 days
     const timeDecayWeight = Math.exp(-Math.LN2 * daysAgo / 90);
+
+    const numericScore = test.score !== null && test.score !== undefined && !isNaN(Number(test.score))
+      ? Number(test.score)
+      : 5.0;
 
     const isPlantao = test.mode === 'plantao';
 
@@ -264,7 +269,7 @@ export function extractChapterPerformanceEvidence(
           }
         });
 
-        const bedAvgScore = qCount > 0 ? (bedTotalScore / qCount) * 10 : (Number(test.score) || 5) * 10;
+        const bedAvgScore = qCount > 0 ? (bedTotalScore / qCount) * 10 : numericScore * 10;
         const totalWeight = 1.25 * timeDecayWeight;
 
         if (!evidenceMap.has(chapterId)) evidenceMap.set(chapterId, []);
@@ -272,7 +277,7 @@ export function extractChapterPerformanceEvidence(
       });
     } else if (Array.isArray(test.chapter_ids) && test.chapter_ids.length > 0) {
       // Classic test: assign overall score to all chapters in test
-      const score100 = (Number(test.score) || 5) * 10;
+      const score100 = numericScore * 10;
       const attributionConfidence = 1.0 / Math.max(1, test.chapter_ids.length);
       const totalWeight = 1.0 * attributionConfidence * timeDecayWeight;
 
@@ -334,6 +339,31 @@ export function deriveAllTopicMetrics(params: {
 
   const rawMetricsList: Array<{ cap: Chapter; metric: Partial<ChapterMetrics> }> = [];
 
+  // Dynamic evidence timestamp extraction from testsList
+  const latestTestDateMap = new Map<number, Date>();
+  params.testsList.forEach((test) => {
+    if (!test.completed || !test.completed_at) return;
+    const testDate = new Date(test.completed_at);
+    if (isNaN(testDate.getTime())) return;
+
+    const chapterIdsSet = new Set<number>();
+    if (test.mode === 'plantao' && test.plantao_data?.beds && Array.isArray(test.plantao_data.beds)) {
+      test.plantao_data.beds.forEach((b) => {
+        if (b.chapterId) chapterIdsSet.add(b.chapterId);
+      });
+    }
+    if (Array.isArray(test.chapter_ids)) {
+      test.chapter_ids.forEach((id) => chapterIdsSet.add(id));
+    }
+
+    chapterIdsSet.forEach((id) => {
+      const existing = latestTestDateMap.get(id);
+      if (!existing || testDate > existing) {
+        latestTestDateMap.set(id, testDate);
+      }
+    });
+  });
+
   chapters.forEach((cap) => {
     const w = weightsMap.get(cap.id)!;
     const weightInfo = params.customWeights && params.customWeights[cap.id]
@@ -348,49 +378,58 @@ export function deriveAllTopicMetrics(params: {
     const readCount = prog?.read_count || (isRead ? 1 : 0);
     const lastReadAt = prog?.last_read_at || null;
 
-    // Last evidence date = max(readAt, lastReadAt, stat.last_reviewed_at, stat.last_evidence_at)
+    // Last evidence date = max(readAt, lastReadAt, stat.last_reviewed_at, stat.last_evidence_at, latestTestCompletedAt)
     let lastEvidenceDate: Date | null = null;
-    if (readAt) lastEvidenceDate = new Date(readAt);
+    if (readAt) {
+      const d = new Date(readAt);
+      if (!isNaN(d.getTime())) lastEvidenceDate = d;
+    }
     if (lastReadAt) {
       const d = new Date(lastReadAt);
-      if (!lastEvidenceDate || d > lastEvidenceDate) lastEvidenceDate = d;
+      if (!isNaN(d.getTime()) && (!lastEvidenceDate || d > lastEvidenceDate)) lastEvidenceDate = d;
     }
     if (stat?.last_reviewed_at) {
       const d = new Date(stat.last_reviewed_at);
-      if (!lastEvidenceDate || d > lastEvidenceDate) lastEvidenceDate = d;
+      if (!isNaN(d.getTime()) && (!lastEvidenceDate || d > lastEvidenceDate)) lastEvidenceDate = d;
     }
     if (stat?.last_evidence_at) {
       const d = new Date(stat.last_evidence_at);
-      if (!lastEvidenceDate || d > lastEvidenceDate) lastEvidenceDate = d;
+      if (!isNaN(d.getTime()) && (!lastEvidenceDate || d > lastEvidenceDate)) lastEvidenceDate = d;
     }
+    const latestTestDate = latestTestDateMap.get(cap.id);
+    if (latestTestDate) {
+      if (!lastEvidenceDate || latestTestDate > lastEvidenceDate) lastEvidenceDate = latestTestDate;
+    }
+
+    const effectiveIsRead = isRead || (ev !== undefined && ev.count > 0);
 
     let daysSinceLastEvidence = 999;
     if (lastEvidenceDate) {
       daysSinceLastEvidence = Math.max(0, (now.getTime() - lastEvidenceDate.getTime()) / (1000 * 60 * 60 * 24));
     }
 
-    // Bayesian Smoothing: performance = (n * observedAverage + 3 * prior) / (n + 3)
+    // Bayesian Smoothing: performance = (n * observedAverage + 1.0 * prior) / (n + 1.0)
     const n = ev?.count || 0;
-    const observedAverage = ev ? ev.observedAverage : (isRead ? 50 : 0);
-    const prior = isRead ? 50 : 0;
-    const performance = n > 0 ? (n * observedAverage + 3 * prior) / (n + 3) : prior;
-    const confidence = Math.min(1.0, n / 5.0);
+    const prior = effectiveIsRead ? 70.0 : 0.0;
+    const observedAverage = ev ? ev.observedAverage : prior;
+    const performance = n > 0 ? (n * observedAverage + 1.0 * prior) / (n + 1.0) : prior;
+    const confidence = Math.min(1.0, n / 4.0);
 
-    // FSRS Stability S and Difficulty D
-    let stability = stat?.stability || (stat?.interval_days && stat?.ease_factor ? stat.interval_days * stat.ease_factor : 3.0);
-    stability = Math.min(365.0, Math.max(1.0, stability));
+    // FSRS Stability S and Difficulty D (baseline S0 = 7.0 days)
+    let stability = stat?.stability || (stat?.interval_days && stat?.ease_factor ? stat.interval_days * stat.ease_factor : 7.0);
+    stability = Math.min(365.0, Math.max(7.0, stability));
     const difficulty = Math.min(10.0, Math.max(1.0, stat?.difficulty || 5.0));
 
-    // FSRS Retention Curve: R = 100 * exp(-ln(2) * daysSince / S)
-    const retention = isRead
-      ? Math.min(100.0, Math.max(0.0, 100.0 * Math.exp((-Math.LN2 * daysSinceLastEvidence) / stability)))
+    // Official FSRS Power-Law Retention Curve: R = 100 * (1 + (19/81) * (days / S))^(-0.5)
+    const retention = effectiveIsRead
+      ? Math.min(100.0, Math.max(0.0, 100.0 * Math.pow(1.0 + (19.0 / 81.0) * (daysSinceLastEvidence / stability), -0.5)))
       : 0.0;
 
-    const scheduledInterval = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
-    const dueRatio = isRead ? Math.min(2.0, Math.max(0.0, daysSinceLastEvidence / Math.max(1, scheduledInterval))) : 0.0;
+    const scheduledInterval = stability; // For DESIRED_RETENTION = 0.90
+    const dueRatio = effectiveIsRead ? Math.min(2.0, Math.max(0.0, daysSinceLastEvidence / Math.max(1, scheduledInterval))) : 0.0;
 
-    // Topic Readiness = 0.60 * performance + 0.40 * retention (for read topic)
-    const topicReadiness = isRead ? Math.min(100.0, 0.60 * performance + 0.40 * retention) : 0.0;
+    // Topic Readiness = 0.85 * performance + 0.15 * retention (for read/tested topic)
+    const topicReadiness = effectiveIsRead ? Math.min(100.0, 0.85 * performance + 0.15 * retention) : 0.0;
 
     // Dynamic Threshold = clamp(60 + 20 * clinicalWeightNormalized + 5 * impactNorm, 65, 90)
     // Relative clinical weight for threshold scaling
@@ -403,14 +442,15 @@ export function deriveAllTopicMetrics(params: {
     const prereqs = cap.prerequisites || [];
     const prereqsMet = prereqs.length === 0 || prereqs.every((pId) => {
       const pProg = progressMap.get(pId);
-      return pProg?.is_read === true;
+      const pEv = evidenceMap.get(pId);
+      return (pProg?.is_read === true) || (pEv !== undefined && pEv.count > 0);
     });
     const prereqPenalty = prereqsMet ? 1.0 : 0.15;
 
     // Mode Scores
     const remediationScore = w.clinicalWeight * remediationGap * (0.65 + 0.35 * confidence);
-    const expansionScore = !isRead ? w.clinicalWeight * (0.70 + 0.30 * w.impactNorm) * prereqPenalty : 0.0;
-    const maintenanceScore = isRead ? w.clinicalWeight * (performance / 100.0) * dueRatio : 0.0;
+    const expansionScore = !effectiveIsRead ? w.clinicalWeight * (0.70 + 0.30 * w.impactNorm) * prereqPenalty : 0.0;
+    const maintenanceScore = effectiveIsRead ? w.clinicalWeight * (performance / 100.0) * dueRatio : 0.0;
 
     if (remediationScore > maxRemediation) maxRemediation = remediationScore;
     if (expansionScore > maxExpansion) maxExpansion = expansionScore;
@@ -431,9 +471,9 @@ export function deriveAllTopicMetrics(params: {
         frequencyNorm: w.frequencyNorm,
         rawClinicalWeight: w.rawWeight,
         clinicalWeight: w.clinicalWeight,
-        isRead,
+        isRead: effectiveIsRead,
         readAt,
-        readCount,
+        readCount: prog?.read_count || (effectiveIsRead ? 1 : 0),
         lastReadAt,
         observedAverage: Math.round(observedAverage * 10) / 10,
         evidenceCount: n,
@@ -563,11 +603,12 @@ export function buildReadinessSnapshot(params: {
   if (readCount === 0 && totalEvaluations === 0) {
     globalReadiness = 0;
   } else {
-    // Active quality index (65% mastery + 35% retention)
-    const activeQualityIndex = 0.65 * activeProficiency + 0.35 * activeRetention;
-    // Coverage scaling factor (0.20 baseline credibility + 0.80 * clinical coverage)
-    const coverageFactor = Math.min(1.0, sumReadClinicalWeight);
-    globalReadiness = Math.round(activeQualityIndex * (0.20 + 0.80 * coverageFactor) * 10) / 10;
+    // Active quality index (70% mastery + 30% retention)
+    const activeQualityIndex = 0.70 * activeProficiency + 0.30 * activeRetention;
+    // Sublinear coverage factor: 0.35 baseline + 0.65 * sqrt(coverage)
+    const coverageRatio = Math.min(1.0, sumReadClinicalWeight);
+    const coverageFactor = 0.35 + 0.65 * Math.sqrt(coverageRatio);
+    globalReadiness = Math.round(activeQualityIndex * coverageFactor * 10) / 10;
   }
 
   const unadjustedReadiness = activeProficiency;
@@ -1019,7 +1060,7 @@ export function calculateFSRSUpdate(
 ) {
   let easeFactor = currentStat?.ease_factor || 2.5;
   let interval = currentStat?.interval_days || 1;
-  let stability = currentStat?.stability || 3.0;
+  let stability = currentStat?.stability || 7.0;
   let difficulty = currentStat?.difficulty || 5.0;
   let timesReviewed = (currentStat?.times_reviewed || 0) + 1;
   let timesCorrect = currentStat?.times_correct || 0;
@@ -1028,7 +1069,7 @@ export function calculateFSRSUpdate(
   // Grade G on scale 1-4
   // Score 0-3.9 -> Grade 1 (Again), Score 4-5.9 -> Grade 2 (Hard), Score 6-7.9 -> Grade 3 (Good), Score 8-10 -> Grade 4 (Easy)
   let grade: number;
-  if (bedScore < 4.0) grade = 1;
+  if (isNaN(bedScore) || bedScore < 4.0) grade = 1;
   else if (bedScore < 6.0) grade = 2;
   else if (bedScore < 8.0) grade = 3;
   else grade = 4;
@@ -1045,19 +1086,20 @@ export function calculateFSRSUpdate(
   let elapsedDays = 1.0;
   if (currentStat?.last_evidence_at) {
     const lastDate = new Date(currentStat.last_evidence_at);
-    elapsedDays = Math.max(0.1, (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (!isNaN(lastDate.getTime())) {
+      elapsedDays = Math.max(0.1, (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    }
   }
 
   // FSRS 4.5 Update Rules
   if (isSuccess) {
     difficulty = Math.min(10.0, Math.max(1.0, difficulty - 0.4 * (grade - 3)));
 
-    const retentionAtReview = Math.exp(-Math.LN2 * elapsedDays / stability);
+    const retentionAtReview = Math.pow(1.0 + (19.0 / 81.0) * (elapsedDays / stability), -0.5);
     const growthFactor = 1.0 + 2.5 * (1.0 - retentionAtReview) * Math.exp(0.08 * (10.0 - difficulty));
 
-    stability = Math.min(365.0, Math.max(1.0, stability * growthFactor));
-    const intervalFromRetention = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
-    interval = Math.max(1, Math.round(intervalFromRetention));
+    stability = Math.min(365.0, Math.max(7.0, stability * growthFactor));
+    interval = Math.max(1, Math.round(stability));
     easeFactor = Math.min(3.5, Math.max(1.3, easeFactor + 0.1));
   } else {
     difficulty = Math.min(10.0, Math.max(1.0, difficulty + 0.8));
@@ -1089,16 +1131,15 @@ export function calculateFSRSManualReadUpdate(
   now: Date = new Date()
 ) {
   let easeFactor = currentStat?.ease_factor || 2.5;
-  let stability = currentStat?.stability || 3.0;
+  let stability = currentStat?.stability || 7.0;
   let difficulty = currentStat?.difficulty || 5.0;
   let timesReviewed = (currentStat?.times_reviewed || 0) + 1;
   let timesCorrect = currentStat?.times_correct || 0;
   let timesIncorrect = currentStat?.times_incorrect || 0;
 
-  // Re-reading reinforces memory stability S by 35% (up to 365 days)
-  stability = Math.min(365.0, Math.max(3.0, stability * 1.35));
-  const intervalFromRetention = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
-  const interval = Math.max(1, Math.round(intervalFromRetention));
+  // Re-reading reinforces memory stability S by 35% (up to 365 days, min 7.0)
+  stability = Math.min(365.0, Math.max(7.0, stability * 1.35));
+  const interval = Math.max(1, Math.round(stability));
 
   const nextReviewDate = new Date(now.getTime());
   nextReviewDate.setDate(nextReviewDate.getDate() + interval);
@@ -1129,14 +1170,14 @@ export function calculateFSRSRereadWithQuiz(
   const passRate = quizTotal > 0 ? quizCorrect / quizTotal : 0;
   const stabilityMultiplier = passRate >= 0.66 ? 1.35 : 1.10;
 
-  let stability = currentStat?.stability || 3.0;
+  let stability = currentStat?.stability || 7.0;
   let easeFactor = currentStat?.ease_factor || 2.5;
   let difficulty = currentStat?.difficulty || 5.0;
   let timesReviewed = (currentStat?.times_reviewed || 0) + 1;
   let timesCorrect = (currentStat?.times_correct || 0) + quizCorrect;
   let timesIncorrect = (currentStat?.times_incorrect || 0) + (quizTotal - quizCorrect);
 
-  stability = Math.min(365.0, Math.max(3.0, stability * stabilityMultiplier));
+  stability = Math.min(365.0, Math.max(7.0, stability * stabilityMultiplier));
 
   if (passRate >= 0.66) {
     difficulty = Math.max(1.0, difficulty - 0.2);
@@ -1144,8 +1185,7 @@ export function calculateFSRSRereadWithQuiz(
     difficulty = Math.min(10.0, difficulty + 0.3);
   }
 
-  const intervalFromRetention = stability * (-Math.log(DESIRED_RETENTION) / Math.LN2);
-  const interval = Math.max(1, Math.round(intervalFromRetention));
+  const interval = Math.max(1, Math.round(stability));
 
   const nextReviewDate = new Date(now.getTime());
   nextReviewDate.setDate(nextReviewDate.getDate() + interval);
