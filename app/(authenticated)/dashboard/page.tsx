@@ -30,11 +30,20 @@ import {
   Clock,
   Gauge,
   Flame,
+  Target,
+  Compass,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
 
 interface SpecialtyScore {
   name: string;
   score: number; // 0 - 100
+  readCount?: number;
+  totalChapters?: number;
+  isStarted?: boolean;
+  coveragePercent?: number;
+  clinicalCoveragePercent?: number;
   chapterIds: number[];
   color: string;
   confidence?: number;
@@ -49,17 +58,18 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
 
   const points = data.map((item, i) => {
     const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
-    const r = radius * (Math.max(10, Math.min(100, item.score)) / 100);
+    const isStarted = item.isStarted ?? (item.score > 0);
+    const r = radius * (isStarted ? Math.max(20, Math.min(100, item.score)) / 100 : 0.12);
     const x = cx + r * Math.cos(angle);
     const y = cy + r * Math.sin(angle);
-    return { x, y, angle, item };
+    return { x, y, angle, item, isStarted };
   });
 
   const polygonPointsStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
 
   return (
-    <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto', position: 'relative' }}>
+    <div style={{ width: '100%', maxWidth: '440px', margin: '0 auto', position: 'relative' }}>
       <svg viewBox="0 0 400 400" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
         <defs>
           <linearGradient id="radarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -117,7 +127,7 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
         />
 
         {points.map((p, i) => {
-          const labelRadius = radius + 32;
+          const labelRadius = radius + 34;
           const lx = cx + labelRadius * Math.cos(p.angle);
           const ly = cy + labelRadius * Math.sin(p.angle);
 
@@ -126,13 +136,16 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
             textAnchor = Math.cos(p.angle) > 0 ? 'start' : 'end';
           }
 
+          const totalCaps = p.item.totalChapters || p.item.chapterIds.length;
+          const readCaps = p.item.readCount || 0;
+
           return (
             <g key={`node-${i}`}>
               <circle
                 cx={p.x}
                 cy={p.y}
-                r="5"
-                fill={p.item.color}
+                r={p.isStarted ? '5' : '3.5'}
+                fill={p.isStarted ? p.item.color : '#64748b'}
                 stroke="#0f172a"
                 strokeWidth="2"
               />
@@ -140,21 +153,31 @@ function MedicalRadarChart({ data }: { data: SpecialtyScore[] }) {
                 x={p.x}
                 y={p.y - 10}
                 textAnchor="middle"
-                fill="#ffffff"
+                fill={p.isStarted ? '#ffffff' : '#94a3b8'}
                 fontSize="11"
                 fontWeight="700"
               >
-                {Math.round(p.item.score)}%
+                {p.isStarted ? `${Math.round(p.item.score)}%` : '0%'}
               </text>
               <text
                 x={lx}
-                y={ly}
+                y={ly - 6}
                 textAnchor={textAnchor}
                 fill="#f8fafc"
                 fontSize="12"
                 fontWeight="700"
               >
                 {p.item.name}
+              </text>
+              <text
+                x={lx}
+                y={ly + 9}
+                textAnchor={textAnchor}
+                fill={p.isStarted ? '#38bdf8' : 'var(--text-subtle)'}
+                fontSize="10"
+                fontWeight="600"
+              >
+                {p.isStarted ? `${readCaps}/${totalCaps} caps lidos` : `A Iniciar (0/${totalCaps})`}
               </text>
             </g>
           );
@@ -911,48 +934,81 @@ export default function DashboardPage() {
       </div>
 
       {/* DASHBOARD MEDICAL COMPETENCIES RADAR CHART & UPA READINESS INDICATOR */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
-        {/* Left Column: UPA Medical Readiness Indicator */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
+        {/* Left Column: UPA Medical Readiness Indicator & 3-Pillar Breakdown */}
         <div
           className="glass-panel"
           style={{
             padding: '28px',
             borderRadius: '20px',
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.85) 100%)',
             border: '1px solid rgba(56, 189, 248, 0.25)',
             display: 'flex',
             flexDirection: 'column',
             gap: '20px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Header Row: Title & Dual Highlights */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div
                 style={{
                   padding: '10px',
                   borderRadius: '12px',
                   background: 'rgba(16, 185, 129, 0.15)',
                   color: '#34d399',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
                 <HeartPulse size={24} />
               </div>
               <div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
                   Prontidão Médica da UPA
                 </h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  Índice Ponderado por Risco & FSRS (0-100)
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                  Índice Integrado por Risco Epidemiológico & FSRS
                 </p>
               </div>
             </div>
 
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '2.2rem', fontWeight: 900, color: readinessBadge.color, lineHeight: 1 }}>
-                {globalReadinessScore}%
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              {/* Active Proficiency Badge */}
+              <div
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '14px',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#34d399', lineHeight: 1 }}>
+                  {snapshot ? Math.round(snapshot.activeProficiency) : 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: '#a7f3d0', fontWeight: 700, marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Domínio Ativo
+                </div>
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600, marginTop: '2px' }}>
-                SCORE GLOBAL
+
+              {/* Global Readiness Score */}
+              <div
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '14px',
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: readinessBadge.color, lineHeight: 1 }}>
+                  {globalReadinessScore}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: '#bae6fd', fontWeight: 700, marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Prontidão Global
+                </div>
               </div>
             </div>
           </div>
@@ -961,7 +1017,7 @@ export default function DashboardPage() {
           <div
             style={{
               padding: '12px 16px',
-              borderRadius: '12px',
+              borderRadius: '14px',
               background: readinessBadge.bg,
               border: `1px solid ${readinessBadge.border}`,
               display: 'flex',
@@ -969,9 +1025,9 @@ export default function DashboardPage() {
               gap: '12px',
             }}
           >
-            <BadgeIcon size={20} style={{ color: readinessBadge.color, flexShrink: 0 }} />
+            <BadgeIcon size={22} style={{ color: readinessBadge.color, flexShrink: 0 }} />
             <div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: readinessBadge.color, letterSpacing: '0.04em' }}>
+              <div style={{ fontSize: '0.84rem', fontWeight: 800, color: readinessBadge.color, letterSpacing: '0.03em' }}>
                 {readinessBadge.label}
               </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
@@ -980,61 +1036,181 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Pedagogical disclaimer for low confidence */}
-          {confidence < 0.40 && (
+          {/* 3 Pillars of Readiness Decomposition */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '10px',
+              background: 'rgba(0, 0, 0, 0.25)',
+              padding: '14px',
+              borderRadius: '14px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Activity size={12} color="#34d399" /> Domínio Médio
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#34d399' }}>
+                {snapshot ? Math.round(snapshot.activeProficiency) : 0}%
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                Acurácia nos temas lidos
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderLeft: '1px solid rgba(255, 255, 255, 0.08)', paddingLeft: '10px' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Brain size={12} color="#38bdf8" /> Retenção FSRS
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8' }}>
+                {snapshot ? Math.round(snapshot.activeRetention) : 0}%
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                Consolidação de memória
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderLeft: '1px solid rgba(255, 255, 255, 0.08)', paddingLeft: '10px' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Layers size={12} color="#fbbf24" /> Cobertura UPA
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fbbf24' }}>
+                {snapshot?.curricularCoverage?.readCount ?? stats.totalRead} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>/ {snapshot?.curricularCoverage?.totalChapters ?? CHAPTERS_DATA.length}</span>
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {snapshot?.curricularCoverage?.percent ?? 0}% do currículo
+              </div>
+            </div>
+          </div>
+
+          {/* Daily Clinical Challenge Card */}
+          {snapshot?.dailyChallenge && (
             <div
               style={{
-                padding: '10px 14px',
-                borderRadius: '10px',
-                background: 'rgba(56, 189, 248, 0.1)',
-                border: '1px solid rgba(56, 189, 248, 0.25)',
-                fontSize: '0.78rem',
-                color: '#e2e8f0',
+                padding: '16px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(56, 189, 248, 0.08) 100%)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
                 display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
+                flexDirection: 'column',
+                gap: '10px',
               }}
             >
-              <Info size={16} color="#38bdf8" style={{ flexShrink: 0 }} />
-              <span>
-                <strong>Estimativa pedagógica inicial:</strong> Realize plantões e simulados para gerar evidências técnicas e elevar o nível de confiança do seu indicador.
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Target size={18} color="#fbbf24" />
+                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f8fafc' }}>
+                    {snapshot.dailyChallenge.title}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    background: 'rgba(245, 158, 11, 0.2)',
+                    color: '#fbbf24',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                  }}
+                >
+                  {snapshot.dailyChallenge.badge}
+                </span>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#ffffff' }}>
+                  Capítulo {snapshot.dailyChallenge.chapterNumber}: {snapshot.dailyChallenge.chapterTitle}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Seção: {snapshot.dailyChallenge.sectionTitle} • Especialidade: {snapshot.dailyChallenge.specialty}
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '6px', lineHeight: 1.4, margin: '6px 0 0 0' }}>
+                  💡 {snapshot.dailyChallenge.reason}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                <button
+                  onClick={() => {
+                    if (snapshot.dailyChallenge?.actionType === 'plantao') {
+                      router.push('/testes?mode=plantao');
+                    } else {
+                      router.push(`/testes?chapterId=${snapshot.dailyChallenge?.chapterId}`);
+                    }
+                  }}
+                  className="btn-primary"
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '0.82rem',
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                    border: 'none',
+                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  {snapshot.dailyChallenge.actionLabel} <ChevronRight size={15} />
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Per-Specialty Progress Breakdown */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
+          {/* Per-Specialty Progress Breakdown with real chapter count */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '2px' }}>
             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <TrendingUp size={16} style={{ color: '#38bdf8' }} /> Desempenho Ponderado por Especialidade UPA
+              <TrendingUp size={16} style={{ color: '#38bdf8' }} /> Domínio Real por Especialidade UPA
             </div>
 
-            {(snapshot?.specialtyScores || []).map((spec) => (
-              <div key={spec.name} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600 }}>
-                  <span style={{ color: 'var(--text-muted)' }}>{spec.name}</span>
-                  <span style={{ color: '#fff', fontWeight: 700 }}>{spec.score}%</span>
-                </div>
-                <div
-                  style={{
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '9999px',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    overflow: 'hidden',
-                  }}
-                >
+            {(snapshot?.specialtyScores || []).map((spec) => {
+              const isStarted = spec.isStarted ?? (spec.score > 0);
+              const readCaps = spec.readCount || 0;
+              const totalCaps = spec.totalChapters || spec.chapterIds.length;
+
+              return (
+                <div key={spec.name} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', fontWeight: 600 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: '#f8fafc', fontWeight: 700 }}>{spec.name}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 500 }}>
+                        ({readCaps}/{totalCaps} caps)
+                      </span>
+                    </div>
+                    <div>
+                      {isStarted ? (
+                        <span style={{ color: spec.color, fontWeight: 800 }}>{spec.score}%</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', fontWeight: 600 }}>
+                          A Iniciar
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div
                     style={{
-                      width: `${spec.score}%`,
-                      height: '100%',
-                      background: spec.color,
+                      width: '100%',
+                      height: '8px',
                       borderRadius: '9999px',
-                      transition: 'width 0.6s ease',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      overflow: 'hidden',
                     }}
-                  />
+                  >
+                    <div
+                      style={{
+                        width: isStarted ? `${spec.score}%` : '0%',
+                        height: '100%',
+                        background: isStarted ? spec.color : 'transparent',
+                        borderRadius: '9999px',
+                        transition: 'width 0.6s ease',
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Shift Readiness Status Banner */}
@@ -1062,11 +1238,11 @@ export default function DashboardPage() {
                 fontWeight: 700,
                 padding: '4px 10px',
                 borderRadius: '9999px',
-                background: globalReadinessScore >= 70 && confidence >= 0.40 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                color: globalReadinessScore >= 70 && confidence >= 0.40 ? '#34d399' : '#fbbf24',
+                background: globalReadinessScore >= 70 && confidence >= 0.35 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                color: globalReadinessScore >= 70 && confidence >= 0.35 ? '#34d399' : '#fbbf24',
               }}
             >
-              {globalReadinessScore >= 70 && confidence >= 0.40 ? 'Escala Liberada' : 'Sob Preceptoria'}
+              {globalReadinessScore >= 70 && confidence >= 0.35 ? 'Escala Liberada' : 'Sob Preceptoria'}
             </span>
           </div>
         </div>
@@ -1077,7 +1253,7 @@ export default function DashboardPage() {
           style={{
             padding: '28px',
             borderRadius: '20px',
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.85) 100%)',
             border: '1px solid rgba(16, 185, 129, 0.25)',
             display: 'flex',
             flexDirection: 'column',
@@ -1086,10 +1262,10 @@ export default function DashboardPage() {
           }}
         >
           <div style={{ width: '100%', marginBottom: '16px', textAlign: 'center' }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
               Radar de Competências Médicas
             </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '4px' }}>
               Avaliação Pentagonal de Especialidades de Emergência UPA (0-100)
             </p>
           </div>

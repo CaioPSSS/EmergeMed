@@ -89,12 +89,37 @@ export interface ChapterMetrics {
   isCritical: boolean; // impactNorm >= 0.8 && frequencyNorm >= 0.6
 }
 
+export interface DailyChallenge {
+  title: string;
+  subtitle: string;
+  specialty: string;
+  chapterId: number;
+  chapterNumber: number;
+  chapterTitle: string;
+  sectionTitle: string;
+  reason: string;
+  actionType: 'plantao' | 'test' | 'read';
+  actionLabel: string;
+  badge: string;
+  importanceScore: number;
+  frequencyScore: number;
+}
+
 export interface ReadinessEngineSnapshot {
   calculatedAt: string;
   algorithmVersion: string;
-  globalReadiness: number; // 0-100
+  globalReadiness: number; // 0-100 (Integrated readiness)
   unadjustedReadiness: number;
   criticalGapPenalty: number;
+  activeProficiency: number; // 0-100 (Real weighted proficiency on studied topics)
+  activeRetention: number; // 0-100 (FSRS memory retention on studied topics)
+  activePerformance: number; // 0-100 (Bayesian performance average on studied topics)
+  curricularCoverage: {
+    readCount: number;
+    totalChapters: number;
+    percent: number;
+    clinicalWeightedPercent: number;
+  };
   globalConfidence: number; // 0-1
   confidenceLabel: 'confiavel' | 'estimativa_inicial';
   readinessStatus: {
@@ -110,10 +135,16 @@ export interface ReadinessEngineSnapshot {
   specialtyScores: Array<{
     name: string;
     score: number;
+    readCount: number;
+    totalChapters: number;
+    isStarted: boolean;
+    coveragePercent: number;
+    clinicalCoveragePercent: number;
     chapterIds: number[];
     color: string;
     confidence: number;
   }>;
+  dailyChallenge?: DailyChallenge;
   chapterMetrics: Record<number, ChapterMetrics>;
   recommendation: {
     recommendedChapterId: number;
@@ -467,38 +498,83 @@ export function buildReadinessSnapshot(params: {
     now,
   });
 
-  let sumWeightedReadiness = 0;
-  let sumWeight = 0;
+  const totalChapters = metricsMap.size || CHAPTERS_DATA.length;
+  const readMetrics = Array.from(metricsMap.values()).filter((m) => m.isRead);
+  const readCount = readMetrics.length;
+  const totalEvaluations = params.testsList.filter((t) => t.completed).length;
+
+  let sumAllClinicalWeight = 0;
+  let sumReadClinicalWeight = 0;
+  let sumWeightedTopicReadiness = 0;
+  let sumWeightedRetention = 0;
+  let sumWeightedPerformance = 0;
   let sumWeightedConfidence = 0;
-  let criticalPenaltyTotal = 0;
-  let readCount = 0;
 
   metricsMap.forEach((m) => {
-    if (m.isRead) readCount++;
-    sumWeightedReadiness += m.clinicalWeight * m.topicReadiness;
-    sumWeightedConfidence += m.clinicalWeight * m.confidence;
-    sumWeight += m.clinicalWeight;
-
-    // Critical gap penalty
-    if (m.isCritical && m.topicReadiness < m.dynamicThreshold) {
-      const deficit = m.dynamicThreshold - m.topicReadiness;
-      const penaltyContribution = m.clinicalWeight * (deficit / m.dynamicThreshold) * 15.0;
-      criticalPenaltyTotal += penaltyContribution;
+    sumAllClinicalWeight += m.clinicalWeight;
+    if (m.isRead) {
+      sumReadClinicalWeight += m.clinicalWeight;
+      sumWeightedTopicReadiness += m.clinicalWeight * m.topicReadiness;
+      sumWeightedRetention += m.clinicalWeight * m.retention;
+      sumWeightedPerformance += m.clinicalWeight * m.performance;
+      sumWeightedConfidence += m.clinicalWeight * m.confidence;
     }
   });
 
-  const unadjustedReadiness = sumWeight > 0 ? sumWeightedReadiness / sumWeight : 0;
-  criticalPenaltyTotal = Math.min(15.0, criticalPenaltyTotal);
-  let globalReadiness = Math.max(0, Math.round((unadjustedReadiness - criticalPenaltyTotal) * 10) / 10);
-  const globalConfidence = Math.round((sumWeight > 0 ? sumWeightedConfidence / sumWeight : 0) * 100) / 100;
+  const clinicalWeightedCoveragePercent = Math.min(
+    100,
+    Math.round(sumReadClinicalWeight * 1000) / 10
+  );
+  const unweightedCoveragePercent = Math.min(
+    100,
+    Math.round((readCount / Math.max(1, totalChapters)) * 1000) / 10
+  );
 
-  // Beginner zero state check
-  const totalEvaluations = params.testsList.filter((t) => t.completed).length;
+  // Active proficiency: weighted average across studied/read topics
+  const activeProficiency =
+    sumReadClinicalWeight > 0
+      ? Math.round((sumWeightedTopicReadiness / sumReadClinicalWeight) * 10) / 10
+      : 0;
+
+  const activeRetention =
+    sumReadClinicalWeight > 0
+      ? Math.round((sumWeightedRetention / sumReadClinicalWeight) * 10) / 10
+      : 0;
+
+  const activePerformance =
+    sumReadClinicalWeight > 0
+      ? Math.round((sumWeightedPerformance / sumReadClinicalWeight) * 10) / 10
+      : 0;
+
+  const activeConfidence =
+    sumReadClinicalWeight > 0
+      ? Math.round((sumWeightedConfidence / sumReadClinicalWeight) * 100) / 100
+      : 0;
+
+  // Global Confidence based on active evidence count and evaluations
+  const globalConfidence = Math.min(
+    1.0,
+    Math.round((activeConfidence * 0.70 + Math.min(1.0, totalEvaluations / 10.0) * 0.30) * 100) / 100
+  );
+
+  // Integrated Global Readiness:
+  // Reflects both the active mastery (weighted by severity and frequency) and curriculum coverage
+  let globalReadiness = 0;
   if (readCount === 0 && totalEvaluations === 0) {
     globalReadiness = 0;
+  } else {
+    // Active quality index (65% mastery + 35% retention)
+    const activeQualityIndex = 0.65 * activeProficiency + 0.35 * activeRetention;
+    // Coverage scaling factor (0.20 baseline credibility + 0.80 * clinical coverage)
+    const coverageFactor = Math.min(1.0, sumReadClinicalWeight);
+    globalReadiness = Math.round(activeQualityIndex * (0.20 + 0.80 * coverageFactor) * 10) / 10;
   }
 
-  const confidenceLabel: 'confiavel' | 'estimativa_inicial' = globalConfidence < 0.40 ? 'estimativa_inicial' : 'confiavel';
+  const unadjustedReadiness = activeProficiency;
+  const criticalGapPenalty = 0;
+
+  const confidenceLabel: 'confiavel' | 'estimativa_inicial' =
+    globalConfidence < 0.35 ? 'estimativa_inicial' : 'confiavel';
 
   // Status Badge Logic
   let readinessStatus: ReadinessEngineSnapshot['readinessStatus'] = {
@@ -506,12 +582,12 @@ export function buildReadinessSnapshot(params: {
     color: '#38bdf8',
     bg: 'rgba(14, 165, 233, 0.15)',
     border: 'rgba(14, 165, 233, 0.3)',
-    description: 'Pouca evidência clínica acumulada. Score baseado em estimativa pedagógica inicial.',
+    description: `Proficiência ativa de ${activeProficiency}% nos temas estudados. Continue realizando simulados e plantões para expandir a cobertura UPA.`,
     badgeKey: 'capacitacao',
   };
 
-  if (globalConfidence >= 0.40) {
-    if (globalReadiness >= 80) {
+  if (globalConfidence >= 0.35) {
+    if (globalReadiness >= 75) {
       readinessStatus = {
         label: 'APTO — SALA VERMELHA & CASOS CRÍTICOS',
         color: '#34d399',
@@ -520,7 +596,7 @@ export function buildReadinessSnapshot(params: {
         description: 'Prontidão médica excelente para Sala Vermelha, politrauma e emergências graves UPA.',
         badgeKey: 'apto',
       };
-    } else if (globalReadiness >= 60) {
+    } else if (globalReadiness >= 45) {
       readinessStatus = {
         label: 'PRONTIDÃO INTERMEDIÁRIA (SOB SUPERVISÃO)',
         color: '#fbbf24',
@@ -529,30 +605,61 @@ export function buildReadinessSnapshot(params: {
         description: 'Capacidade sólida para plantão geral com suporte de preceptoria em temas críticos.',
         badgeKey: 'supervisao',
       };
+    } else {
+      readinessStatus = {
+        label: 'CAPACITAÇÃO EM ANDAMENTO (FORMAÇÃO SÓLIDA)',
+        color: '#38bdf8',
+        bg: 'rgba(14, 165, 233, 0.15)',
+        border: 'rgba(14, 165, 233, 0.3)',
+        description: `Domínio de ${activeProficiency}% nos temas estudados. Amplie a cobertura para liberar a escala noturna plena.`,
+        badgeKey: 'capacitacao',
+      };
     }
   }
 
-  // Specialty Breakdown
+  // Specialty Breakdown (Active proficiency per specialty with coverage)
   const specialtyScores = SPECIALTIES_CONFIG.map((spec) => {
+    let specAllWeight = 0;
+    let specReadWeight = 0;
     let specWeightedReadiness = 0;
     let specWeightedConf = 0;
-    let specWeight = 0;
+    let readInSpecCount = 0;
 
     spec.chapterIds.forEach((id) => {
       const m = metricsMap.get(id);
       if (m) {
-        specWeightedReadiness += m.clinicalWeight * m.topicReadiness;
-        specWeightedConf += m.clinicalWeight * m.confidence;
-        specWeight += m.clinicalWeight;
+        specAllWeight += m.clinicalWeight;
+        if (m.isRead) {
+          readInSpecCount++;
+          specReadWeight += m.clinicalWeight;
+          specWeightedReadiness += m.clinicalWeight * m.topicReadiness;
+          specWeightedConf += m.clinicalWeight * m.confidence;
+        }
       }
     });
 
-    const score = specWeight > 0 ? Math.round(specWeightedReadiness / specWeight) : 0;
-    const confidence = specWeight > 0 ? Math.round((specWeightedConf / specWeight) * 100) / 100 : 0;
+    const isStarted = readInSpecCount > 0;
+    const score = isStarted && specReadWeight > 0
+      ? Math.round(specWeightedReadiness / specReadWeight)
+      : 0;
+    const confidence = isStarted && specReadWeight > 0
+      ? Math.round((specWeightedConf / specReadWeight) * 100) / 100
+      : 0;
+    const coveragePercent = spec.chapterIds.length > 0
+      ? Math.round((readInSpecCount / spec.chapterIds.length) * 100)
+      : 0;
+    const clinicalCoveragePercent = specAllWeight > 0
+      ? Math.round((specReadWeight / specAllWeight) * 100)
+      : 0;
 
     return {
       name: spec.name,
       score: Math.min(100, Math.max(0, score)),
+      readCount: readInSpecCount,
+      totalChapters: spec.chapterIds.length,
+      isStarted,
+      coveragePercent,
+      clinicalCoveragePercent,
       chapterIds: spec.chapterIds,
       color: spec.color,
       confidence,
@@ -732,18 +839,123 @@ export function buildReadinessSnapshot(params: {
 
   const primaryRec = buildRecObj(chosenMetric, selectedMode);
 
+  // Generate Daily Clinical Challenge
+  let dailyChallenge: DailyChallenge | undefined;
+
+  const unstartedSpec = specialtyScores.find((s) => !s.isStarted);
+  if (unstartedSpec) {
+    const specChapterMetrics = unstartedSpec.chapterIds
+      .map((id) => metricsMap.get(id))
+      .filter(Boolean) as ChapterMetrics[];
+    specChapterMetrics.sort((a, b) => b.rawClinicalWeight - a.rawClinicalWeight);
+    const target = specChapterMetrics[0];
+
+    if (target) {
+      dailyChallenge = {
+        title: 'Desafio Clínico do Dia',
+        subtitle: `Iniciar Especialidade: ${unstartedSpec.name}`,
+        specialty: unstartedSpec.name,
+        chapterId: target.chapterId,
+        chapterNumber: target.chapterNumber,
+        chapterTitle: target.title,
+        sectionTitle: target.sectionTitle,
+        reason: `Especialidade fundamental da UPA ainda sem registros. Domine este tema de alto impacto (Importância ${target.importanceScore}/10) para equilibrar seu Radar.`,
+        actionType: 'test',
+        actionLabel: 'Iniciar Primeiro Simulado',
+        badge: 'Desbloquear Especialidade',
+        importanceScore: target.importanceScore,
+        frequencyScore: target.frequencyScore,
+      };
+    }
+  }
+
+  if (!dailyChallenge) {
+    const dueMetric = readMetrics.find((m) => m.dueRatio >= 1.0);
+    if (dueMetric) {
+      dailyChallenge = {
+        title: 'Desafio Clínico do Dia',
+        subtitle: `Manutenção FSRS: ${dueMetric.category || dueMetric.sectionTitle}`,
+        specialty: dueMetric.category || dueMetric.sectionTitle,
+        chapterId: dueMetric.chapterId,
+        chapterNumber: dueMetric.chapterNumber,
+        chapterTitle: dueMetric.title,
+        sectionTitle: dueMetric.sectionTitle,
+        reason: `Revisão espaçada recomendada pelo algoritmo FSRS (${dueMetric.dueRatio.toFixed(1)}x intervalo) para consolidar a memória de longo prazo.`,
+        actionType: 'plantao',
+        actionLabel: 'Revisar no Modo Plantão',
+        badge: 'Revisão Espaçada',
+        importanceScore: dueMetric.importanceScore,
+        frequencyScore: dueMetric.frequencyScore,
+      };
+    }
+  }
+
+  if (!dailyChallenge) {
+    const gapMetric = readMetrics.find((m) => m.remediationGap > 15);
+    if (gapMetric) {
+      dailyChallenge = {
+        title: 'Desafio Clínico do Dia',
+        subtitle: `Reforço Clínico: ${gapMetric.category || gapMetric.sectionTitle}`,
+        specialty: gapMetric.category || gapMetric.sectionTitle,
+        chapterId: gapMetric.chapterId,
+        chapterNumber: gapMetric.chapterNumber,
+        chapterTitle: gapMetric.title,
+        sectionTitle: gapMetric.sectionTitle,
+        reason: `Déficit de domínio identificado (Prontidão ${gapMetric.topicReadiness}% vs Limiar ${gapMetric.dynamicThreshold}%). Reforce este tema para elevar seu score.`,
+        actionType: 'test',
+        actionLabel: 'Fazer Simulado de Reforço',
+        badge: 'Remediação Prioritária',
+        importanceScore: gapMetric.importanceScore,
+        frequencyScore: gapMetric.frequencyScore,
+      };
+    }
+  }
+
+  if (!dailyChallenge) {
+    const unreadCandidates = Array.from(metricsMap.values()).filter((m) => !m.isRead);
+    unreadCandidates.sort((a, b) => b.expansionScore - a.expansionScore);
+    const topUnread = unreadCandidates[0];
+    if (topUnread) {
+      dailyChallenge = {
+        title: 'Desafio Clínico do Dia',
+        subtitle: `Expansão de Catálogo: ${topUnread.category || topUnread.sectionTitle}`,
+        specialty: topUnread.category || topUnread.sectionTitle,
+        chapterId: topUnread.chapterId,
+        chapterNumber: topUnread.chapterNumber,
+        chapterTitle: topUnread.title,
+        sectionTitle: topUnread.sectionTitle,
+        reason: `Tema de alta incidência e gravidade na UPA. Amplie sua cobertura curricular estudando este capítulo.`,
+        actionType: 'test',
+        actionLabel: 'Estudar Capítulo',
+        badge: 'Expansão UPA',
+        importanceScore: topUnread.importanceScore,
+        frequencyScore: topUnread.frequencyScore,
+      };
+    }
+  }
+
   const snapshot: ReadinessEngineSnapshot = {
     calculatedAt: now.toISOString(),
     algorithmVersion: ALGORITHM_VERSION,
     globalReadiness,
-    unadjustedReadiness: Math.round(unadjustedReadiness * 10) / 10,
-    criticalGapPenalty: Math.round(criticalPenaltyTotal * 10) / 10,
+    unadjustedReadiness,
+    criticalGapPenalty,
+    activeProficiency,
+    activeRetention,
+    activePerformance,
+    curricularCoverage: {
+      readCount,
+      totalChapters,
+      percent: unweightedCoveragePercent,
+      clinicalWeightedPercent: clinicalWeightedCoveragePercent,
+    },
     globalConfidence,
     confidenceLabel,
     readinessStatus,
     totalReadChapters: readCount,
     totalEvaluations,
     specialtyScores,
+    dailyChallenge,
     chapterMetrics: Object.fromEntries(metricsMap),
     recommendation: primaryRec,
     recommendations,
