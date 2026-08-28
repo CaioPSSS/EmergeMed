@@ -7,9 +7,11 @@ import { Chapter } from '@/lib/chapters-data';
 import { calculateFSRSManualReadUpdate } from '@/lib/learning-engine';
 import { recordActivityAndAwardXP } from '@/lib/gamification-engine';
 import {
+  StudyQueueItem,
   fetchStudyQueue,
   addToStudyQueue,
   addMultipleToStudyQueue,
+  setQueueItemCompleted,
   removeFromStudyQueue,
   reorderStudyQueue,
   clearStudyQueue,
@@ -39,6 +41,7 @@ import {
 interface StudyQueueWidgetProps {
   chaptersList: Chapter[];
   readChapterIds: number[];
+  progressMap?: Record<number, { is_read: boolean; read_count: number; last_read_at?: string }>;
   onProgressUpdated?: () => Promise<void> | void;
   recommendedChapterIds?: number[];
 }
@@ -46,19 +49,20 @@ interface StudyQueueWidgetProps {
 export function StudyQueueWidget({
   chaptersList,
   readChapterIds,
+  progressMap = {},
   onProgressUpdated,
   recommendedChapterIds = [],
 }: StudyQueueWidgetProps) {
   const router = useRouter();
   const supabase = createClient();
 
-  const [queueIds, setQueueIds] = useState<number[]>([]);
+  const [queueItems, setQueueItems] = useState<StudyQueueItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sectionFilter, setSectionFilter] = useState<string>('all');
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
-  const [studiedModalChapter, setStudiedModalChapter] = useState<Chapter | null>(null);
+  const [studiedModalInfo, setStudiedModalInfo] = useState<{ chapter: Chapter; isReread: boolean; count: number } | null>(null);
   const [readerChapter, setReaderChapter] = useState<Chapter | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
 
@@ -67,53 +71,50 @@ export function StudyQueueWidget({
     async function loadQueue() {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      const ids = await fetchStudyQueue(supabase, user?.id);
-      setQueueIds(ids);
+      const items = await fetchStudyQueue(supabase, user?.id);
+      setQueueItems(items);
       setLoading(false);
     }
     loadQueue();
   }, []);
 
-  // Map queueIds to full Chapter objects
-  const queueChapters: Chapter[] = queueIds
-    .map((id) => chaptersList.find((c) => c.id === id))
-    .filter((c): c is Chapter => Boolean(c));
+  const queueChapterIds = queueItems.map((item) => item.chapter_id);
 
   // Handle reordering up
   const handleMoveUp = async (index: number) => {
     if (index <= 0) return;
-    const newIds = [...queueIds];
-    const temp = newIds[index - 1];
-    newIds[index - 1] = newIds[index];
-    newIds[index] = temp;
+    const newItems = [...queueItems];
+    const temp = newItems[index - 1];
+    newItems[index - 1] = newItems[index];
+    newItems[index] = temp;
 
-    setQueueIds(newIds);
+    setQueueItems(newItems);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await reorderStudyQueue(supabase, user.id, newIds);
+      await reorderStudyQueue(supabase, user.id, newItems);
     }
   };
 
   // Handle reordering down
   const handleMoveDown = async (index: number) => {
-    if (index >= queueIds.length - 1) return;
-    const newIds = [...queueIds];
-    const temp = newIds[index + 1];
-    newIds[index + 1] = newIds[index];
-    newIds[index] = temp;
+    if (index >= queueItems.length - 1) return;
+    const newItems = [...queueItems];
+    const temp = newItems[index + 1];
+    newItems[index + 1] = newItems[index];
+    newItems[index] = temp;
 
-    setQueueIds(newIds);
+    setQueueItems(newItems);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await reorderStudyQueue(supabase, user.id, newIds);
+      await reorderStudyQueue(supabase, user.id, newItems);
     }
   };
 
   // Handle remove item from queue
   const handleRemove = async (chapterId: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const newIds = queueIds.filter((id) => id !== chapterId);
-    setQueueIds(newIds);
+    const updated = queueItems.filter((item) => item.chapter_id !== chapterId);
+    setQueueItems(updated);
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -123,7 +124,7 @@ export function StudyQueueWidget({
 
   // Handle clear entire queue
   const handleClear = async () => {
-    setQueueIds([]);
+    setQueueItems([]);
     setShowClearConfirm(false);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -131,16 +132,16 @@ export function StudyQueueWidget({
     }
   };
 
-  // Handle adding chapter to queue
+  // Handle adding/removing chapter in selection modal
   const handleToggleAddChapter = async (chapterId: number) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    if (queueIds.includes(chapterId)) {
+    if (queueChapterIds.includes(chapterId)) {
       await handleRemove(chapterId);
     } else {
       const updated = await addToStudyQueue(supabase, user.id, chapterId);
-      setQueueIds(updated);
+      setQueueItems(updated);
     }
   };
 
@@ -151,20 +152,22 @@ export function StudyQueueWidget({
     if (!user) return;
 
     const updated = await addMultipleToStudyQueue(supabase, user.id, recommendedChapterIds);
-    setQueueIds(updated);
+    setQueueItems(updated);
   };
 
-  // Handle study checkbox toggle and trigger question generation flow
-  const handleToggleStudy = async (chapter: Chapter) => {
-    const isCurrentlyRead = readChapterIds.includes(chapter.id);
+  // Handle study checkbox toggle (marks 1st read OR re-read appropriately)
+  const handleToggleStudy = async (chapter: Chapter, currentItem: StudyQueueItem) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     setActionLoading((prev) => ({ ...prev, [chapter.id]: true }));
 
     try {
-      if (!isCurrentlyRead) {
-        // 1. Mark as read in Supabase chapter_progress
+      const willBeCompleted = !currentItem.completed;
+
+      if (willBeCompleted) {
+        // Register reading / re-reading in Supabase database
+        const hasReadBefore = readChapterIds.includes(chapter.id);
         const { data: currentProg } = await supabase
           .from('chapter_progress')
           .select('read_count, last_read_at')
@@ -172,10 +175,11 @@ export function StudyQueueWidget({
           .eq('chapter_id', chapter.id)
           .maybeSingle();
 
-        const currentCount = currentProg?.read_count || 0;
+        const currentCount = currentProg?.read_count || (hasReadBefore ? 1 : 0);
         const newCount = currentCount + 1;
         const nowIso = new Date().toISOString();
 
+        // 1. Update chapter_progress
         await supabase.from('chapter_progress').upsert({
           user_id: user.id,
           chapter_id: chapter.id,
@@ -190,7 +194,7 @@ export function StudyQueueWidget({
           user_id: user.id,
           chapter_id: chapter.id,
           read_count_snapshot: newCount,
-          source: 'study_queue_checkbox',
+          source: hasReadBefore ? 'reread_study_queue' : 'first_read_study_queue',
         });
 
         // 3. Update FSRS spaced repetition
@@ -211,27 +215,28 @@ export function StudyQueueWidget({
         // 4. Award XP & Gamification
         await recordActivityAndAwardXP(supabase, user.id, { type: 'first_read' });
 
-        // 5. Notify parent to refresh stats
+        // 5. Update queue item status
+        const updatedQueue = await setQueueItemCompleted(supabase, user.id, chapter.id, true);
+        setQueueItems(updatedQueue);
+
+        // 6. Notify parent to refresh dashboard stats
         if (onProgressUpdated) {
           await onProgressUpdated();
         }
 
-        // 6. Trigger Question Generation prompt / modal
-        setStudiedModalChapter(chapter);
-      } else {
-        // Toggle back to unread if clicked again
-        await supabase.from('chapter_progress').upsert({
-          user_id: user.id,
-          chapter_id: chapter.id,
-          is_read: false,
+        // 7. Prompt to generate questions
+        setStudiedModalInfo({
+          chapter,
+          isReread: hasReadBefore,
+          count: newCount,
         });
-
-        if (onProgressUpdated) {
-          await onProgressUpdated();
-        }
+      } else {
+        // Unmark completion within current queue session
+        const updatedQueue = await setQueueItemCompleted(supabase, user.id, chapter.id, false);
+        setQueueItems(updatedQueue);
       }
     } catch (err) {
-      console.error('Erro ao alternar status de estudo:', err);
+      console.error('Erro ao alternar status de estudo na fila:', err);
     } finally {
       setActionLoading((prev) => ({ ...prev, [chapter.id]: false }));
     }
@@ -260,8 +265,8 @@ export function StudyQueueWidget({
     return matchesSearch && matchesSection;
   });
 
-  const totalInQueue = queueChapters.length;
-  const completedInQueue = queueChapters.filter((c) => readChapterIds.includes(c.id)).length;
+  const totalInQueue = queueItems.length;
+  const completedInQueue = queueItems.filter((item) => item.completed).length;
   const queueProgressPercent = totalInQueue > 0 ? Math.round((completedInQueue / totalInQueue) * 100) : 0;
 
   return (
@@ -308,17 +313,17 @@ export function StudyQueueWidget({
                     borderRadius: '9999px',
                     fontSize: '0.75rem',
                     fontWeight: 700,
-                    background: 'rgba(56, 189, 248, 0.15)',
-                    color: '#38bdf8',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    background: completedInQueue > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                    color: completedInQueue > 0 ? '#34d399' : '#38bdf8',
+                    border: `1px solid ${completedInQueue > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
                   }}
                 >
-                  {completedInQueue}/{totalInQueue} Concluídos
+                  {completedInQueue}/{totalInQueue} Concluídos na Sessão
                 </span>
               )}
             </div>
             <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', margin: 0, marginTop: '2px' }}>
-              Monte seu roteiro próprio, alterne a ordem dos temas e gere questões ao concluir
+              Adicione capítulos para 1ª leitura ou releituras programadas, alterne a ordem e gere simulados ao concluir
             </p>
           </div>
         </div>
@@ -361,8 +366,8 @@ export function StudyQueueWidget({
       {totalInQueue > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-            <span>Progresso da Fila: {completedInQueue} de {totalInQueue} capítulos estudados</span>
-            <span style={{ color: '#38bdf8' }}>{queueProgressPercent}%</span>
+            <span>Progresso da Fila: {completedInQueue} de {totalInQueue} temas concluídos</span>
+            <span style={{ color: completedInQueue > 0 ? '#34d399' : '#38bdf8' }}>{queueProgressPercent}%</span>
           </div>
           <div className="progress-bar-bg" style={{ height: '6px', background: 'rgba(255, 255, 255, 0.08)' }}>
             <div
@@ -417,7 +422,7 @@ export function StudyQueueWidget({
               Sua fila de estudos está vazia
             </h3>
             <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', maxWidth: '480px', margin: '0 auto' }}>
-              Adicione os temas que você pretende revisar hoje ou nos próximos plantões para estudar na ordem desejada.
+              Adicione os temas que você pretende revisar hoje ou nos próximos plantões (seja 1ª leitura ou releitura programada) para estudar na ordem desejada.
             </p>
           </div>
 
@@ -444,10 +449,16 @@ export function StudyQueueWidget({
       ) : (
         /* Populated Queue List */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {queueChapters.map((chapter, index) => {
-            const isRead = readChapterIds.includes(chapter.id);
+          {queueItems.map((item, index) => {
+            const chapter = chaptersList.find((c) => c.id === item.chapter_id);
+            if (!chapter) return null;
+
+            const isCompletedInQueue = Boolean(item.completed);
+            const hasReadBefore = readChapterIds.includes(chapter.id);
+            const currentReadCount = progressMap[chapter.id]?.read_count || (hasReadBefore ? 1 : 0);
+
             const isFirst = index === 0;
-            const isLast = index === queueChapters.length - 1;
+            const isLast = index === queueItems.length - 1;
             const isLoadingThis = actionLoading[chapter.id];
 
             return (
@@ -460,9 +471,15 @@ export function StudyQueueWidget({
                   gap: '12px',
                   padding: '14px 18px',
                   borderRadius: '14px',
-                  background: isRead ? 'rgba(16, 185, 129, 0.06)' : 'rgba(15, 23, 42, 0.65)',
-                  border: isRead
-                    ? '1px solid rgba(16, 185, 129, 0.25)'
+                  background: isCompletedInQueue
+                    ? 'rgba(16, 185, 129, 0.08)'
+                    : hasReadBefore
+                    ? 'rgba(30, 41, 59, 0.65)'
+                    : 'rgba(15, 23, 42, 0.65)',
+                  border: isCompletedInQueue
+                    ? '1px solid rgba(16, 185, 129, 0.35)'
+                    : hasReadBefore
+                    ? '1px solid rgba(56, 189, 248, 0.2)'
                     : '1px solid var(--border-subtle)',
                   transition: 'all 0.2s ease',
                   flexWrap: 'wrap',
@@ -476,9 +493,9 @@ export function StudyQueueWidget({
                       width: '30px',
                       height: '30px',
                       borderRadius: '8px',
-                      background: isRead ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.15)',
-                      border: isRead ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(56, 189, 248, 0.3)',
-                      color: isRead ? '#34d399' : '#38bdf8',
+                      background: isCompletedInQueue ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                      border: isCompletedInQueue ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(56, 189, 248, 0.3)',
+                      color: isCompletedInQueue ? '#34d399' : '#38bdf8',
                       fontSize: '0.8rem',
                       fontWeight: 800,
                       display: 'flex',
@@ -531,24 +548,30 @@ export function StudyQueueWidget({
 
                   {/* Study Checkbox Button */}
                   <button
-                    onClick={() => handleToggleStudy(chapter)}
+                    onClick={() => handleToggleStudy(chapter, item)}
                     disabled={isLoadingThis}
                     style={{
                       background: 'transparent',
                       border: 'none',
                       cursor: 'pointer',
-                      color: isRead ? '#34d399' : 'var(--text-subtle)',
+                      color: isCompletedInQueue ? '#34d399' : 'var(--text-subtle)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       flexShrink: 0,
                       padding: '4px',
                     }}
-                    title={isRead ? 'Concluído! Clique para desmarcar' : 'Marcar como estudado e gerar questões'}
+                    title={
+                      isCompletedInQueue
+                        ? 'Concluído na fila! Clique para desmarcar'
+                        : hasReadBefore
+                        ? `Clique para registrar Releitura (Revisão #${currentReadCount + 1}) e gerar teste`
+                        : 'Clique para registrar 1ª leitura e gerar teste'
+                    }
                   >
                     {isLoadingThis ? (
                       <RefreshCw size={22} className="animate-spin" style={{ color: '#38bdf8' }} />
-                    ) : isRead ? (
+                    ) : isCompletedInQueue ? (
                       <CheckCircle2 size={22} color="#34d399" />
                     ) : (
                       <Circle size={22} />
@@ -562,8 +585,8 @@ export function StudyQueueWidget({
                         style={{
                           fontSize: '0.94rem',
                           fontWeight: 700,
-                          color: isRead ? '#94a3b8' : '#ffffff',
-                          textDecoration: isRead ? 'line-through' : 'none',
+                          color: isCompletedInQueue ? '#94a3b8' : '#ffffff',
+                          textDecoration: isCompletedInQueue ? 'line-through' : 'none',
                           lineHeight: 1.3,
                         }}
                       >
@@ -586,19 +609,57 @@ export function StudyQueueWidget({
                         </span>
                       )}
 
-                      {isRead && (
+                      {/* Study Mode Tags */}
+                      {isCompletedInQueue ? (
                         <span
                           style={{
                             fontSize: '0.7rem',
                             fontWeight: 700,
-                            padding: '1px 7px',
+                            padding: '1px 8px',
                             borderRadius: '9999px',
                             background: 'rgba(16, 185, 129, 0.15)',
                             color: '#34d399',
                             border: '1px solid rgba(16, 185, 129, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
                           }}
                         >
-                          Estudado ✓
+                          <CheckCircle2 size={11} /> {hasReadBefore ? `Revisão #${currentReadCount} Concluída ✓` : '1ª Leitura Concluída ✓'}
+                        </span>
+                      ) : hasReadBefore ? (
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '1px 8px',
+                            borderRadius: '9999px',
+                            background: 'rgba(245, 158, 11, 0.12)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <RefreshCw size={11} /> Releitura Programada (Revisão #{currentReadCount + 1})
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '1px 8px',
+                            borderRadius: '9999px',
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            color: '#38bdf8',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <BookOpen size={11} /> 1ª Leitura (Pendente)
                         </span>
                       )}
                     </div>
@@ -697,7 +758,7 @@ export function StudyQueueWidget({
                   Adicionar Capítulos ao Roteiro
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Selecione os temas desejados para adicionar à sua fila de estudos
+                  Selecione capítulos para 1ª leitura ou adicione temas já lidos para releitura programada
                 </p>
               </div>
               <button
@@ -767,8 +828,9 @@ export function StudyQueueWidget({
                 </div>
               ) : (
                 modalFilteredChapters.map((cap) => {
-                  const isInQueue = queueIds.includes(cap.id);
+                  const isInQueue = queueChapterIds.includes(cap.id);
                   const isRead = readChapterIds.includes(cap.id);
+                  const rCount = progressMap[cap.id]?.read_count || (isRead ? 1 : 0);
 
                   return (
                     <div
@@ -808,8 +870,21 @@ export function StudyQueueWidget({
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {isRead && (
-                          <span style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            <CheckCircle2 size={13} /> Lido
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              color: '#fbbf24',
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              padding: '2px 8px',
+                              borderRadius: '9999px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              border: '1px solid rgba(245, 158, 11, 0.3)',
+                            }}
+                          >
+                            <RefreshCw size={11} /> Lido (#{rCount}) • + Releitura
                           </span>
                         )}
 
@@ -848,7 +923,7 @@ export function StudyQueueWidget({
             {/* Modal Footer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
               <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                {queueIds.length} capítulos selecionados na fila
+                {queueItems.length} capítulos selecionados na fila
               </span>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -862,8 +937,8 @@ export function StudyQueueWidget({
         </div>
       )}
 
-      {/* Modal de Disparo de Questões após Marcar Estudo */}
-      {studiedModalChapter && (
+      {/* Modal de Disparo de Questões após Marcar Estudo / Releitura */}
+      {studiedModalInfo && (
         <div
           style={{
             position: 'fixed',
@@ -883,7 +958,7 @@ export function StudyQueueWidget({
           <div
             className="glass-panel"
             style={{
-              maxWidth: '480px',
+              maxWidth: '500px',
               width: '100%',
               padding: '30px',
               textAlign: 'center',
@@ -910,15 +985,17 @@ export function StudyQueueWidget({
             </div>
 
             <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>
-              Estudo Registrado com Sucesso!
+              {studiedModalInfo.isReread
+                ? `Releitura Registrada (Revisão #${studiedModalInfo.count})!`
+                : '1ª Leitura Registrada com Sucesso!'}
             </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '22px', lineHeight: 1.4 }}>
-              Você marcou o estudo de <strong>{studiedModalChapter.isCustom ? studiedModalChapter.title : `Cap. ${studiedModalChapter.number}: ${studiedModalChapter.title}`}</strong>. Deseja gerar um teste de retenção clínica com IA agora?
+              Você concluiu o estudo de <strong>{studiedModalInfo.chapter.isCustom ? studiedModalInfo.chapter.title : `Cap. ${studiedModalInfo.chapter.number}: ${studiedModalInfo.chapter.title}`}</strong>. Deseja gerar questões com IA para testar sua retenção clínica agora?
             </p>
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <button
-                onClick={() => setStudiedModalChapter(null)}
+                onClick={() => setStudiedModalInfo(null)}
                 className="btn-secondary"
                 style={{ flex: 1, padding: '10px' }}
               >
@@ -927,8 +1004,8 @@ export function StudyQueueWidget({
 
               <button
                 onClick={() => {
-                  const capId = studiedModalChapter.id;
-                  setStudiedModalChapter(null);
+                  const capId = studiedModalInfo.chapter.id;
+                  setStudiedModalInfo(null);
                   handleGoToTest(capId);
                 }}
                 className="btn-primary"
@@ -973,7 +1050,7 @@ export function StudyQueueWidget({
               Limpar Roteiro de Estudos?
             </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
-              Isso removerá todos os capítulos da sua fila atual. O histórico de leitura dos capítulos permanecerá salvo no sistema.
+              Isso removerá todos os capítulos da sua fila atual. O histórico de leitura e revisões dos capítulos permanecerá salvo no sistema.
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
@@ -1003,12 +1080,13 @@ export function StudyQueueWidget({
           onClose={() => setReaderChapter(null)}
           onMarkRead={async (capId) => {
             const cap = chaptersList.find((c) => c.id === capId);
-            if (cap) {
-              await handleToggleStudy(cap);
+            const item = queueItems.find((i) => i.chapter_id === capId);
+            if (cap && item) {
+              await handleToggleStudy(cap, item);
             }
           }}
           isRead={readChapterIds.includes(readerChapter.id)}
-          readCount={readChapterIds.includes(readerChapter.id) ? 1 : 0}
+          readCount={readChapterIds.includes(readerChapter.id) ? (progressMap[readerChapter.id]?.read_count || 1) : 0}
         />
       )}
     </div>

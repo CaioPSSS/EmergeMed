@@ -5,33 +5,65 @@ export interface StudyQueueItem {
   user_id?: string;
   chapter_id: number;
   position: number;
+  completed: boolean;
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
 }
 
-const LOCAL_STORAGE_PREFIX = 'emergemed_study_queue_';
+const LOCAL_STORAGE_PREFIX = 'emergemed_study_queue_v2_';
+const LEGACY_STORAGE_PREFIX = 'emergemed_study_queue_';
 
 function getStorageKey(userId?: string): string {
   return `${LOCAL_STORAGE_PREFIX}${userId || 'guest'}`;
 }
 
-export function getLocalStudyQueue(userId?: string): number[] {
+export function getLocalStudyQueue(userId?: string): StudyQueueItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(getStorageKey(userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(Number).filter((n) => !isNaN(n)) : [];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item, idx) => {
+          if (typeof item === 'number') {
+            return { chapter_id: item, position: idx, completed: false };
+          }
+          return {
+            chapter_id: Number(item.chapter_id),
+            position: typeof item.position === 'number' ? item.position : idx,
+            completed: Boolean(item.completed),
+            notes: item.notes || null,
+          };
+        }).filter((item) => !isNaN(item.chapter_id));
+      }
+    }
+
+    // Check legacy storage
+    const legacyRaw = localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${userId || 'guest'}`);
+    if (legacyRaw) {
+      const legacyParsed = JSON.parse(legacyRaw);
+      if (Array.isArray(legacyParsed)) {
+        const items: StudyQueueItem[] = legacyParsed.map((id, idx) => ({
+          chapter_id: Number(id),
+          position: idx,
+          completed: false,
+        })).filter((item) => !isNaN(item.chapter_id));
+        saveLocalStudyQueue(items, userId);
+        return items;
+      }
+    }
+
+    return [];
   } catch {
     return [];
   }
 }
 
-export function saveLocalStudyQueue(chapterIds: number[], userId?: string): void {
+export function saveLocalStudyQueue(items: StudyQueueItem[], userId?: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(getStorageKey(userId), JSON.stringify(chapterIds));
+    localStorage.setItem(getStorageKey(userId), JSON.stringify(items));
   } catch (err) {
     console.warn('Failed to save study queue to localStorage:', err);
   }
@@ -39,69 +71,77 @@ export function saveLocalStudyQueue(chapterIds: number[], userId?: string): void
 
 /**
  * Fetches user study queue ordered by position ASC.
- * Integrates database persistence with transparent localStorage caching/fallback.
  */
 export async function fetchStudyQueue(
   supabase: SupabaseClient,
   userId?: string
-): Promise<number[]> {
+): Promise<StudyQueueItem[]> {
   if (!userId) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return getLocalStudyQueue();
     userId = user.id;
   }
 
-  const localIds = getLocalStudyQueue(userId);
+  const localItems = getLocalStudyQueue(userId);
 
   try {
     const { data, error } = await supabase
       .from('study_queue')
-      .select('chapter_id, position')
+      .select('*')
       .eq('user_id', userId)
       .order('position', { ascending: true });
 
     if (error) {
-      // Table may not exist yet or connection issue -> use localStorage fallback
-      return localIds;
+      return localItems;
     }
 
     if (data && data.length > 0) {
-      const dbIds = data.map((d: any) => Number(d.chapter_id));
-      saveLocalStudyQueue(dbIds, userId);
-      return dbIds;
+      const dbItems: StudyQueueItem[] = data.map((d: any, idx: number) => ({
+        id: d.id,
+        user_id: d.user_id,
+        chapter_id: Number(d.chapter_id),
+        position: typeof d.position === 'number' ? d.position : idx,
+        completed: Boolean(d.completed),
+        notes: d.notes || null,
+        created_at: d.created_at,
+        updated_at: d.updated_at,
+      }));
+      saveLocalStudyQueue(dbItems, userId);
+      return dbItems;
     }
 
     // If DB is empty but we had local items, sync local items to DB
-    if (localIds.length > 0) {
-      await syncQueueToDatabase(supabase, userId, localIds);
-      return localIds;
+    if (localItems.length > 0) {
+      await syncQueueToDatabase(supabase, userId, localItems);
+      return localItems;
     }
 
     return [];
   } catch (err) {
     console.warn('Error fetching study queue from Supabase, using localStorage:', err);
-    return localIds;
+    return localItems;
   }
 }
 
 /**
- * Synchronizes an array of chapterIds to Supabase public.study_queue with updated positions.
+ * Synchronizes an array of StudyQueueItem to Supabase public.study_queue.
  */
 async function syncQueueToDatabase(
   supabase: SupabaseClient,
   userId: string,
-  chapterIds: number[]
+  items: StudyQueueItem[]
 ): Promise<void> {
   try {
-    // Delete existing entries for user
     await supabase.from('study_queue').delete().eq('user_id', userId);
 
-    if (chapterIds.length === 0) return;
+    if (items.length === 0) return;
 
-    const rows = chapterIds.map((chapterId, idx) => ({
+    const rows = items.map((item, idx) => ({
       user_id: userId,
-      chapter_id: chapterId,
+      chapter_id: item.chapter_id,
       position: idx,
+      completed: Boolean(item.completed),
+      notes: item.notes || null,
     }));
 
     await supabase.from('study_queue').insert(rows);
@@ -111,19 +151,25 @@ async function syncQueueToDatabase(
 }
 
 /**
- * Adds a single chapter to the end of the user's study queue.
+ * Adds a single chapter to the study queue. Always starts with completed: false.
  */
 export async function addToStudyQueue(
   supabase: SupabaseClient,
   userId: string,
   chapterId: number
-): Promise<number[]> {
+): Promise<StudyQueueItem[]> {
   const current = await fetchStudyQueue(supabase, userId);
-  if (current.includes(chapterId)) {
-    return current; // already in queue
+  if (current.some((item) => item.chapter_id === chapterId)) {
+    return current;
   }
 
-  const updated = [...current, chapterId];
+  const newItem: StudyQueueItem = {
+    chapter_id: chapterId,
+    position: current.length,
+    completed: false,
+  };
+
+  const updated = [...current, newItem];
   saveLocalStudyQueue(updated, userId);
 
   try {
@@ -131,6 +177,7 @@ export async function addToStudyQueue(
       user_id: userId,
       chapter_id: chapterId,
       position: current.length,
+      completed: false,
     });
   } catch (err) {
     console.warn('Failed to insert chapter to study_queue table:', err);
@@ -146,23 +193,59 @@ export async function addMultipleToStudyQueue(
   supabase: SupabaseClient,
   userId: string,
   chapterIds: number[]
-): Promise<number[]> {
+): Promise<StudyQueueItem[]> {
   const current = await fetchStudyQueue(supabase, userId);
-  const toAdd = chapterIds.filter((id) => !current.includes(id));
+  const existingIds = new Set(current.map((item) => item.chapter_id));
+  const toAdd = chapterIds.filter((id) => !existingIds.has(id));
   if (toAdd.length === 0) return current;
 
-  const updated = [...current, ...toAdd];
+  const newItems: StudyQueueItem[] = toAdd.map((id, index) => ({
+    chapter_id: id,
+    position: current.length + index,
+    completed: false,
+  }));
+
+  const updated = [...current, ...newItems];
   saveLocalStudyQueue(updated, userId);
 
   try {
-    const rows = toAdd.map((id, index) => ({
+    const rows = newItems.map((item) => ({
       user_id: userId,
-      chapter_id: id,
-      position: current.length + index,
+      chapter_id: item.chapter_id,
+      position: item.position,
+      completed: false,
     }));
     await supabase.from('study_queue').insert(rows);
   } catch (err) {
     console.warn('Failed to insert multiple chapters to study_queue:', err);
+  }
+
+  return updated;
+}
+
+/**
+ * Updates completed status for a chapter within the current queue.
+ */
+export async function setQueueItemCompleted(
+  supabase: SupabaseClient,
+  userId: string,
+  chapterId: number,
+  completed: boolean
+): Promise<StudyQueueItem[]> {
+  const current = await fetchStudyQueue(supabase, userId);
+  const updated = current.map((item) =>
+    item.chapter_id === chapterId ? { ...item, completed } : item
+  );
+  saveLocalStudyQueue(updated, userId);
+
+  try {
+    await supabase
+      .from('study_queue')
+      .update({ completed })
+      .eq('user_id', userId)
+      .eq('chapter_id', chapterId);
+  } catch (err) {
+    console.warn('Failed to update completed status on study_queue:', err);
   }
 
   return updated;
@@ -175,9 +258,12 @@ export async function removeFromStudyQueue(
   supabase: SupabaseClient,
   userId: string,
   chapterId: number
-): Promise<number[]> {
+): Promise<StudyQueueItem[]> {
   const current = await fetchStudyQueue(supabase, userId);
-  const updated = current.filter((id) => id !== chapterId);
+  const updated = current
+    .filter((item) => item.chapter_id !== chapterId)
+    .map((item, idx) => ({ ...item, position: idx }));
+
   saveLocalStudyQueue(updated, userId);
 
   try {
@@ -187,7 +273,6 @@ export async function removeFromStudyQueue(
       .eq('user_id', userId)
       .eq('chapter_id', chapterId);
 
-    // Re-index remaining positions
     await syncQueueToDatabase(supabase, userId, updated);
   } catch (err) {
     console.warn('Failed to delete chapter from study_queue:', err);
@@ -197,16 +282,17 @@ export async function removeFromStudyQueue(
 }
 
 /**
- * Reorders the entire study queue according to the provided chapter IDs order.
+ * Reorders the entire study queue according to the provided StudyQueueItem array.
  */
 export async function reorderStudyQueue(
   supabase: SupabaseClient,
   userId: string,
-  reorderedChapterIds: number[]
-): Promise<number[]> {
-  saveLocalStudyQueue(reorderedChapterIds, userId);
-  await syncQueueToDatabase(supabase, userId, reorderedChapterIds);
-  return reorderedChapterIds;
+  reorderedItems: StudyQueueItem[]
+): Promise<StudyQueueItem[]> {
+  const indexed = reorderedItems.map((item, idx) => ({ ...item, position: idx }));
+  saveLocalStudyQueue(indexed, userId);
+  await syncQueueToDatabase(supabase, userId, indexed);
+  return indexed;
 }
 
 /**

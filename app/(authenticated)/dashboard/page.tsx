@@ -214,6 +214,7 @@ export default function DashboardPage() {
   const [rereadQuizTarget, setRereadQuizTarget] = useState<Chapter | null>(null);
   const [gamificationData, setGamificationData] = useState<any>(null);
   const [errorPatternReport, setErrorPatternReport] = useState<ErrorPatternReport | null>(null);
+  const [progressMap, setProgressMap] = useState<Record<number, { is_read: boolean; read_count: number; last_read_at?: string }>>({});
   const [queueRefreshKey, setQueueRefreshKey] = useState<number>(0);
   const [queueToast, setQueueToast] = useState<string | null>(null);
 
@@ -278,7 +279,7 @@ export default function DashboardPage() {
       const [progress, testsData, unified] = await Promise.all([
         supabase
           .from('chapter_progress')
-          .select('chapter_id, is_read')
+          .select('chapter_id, is_read, read_count, last_read_at')
           .eq('user_id', user.id)
           .eq('is_read', true),
         supabase
@@ -290,7 +291,22 @@ export default function DashboardPage() {
       ]);
 
       setChaptersList(unified);
-      const readIds = progress.data ? progress.data.map((p) => p.chapter_id) : [];
+
+      const pMap: Record<number, { is_read: boolean; read_count: number; last_read_at?: string }> = {};
+      const readIds: number[] = [];
+      if (progress.data) {
+        progress.data.forEach((p: any) => {
+          if (p.is_read) {
+            readIds.push(p.chapter_id);
+            pMap[p.chapter_id] = {
+              is_read: p.is_read,
+              read_count: p.read_count || 1,
+              last_read_at: p.last_read_at || undefined,
+            };
+          }
+        });
+      }
+      setProgressMap(pMap);
       setReadChapterIds(readIds);
 
       const validTests = testsData.data ? testsData.data.filter((t) => t.score !== null && t.score !== undefined) : [];
@@ -1311,6 +1327,7 @@ export default function DashboardPage() {
         key={queueRefreshKey}
         chaptersList={chaptersList}
         readChapterIds={readChapterIds}
+        progressMap={progressMap}
         recommendedChapterIds={
           snapshot?.recommendations
             ? snapshot.recommendations.map((r: any) => r.selectedChapterId || r.recommendedChapterId).filter(Boolean)

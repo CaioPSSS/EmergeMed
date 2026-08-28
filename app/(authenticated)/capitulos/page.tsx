@@ -56,7 +56,7 @@ export default function CapitulosPage() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
-      const [unifiedSections, unifiedCaps, progressRes, queueIds] = await Promise.all([
+      const [unifiedSections, unifiedCaps, progressRes, queueItems] = await Promise.all([
         getUnifiedSections(supabase, user.id),
         getUnifiedChapters(supabase, user.id),
         supabase
@@ -68,7 +68,7 @@ export default function CapitulosPage() {
 
       setSections(unifiedSections);
       setAllChapters(unifiedCaps);
-      setQueueChapterIds(queueIds);
+      setQueueChapterIds(queueItems.map((item) => item.chapter_id));
 
       if (progressRes.data) {
         const pMap: Record<number, { is_read: boolean; read_count: number; last_read_at?: string }> = {};
@@ -188,11 +188,11 @@ export default function CapitulosPage() {
 
     if (queueChapterIds.includes(chapterId)) {
       const updated = await removeFromStudyQueue(supabase, user.id, chapterId);
-      setQueueChapterIds(updated);
+      setQueueChapterIds(updated.map((item) => item.chapter_id));
       setQueueToast(`"${chapterTitle}" removido da fila de estudos.`);
     } else {
       const updated = await addToStudyQueue(supabase, user.id, chapterId);
-      setQueueChapterIds(updated);
+      setQueueChapterIds(updated.map((item) => item.chapter_id));
       setQueueToast(`"${chapterTitle}" adicionado à fila de estudos!`);
     }
     setTimeout(() => setQueueToast(null), 3000);

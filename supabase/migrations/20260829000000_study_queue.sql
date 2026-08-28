@@ -6,11 +6,15 @@ CREATE TABLE IF NOT EXISTS public.study_queue (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   chapter_id INTEGER NOT NULL,
   position INTEGER NOT NULL DEFAULT 0,
+  completed BOOLEAN DEFAULT FALSE,
   notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id, chapter_id)
 );
+
+-- Ensure completed column exists if table was already created
+ALTER TABLE public.study_queue ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT FALSE;
 
 -- Indexes for efficient ordering and user queries
 CREATE INDEX IF NOT EXISTS idx_study_queue_user_position ON public.study_queue(user_id, position ASC);
