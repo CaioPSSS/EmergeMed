@@ -8,6 +8,7 @@ import { Chapter, Section } from '@/lib/chapters-data';
 import { getUnifiedSections, getUnifiedChapters } from '@/lib/chapters-service';
 import { calculateFSRSManualReadUpdate } from '@/lib/learning-engine';
 import { recordActivityAndAwardXP } from '@/lib/gamification-engine';
+import { fetchStudyQueue, addToStudyQueue, removeFromStudyQueue } from '@/lib/study-queue-service';
 import { RereadQuizModal } from '@/components/RereadQuizModal';
 import { ChapterReaderModal } from '@/components/ChapterReaderModal';
 import {
@@ -42,6 +43,8 @@ export default function CapitulosPage() {
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
+  const [queueChapterIds, setQueueChapterIds] = useState<number[]>([]);
+  const [queueToast, setQueueToast] = useState<string | null>(null);
 
   // Modals
   const [rereadQuizTarget, setRereadQuizTarget] = useState<Chapter | null>(null);
@@ -53,17 +56,19 @@ export default function CapitulosPage() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
-      const [unifiedSections, unifiedCaps, progressRes] = await Promise.all([
+      const [unifiedSections, unifiedCaps, progressRes, queueIds] = await Promise.all([
         getUnifiedSections(supabase, user.id),
         getUnifiedChapters(supabase, user.id),
         supabase
           .from('chapter_progress')
           .select('chapter_id, is_read, read_count, last_read_at')
           .eq('user_id', user.id),
+        fetchStudyQueue(supabase, user.id),
       ]);
 
       setSections(unifiedSections);
       setAllChapters(unifiedCaps);
+      setQueueChapterIds(queueIds);
 
       if (progressRes.data) {
         const pMap: Record<number, { is_read: boolean; read_count: number; last_read_at?: string }> = {};
@@ -175,6 +180,22 @@ export default function CapitulosPage() {
         });
       }
     }
+  };
+
+  const handleToggleQueue = async (chapterId: number, chapterTitle: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    if (queueChapterIds.includes(chapterId)) {
+      const updated = await removeFromStudyQueue(supabase, user.id, chapterId);
+      setQueueChapterIds(updated);
+      setQueueToast(`"${chapterTitle}" removido da fila de estudos.`);
+    } else {
+      const updated = await addToStudyQueue(supabase, user.id, chapterId);
+      setQueueChapterIds(updated);
+      setQueueToast(`"${chapterTitle}" adicionado à fila de estudos!`);
+    }
+    setTimeout(() => setQueueToast(null), 3000);
   };
 
   const handleDeleteCustomChapter = async (chapterId: number) => {
@@ -561,6 +582,24 @@ export default function CapitulosPage() {
                             <Sparkles size={14} /> Testar IA
                           </button>
 
+                          <button
+                            onClick={() => handleToggleQueue(cap.id, cap.title)}
+                            className="btn-secondary"
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '0.8rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: queueChapterIds.includes(cap.id) ? '#38bdf8' : 'var(--text-muted)',
+                              borderColor: queueChapterIds.includes(cap.id) ? 'rgba(56, 189, 248, 0.4)' : 'var(--border-subtle)',
+                              background: queueChapterIds.includes(cap.id) ? 'rgba(56, 189, 248, 0.1)' : 'transparent',
+                            }}
+                            title={queueChapterIds.includes(cap.id) ? 'Remover da minha fila de estudos' : 'Adicionar à minha fila de estudos'}
+                          >
+                            <Bookmark size={14} /> {queueChapterIds.includes(cap.id) ? 'Na Fila ✓' : '+ Fila'}
+                          </button>
+
                           {cap.isCustom && (
                             <>
                               <Link
@@ -619,6 +658,34 @@ export default function CapitulosPage() {
             await loadData();
           }}
         />
+      )}
+
+      {/* Toast Notification de Fila */}
+      {queueToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
+            border: '1px solid rgba(56, 189, 248, 0.5)',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
+            color: '#f8fafc',
+            padding: '12px 20px',
+            borderRadius: '12px',
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          <div style={{ color: '#38bdf8' }}>
+            <Bookmark size={18} />
+          </div>
+          <span>{queueToast}</span>
+        </div>
       )}
     </div>
   );

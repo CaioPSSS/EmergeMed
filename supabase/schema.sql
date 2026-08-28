@@ -302,3 +302,39 @@ CREATE POLICY "Users manage own achievements"
 CREATE POLICY "Users manage own gamification stats"
   ON public.user_gamification_stats FOR ALL USING (auth.uid() = user_id);
 
+-- ═══════════════════════════════════════════════════════════
+-- Table: study_queue (Personalized Study Queue with ordering)
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.study_queue (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  chapter_id INTEGER NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, chapter_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_queue_user_position ON public.study_queue(user_id, position ASC);
+CREATE INDEX IF NOT EXISTS idx_study_queue_user_chapter ON public.study_queue(user_id, chapter_id);
+
+ALTER TABLE public.study_queue ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own study queue" ON public.study_queue;
+CREATE POLICY "Users can view own study queue"
+  ON public.study_queue FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own study queue" ON public.study_queue;
+CREATE POLICY "Users can insert own study queue"
+  ON public.study_queue FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own study queue" ON public.study_queue;
+CREATE POLICY "Users can update own study queue"
+  ON public.study_queue FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own study queue" ON public.study_queue;
+CREATE POLICY "Users can delete own study queue"
+  ON public.study_queue FOR DELETE TO authenticated USING (auth.uid() = user_id);
+
+

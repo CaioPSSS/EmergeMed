@@ -9,6 +9,8 @@ import { ReadinessEngineSnapshot, calculateFSRSRereadWithQuiz, calculateFSRSManu
 import { recordActivityAndAwardXP, getGamificationSnapshot } from '@/lib/gamification-engine';
 import { analyzeErrorPatterns, ErrorPatternReport } from '@/lib/error-pattern-analyzer';
 import { RereadQuizModal } from '@/components/RereadQuizModal';
+import { StudyQueueWidget } from '@/components/StudyQueueWidget';
+import { addToStudyQueue } from '@/lib/study-queue-service';
 import {
   Shuffle,
   CheckCircle2,
@@ -34,6 +36,7 @@ import {
   Compass,
   Layers,
   ChevronRight,
+  Bookmark,
 } from 'lucide-react';
 
 interface SpecialtyScore {
@@ -211,6 +214,8 @@ export default function DashboardPage() {
   const [rereadQuizTarget, setRereadQuizTarget] = useState<Chapter | null>(null);
   const [gamificationData, setGamificationData] = useState<any>(null);
   const [errorPatternReport, setErrorPatternReport] = useState<ErrorPatternReport | null>(null);
+  const [queueRefreshKey, setQueueRefreshKey] = useState<number>(0);
+  const [queueToast, setQueueToast] = useState<string | null>(null);
 
   async function fetchEngineRecommendation(chapterIdOverride?: number, excludeStr?: string) {
     try {
@@ -263,73 +268,83 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => {
-    async function loadDashboardData() {
-      setLoading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  async function loadDashboardData() {
+    setLoading(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (user) {
-        const [progress, testsData, unified] = await Promise.all([
-          supabase
-            .from('chapter_progress')
-            .select('chapter_id, is_read')
-            .eq('user_id', user.id)
-            .eq('is_read', true),
-          supabase
-            .from('tests')
-            .select('score, completed')
-            .eq('user_id', user.id)
-            .eq('completed', true),
-          getUnifiedChapters(supabase, user.id),
-        ]);
+    if (user) {
+      const [progress, testsData, unified] = await Promise.all([
+        supabase
+          .from('chapter_progress')
+          .select('chapter_id, is_read')
+          .eq('user_id', user.id)
+          .eq('is_read', true),
+        supabase
+          .from('tests')
+          .select('score, completed')
+          .eq('user_id', user.id)
+          .eq('completed', true),
+        getUnifiedChapters(supabase, user.id),
+      ]);
 
-        setChaptersList(unified);
-        const readIds = progress.data ? progress.data.map((p) => p.chapter_id) : [];
-        setReadChapterIds(readIds);
+      setChaptersList(unified);
+      const readIds = progress.data ? progress.data.map((p) => p.chapter_id) : [];
+      setReadChapterIds(readIds);
 
-        const validTests = testsData.data ? testsData.data.filter((t) => t.score !== null && t.score !== undefined) : [];
-        const testsCount = validTests.length;
-        const avg =
-          testsCount > 0
-            ? Math.round((validTests.reduce((acc, curr) => acc + Number(curr.score), 0) / testsCount) * 10) / 10
-            : 0;
+      const validTests = testsData.data ? testsData.data.filter((t) => t.score !== null && t.score !== undefined) : [];
+      const testsCount = validTests.length;
+      const avg =
+        testsCount > 0
+          ? Math.round((validTests.reduce((acc, curr) => acc + Number(curr.score), 0) / testsCount) * 10) / 10
+          : 0;
 
-        setStats({
-          totalRead: readIds.length,
-          testsCompleted: testsCount,
-          averageScore: avg,
-        });
+      setStats({
+        totalRead: readIds.length,
+        testsCompleted: testsCount,
+        averageScore: avg,
+      });
 
-        try {
-          const gSnap = await getGamificationSnapshot(supabase, user.id);
-          setGamificationData(gSnap);
-        } catch (e) {
-          console.warn('Failed to load gamification snapshot:', e);
-        }
-
-        try {
-          const { data: errorTagsData } = await supabase
-            .from('error_pattern_tags')
-            .select('*')
-            .eq('user_id', user.id);
-
-          if (errorTagsData && errorTagsData.length > 0) {
-            const report = analyzeErrorPatterns(errorTagsData);
-            setErrorPatternReport(report);
-          }
-        } catch (e) {
-          console.warn('Failed to load error pattern tags:', e);
-        }
-
-        await fetchEngineRecommendation();
+      try {
+        const gSnap = await getGamificationSnapshot(supabase, user.id);
+        setGamificationData(gSnap);
+      } catch (e) {
+        console.warn('Failed to load gamification snapshot:', e);
       }
-      setLoading(false);
-    }
 
+      try {
+        const { data: errorTagsData } = await supabase
+          .from('error_pattern_tags')
+          .select('*')
+          .eq('user_id', user.id);
+
+        if (errorTagsData && errorTagsData.length > 0) {
+          const report = analyzeErrorPatterns(errorTagsData);
+          setErrorPatternReport(report);
+        }
+      } catch (e) {
+        console.warn('Failed to load error pattern tags:', e);
+      }
+
+      await fetchEngineRecommendation();
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
     loadDashboardData();
   }, []);
+
+  const handleAddToQueue = async (chapterId: number, chapterTitle: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await addToStudyQueue(supabase, user.id, chapterId);
+    setQueueRefreshKey((k) => k + 1);
+    setQueueToast(`"${chapterTitle}" adicionado à sua fila de estudos!`);
+    setTimeout(() => setQueueToast(null), 3500);
+  };
 
   const handleDrawNextChapter = async () => {
     if (!snapshot) return;
@@ -714,6 +729,14 @@ export default function DashboardPage() {
                     >
                       <Sparkles size={15} /> Testar
                     </button>
+                    <button
+                      onClick={() => handleAddToQueue(cap.id, cap.title)}
+                      className="btn-secondary"
+                      style={{ padding: '10px 12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      title="Adicionar à Minha Fila de Estudos"
+                    >
+                      <Bookmark size={14} /> + Fila
+                    </button>
                   </div>
                 </div>
               );
@@ -928,6 +951,15 @@ export default function DashboardPage() {
                   </button>
                 </>
               )}
+
+              <button
+                onClick={() => handleAddToQueue(currentChapter.id, currentChapter.title)}
+                className="btn-secondary"
+                style={{ padding: '12px 18px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                title="Adicionar este capítulo à Minha Fila de Estudos"
+              >
+                <Bookmark size={18} /> + Fila
+              </button>
             </div>
           </div>
         ) : null}
@@ -1273,6 +1305,21 @@ export default function DashboardPage() {
           <MedicalRadarChart data={snapshot?.specialtyScores || []} />
         </div>
       </div>
+
+      {/* WIDGET: MINHA FILA DE ESTUDOS PERSONALIZADA */}
+      <StudyQueueWidget
+        key={queueRefreshKey}
+        chaptersList={chaptersList}
+        readChapterIds={readChapterIds}
+        recommendedChapterIds={
+          snapshot?.recommendations
+            ? snapshot.recommendations.map((r: any) => r.selectedChapterId || r.recommendedChapterId).filter(Boolean)
+            : []
+        }
+        onProgressUpdated={async () => {
+          await loadDashboardData();
+        }}
+      />
 
       {/* Modo Plantão Callout Card */}
       <div
@@ -1662,6 +1709,32 @@ export default function DashboardPage() {
             setShowTestModal(true);
           }}
         />
+      )}
+      {queueToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
+            border: '1px solid rgba(56, 189, 248, 0.5)',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
+            color: '#f8fafc',
+            padding: '12px 20px',
+            borderRadius: '12px',
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          <div style={{ color: '#38bdf8' }}>
+            <Bookmark size={18} />
+          </div>
+          <span>{queueToast}</span>
+        </div>
       )}
     </div>
   );
