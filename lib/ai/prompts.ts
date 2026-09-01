@@ -117,9 +117,9 @@ Você tem total AUTONOMIA para consultar e aplicar conhecimentos de diretrizes e
 RECURSOS E ESTRUTURA TÍPICA DA UPA / SAMU
 ═══════════════════════════════════════════════════════════
 - A UPA possui Sala Vermelha estruturada com: Monitor multiparamétrico contínuo, Desfibrilador/Pace externo, Bombas de Infusão Contínua (BIC), Ventilador mecânico de emergência, VNI, material para Intubação Orotraqueal (IOT) e Cricotireoidostomia, kits de Acesso Venoso Central (dissecção/punção) e Drenagem Torácica.
-- Exames complementares disponíveis de urgência: Gasometria arterial/venosa, Raio-X de tórax/abdome, ECG de 12 derivações, Hemograma, Eletrólitos, Função Renal, Glicemia capilar e Marcadores de Necrose Miocárdica.
-- Nota de realidade prática: Alguns plantonistas NÃO possuem ultrassom à beira do leito (POCUS) disponível de imediato no plantão, devendo guiar condutas com base em exame físico minucioso e exames tradicionais.
-- A UPA NÃO possui centro cirúrgico, hemodinâmica imediata na unidade ou UTI própria. Pacientes graves devem ser estabilizados na Sala Vermelha (estabilização, drogas vasoativas, VNI/IOT) e regulados via central de vagas (SAMU/cross).
+- Exames de IMAGEM disponíveis: APENAS Raio-X portátil (tórax, abdome, pelve, extremidades). A UPA NÃO possui Tomografia Computadorizada (TC), Ressonância Magnética (RM) nem ultrassom/POCUS de forma rotineira. Portanto, NÃO exija solicitação de TC, eFAST ou RM nas prescrições — o médico deve basear condutas em exame físico, RX e exames laboratoriais disponíveis.
+- Exames LABORATORIAIS disponíveis de urgência: Gasometria arterial/venosa, ECG de 12 derivações, Hemograma, Eletrólitos, Função Renal, Glicemia capilar e Marcadores de Necrose Miocárdica.
+- A UPA NÃO possui centro cirúrgico, hemodinâmica imediata na unidade, UTI própria nem banco de sangue/hemocomponentes. Pacientes graves devem ser estabilizados na Sala Vermelha (estabilização, drogas vasoativas, VNI/IOT) e regulados via central de vagas (SAMU/CROSS).
 
 \${REMUME_MEDICATIONS_UPA}
 
@@ -347,6 +347,37 @@ DIRETRIZES FUNDAMENTAIS DE JULGAMENTO (EVITAR RIGIDEZ PEDANTE)
    - "Inadequado" (0.0 a 4.9): Reservado ESTRITAMENTE para erros graves/fatais (ex: contraindicação absoluta que causa morte, dose 10x tóxica, omitir o tratamento salvador primário no choque/sepse).
 
 ═══════════════════════════════════════════════════════════
+HIERARQUIA DE IMPACTO NO SCORE (CALIBRAÇÃO OBRIGATÓRIA)
+═══════════════════════════════════════════════════════════
+Ao atribuir a nota, PESE cada erro/omissão conforme sua gravidade clínica real:
+- Erro CRÍTICO (compromete sobrevida diretamente): desconta 2.0 a 3.0 pontos.
+  Exemplos: omitir IOT em Glasgow ≤8, não dar adrenalina em PCR, dose ≥10x tóxica, contraindicação absoluta letal.
+- Erro MODERADO (risco real, mas não letal imediato): desconta 0.5 a 1.0 ponto.
+  Exemplos: omitir O2 com SpO2 <90%, alvo pressórico inadequado para a faixa etária, dose parcialmente errada do tratamento principal.
+- Erro LEVE (ajuste de forma, omissão secundária ou refinamento): desconta 0.0 a 0.3 ponto.
+  Exemplos: não especificar velocidade exata de infusão, falta de profilaxia de hipotermia, não detalhar calibre dos acessos venosos, erro de diluição sem impacto tóxico.
+- TETO DE DESCONTO por erros LEVES acumulados: no máximo 1.5 pontos no total, independentemente da quantidade de itens leves listados.
+- REGRA DE OURO: Se o médico acertou os tratamentos ESSENCIAIS (fármacos corretos para a doença, doses seguras, sequenciamento correto) e NÃO cometeu erros de segurança (contraindicações, doses tóxicas), a nota MÍNIMA deve ser 7.0 ("Adequado"), mesmo que faltem itens secundários do gabarito ideal.
+
+═══════════════════════════════════════════════════════════
+REGRA DE PROPORCIONALIDADE (ANTI-CHECKLIST ENCICLOPÉDICA)
+═══════════════════════════════════════════════════════════
+O gabarito ideal (idealPrescription) representa a resposta ENCICLOPÉDICA e PERFEITA. NÃO é esperado que o médico cubra 100% dos itens do gabarito para receber nota alta.
+- "Requer Ajustes" deve ser reservado para ERROS ATIVOS (dose errada, droga contraindicada, sequência invertida, omissão do tratamento PRINCIPAL) — e NÃO para acúmulo de omissões secundárias.
+- Se a prescrição contém os pilares terapêuticos corretos mas faltam itens complementares (profilaxias, exames adicionais, ajustes finos de forma), o veredito deve ser "Adequado" com os ajustes apontados nos "improvements".
+- Ao listar "improvements", ORDENE por gravidade clínica (crítico primeiro, leve por último) e LIMITE a no máximo 6 itens prioritários. Itens adicionais de refinamento podem ir no detailedFeedback.
+
+═══════════════════════════════════════════════════════════
+DELIMITAÇÃO: PRESCRIÇÃO MÉDICA vs CONDUTA OPERACIONAL
+═══════════════════════════════════════════════════════════
+Avalie PRIMARIAMENTE o que pertence à folha de prescrição médica: drogas, doses, vias, intervalos, dietas, posicionamento, monitorização e cuidados de enfermagem. NÃO penalize a ausência de:
+- Acionamento de protocolos administrativos (protocolo de hemorragia maciça, regulação SAMU/CROSS)
+- Solicitação de exames de imagem INDISPONÍVEIS na UPA (TC, eFAST/POCUS, RM) — a UPA possui APENAS Raio-X portátil (tórax, abdome, extremidades)
+- Parecer de especialista, transferência ou regulação (a menos que o enunciado peça explicitamente "conduta completa")
+- Confirmação pós-procedimento (capnografia em onda pós-IOT, ausculta bilateral) — são boas práticas que podem ser elogiadas nos "strengths", mas sua ausência NÃO deve reduzir a nota
+Exceção: Se o enunciado da questão pedir "conduta completa de estabilização" (e não apenas "prescrição"), a avaliação PODE incluir medidas operacionais relevantes, mas ainda com peso proporcionalmente menor que os fármacos e doses.
+
+═══════════════════════════════════════════════════════════
 3 MODOS DE AVALIAÇÃO (determinado pelo campo "TIPO DE QUESTÃO")
 ═══════════════════════════════════════════════════════════
 
@@ -402,10 +433,10 @@ FORMATO DE RESPOSTA (JSON VÁLIDO OBRIGATÓRIO)
     "Pontos fortes da conduta (acertos de fármacos, segurança, diagnósticos)"
   ],
   "improvements": [
-    "Pontos de melhoria, omissões ou erros (obrigatório preencher quando houver falhas ou veredito Requer Ajustes / Inadequado)"
+    "Máximo 6 pontos de melhoria, ORDENADOS por gravidade clínica (crítico primeiro). Itens adicionais de refinamento vão no detailedFeedback."
   ],
-  "detailedFeedback": "Análise crítica em Markdown explicando por que o veredito/nota foi atribuído, detalhando os riscos clínicos dos erros e como corrigi-los.",
-  "idealPrescription": "Prescrição/configuração de referência completa — a resposta que seria nota 10 para este caso.",
+  "detailedFeedback": "Análise crítica em Markdown explicando por que o veredito/nota foi atribuído, detalhando os riscos clínicos dos erros e como corrigi-los. Inclua aqui itens adicionais de refinamento que não couberam nos 6 improvements principais.",
+  "idealPrescription": "Prescrição de referência FOCADA nos pilares terapêuticos essenciais (máximo 12 itens prioritários). Não transforme em checklist enciclopédica. Itens complementares de boas práticas podem ser mencionados brevemente ao final.",
   "errorTags": [
     {
       "competency": "farmacologia | diagnostico | conduta | ventilacao | prescricao_geral",
@@ -584,6 +615,37 @@ DIRETRIZES FUNDAMENTAIS DE JULGAMENTO (EVITAR RIGIDEZ PEDANTE)
    - "Inadequado" (0.0 a 4.9): Reservado para erros graves/fatais.
 
 ═══════════════════════════════════════════════════════════
+HIERARQUIA DE IMPACTO NO SCORE (CALIBRAÇÃO OBRIGATÓRIA)
+═══════════════════════════════════════════════════════════
+Ao atribuir a nota, PESE cada erro/omissão conforme sua gravidade clínica real:
+- Erro CRÍTICO (compromete sobrevida diretamente): desconta 2.0 a 3.0 pontos.
+  Exemplos: omitir IOT em Glasgow ≤8, não dar adrenalina em PCR, dose ≥10x tóxica, contraindicação absoluta letal.
+- Erro MODERADO (risco real, mas não letal imediato): desconta 0.5 a 1.0 ponto.
+  Exemplos: omitir O2 com SpO2 <90%, alvo pressórico inadequado para a faixa etária, dose parcialmente errada do tratamento principal.
+- Erro LEVE (ajuste de forma, omissão secundária ou refinamento): desconta 0.0 a 0.3 ponto.
+  Exemplos: não especificar velocidade exata de infusão, falta de profilaxia de hipotermia, não detalhar calibre dos acessos venosos, erro de diluição sem impacto tóxico.
+- TETO DE DESCONTO por erros LEVES acumulados: no máximo 1.5 pontos no total, independentemente da quantidade de itens leves listados.
+- REGRA DE OURO: Se o médico acertou os tratamentos ESSENCIAIS (fármacos corretos para a doença, doses seguras, sequenciamento correto) e NÃO cometeu erros de segurança (contraindicações, doses tóxicas), a nota MÍNIMA deve ser 7.0 ("Adequado"), mesmo que faltem itens secundários do gabarito ideal.
+
+═══════════════════════════════════════════════════════════
+REGRA DE PROPORCIONALIDADE (ANTI-CHECKLIST ENCICLOPÉDICA)
+═══════════════════════════════════════════════════════════
+O gabarito ideal (idealPrescription) representa a resposta ENCICLOPÉDICA e PERFEITA. NÃO é esperado que o médico cubra 100% dos itens do gabarito para receber nota alta.
+- "Requer Ajustes" deve ser reservado para ERROS ATIVOS (dose errada, droga contraindicada, sequência invertida, omissão do tratamento PRINCIPAL) — e NÃO para acúmulo de omissões secundárias.
+- Se a prescrição contém os pilares terapêuticos corretos mas faltam itens complementares (profilaxias, exames adicionais, ajustes finos de forma), o veredito deve ser "Adequado" com os ajustes apontados nos "improvements".
+- Ao listar "improvements", ORDENE por gravidade clínica (crítico primeiro, leve por último) e LIMITE a no máximo 6 itens prioritários. Itens adicionais de refinamento podem ir no detailedFeedback.
+
+═══════════════════════════════════════════════════════════
+DELIMITAÇÃO: PRESCRIÇÃO MÉDICA vs CONDUTA OPERACIONAL
+═══════════════════════════════════════════════════════════
+Avalie PRIMARIAMENTE o que pertence à folha de prescrição médica: drogas, doses, vias, intervalos, dietas, posicionamento, monitorização e cuidados de enfermagem. NÃO penalize a ausência de:
+- Acionamento de protocolos administrativos (protocolo de hemorragia maciça, regulação SAMU/CROSS)
+- Solicitação de exames de imagem INDISPONÍVEIS na UPA (TC, eFAST/POCUS, RM) — a UPA possui APENAS Raio-X portátil (tórax, abdome, extremidades)
+- Parecer de especialista, transferência ou regulação (a menos que o enunciado peça explicitamente "conduta completa")
+- Confirmação pós-procedimento (capnografia em onda pós-IOT, ausculta bilateral) — são boas práticas que podem ser elogiadas nos "strengths", mas sua ausência NÃO deve reduzir a nota
+Exceção: Se o enunciado da questão pedir "conduta completa de estabilização" (e não apenas "prescrição"), a avaliação PODE incluir medidas operacionais relevantes, mas ainda com peso proporcionalmente menor que os fármacos e doses.
+
+═══════════════════════════════════════════════════════════
 3 MODOS DE AVALIAÇÃO (determinado pelo campo "TIPO DE QUESTÃO")
 ═══════════════════════════════════════════════════════════
 
@@ -621,9 +683,9 @@ Retorne UM objeto JSON com a chave "evaluations" contendo a avaliação de CADA 
       "score": 8.5,
       "verdict": "Excelente / Adequado / Requer Ajustes / Inadequado",
       "strengths": ["Pontos fortes"],
-      "improvements": ["Pontos de melhoria"],
-      "detailedFeedback": "Análise crítica em Markdown.",
-      "idealPrescription": "Prescrição de referência nota 10.",
+      "improvements": ["Máximo 6, ordenados por gravidade clínica"],
+      "detailedFeedback": "Análise crítica em Markdown. Inclua aqui itens adicionais de refinamento que não couberam nos 6 improvements.",
+      "idealPrescription": "Prescrição de referência FOCADA nos pilares terapêuticos essenciais (máximo 12 itens). Não transforme em checklist enciclopédica.",
       "errorTags": [
         {
           "competency": "farmacologia | diagnostico | conduta | ventilacao | prescricao_geral",
