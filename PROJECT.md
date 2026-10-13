@@ -46,6 +46,9 @@
 | 18 | F5.3 CLI & NPM Pipeline Script | `nightly-batch-pipeline.ts` with `--submit`, `--poll-and-ingest`, `--status`, `--mock` | M3 | ORIGINAL_REQUEST R5 |
 | 19 | F0.1 E2E Test Suite | Comprehensive opaque-box test suite for Tiers 1-4 | M0 (Test Track) | Orchestrator Spec |
 | 20 | F9.1 Final Verification & Hardening | Pass 100% E2E tests, Adversarial Hardening (Tier 5), build & typecheck exit 0 | M4 | Acceptance Criteria |
+| 21 | F6.1 Mobile & Tablet Responsiveness | Drawer sidebar at ≤1024px, horizontal bed tabs, touch-first action bar | M5 | User Request |
+| 22 | F7.1 Voice Dictation & Fast Formatting | Web Speech API streaming + 1.8s Xiaomi MiMo V2.6 Flash phonetic normalizer | M6 | User Request |
+| 23 | F7.2 Unassisted Free Prescription | Complete removal of intrusive quick conduct chips, pure clinical reasoning | M6 | User Request |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
@@ -54,7 +57,10 @@
 | M1 | Modo Plantão Bed Restructuring | R1: 2-stage prescriptions, anti-spoiler vignette, 2 MCQs per bed | none | DONE |
 | M2 | Post-Chapter Quiz & Anti-Repetition SRS | R2 & R3: 10 MCQs, 60/40 mix, `user_question_history`, SRS queue | none | DONE |
 | M3 | OpenRouter Batch Pipeline & Budget Ledger | R4 & R5: Batch API, Tiers 1/3/4, saturation, $0.15/$0.90 caps, CLI | none | DONE |
-| M4 | Final Integration, E2E Pass & Hardening | Pass 100% E2E tests, Tier 5 adversarial tests, auditor verify, build exit 0 | M0, M1, M2, M3 | IN_PROGRESS |
+| M4 | Final Integration, E2E Pass & Hardening | Pass 100% E2E tests, Tier 5 adversarial tests, auditor verify, build exit 0 | M0, M1, M2, M3 | DONE |
+| M5 | Mobile & Tablet Responsiveness | Breakpoint 1024px, drawer sidebar, horizontal bed tabs, bottom action bar | none | DONE |
+| M6 | Voice Dictation & Fast AI Formatting | Web Speech API, Xiaomi MiMo V2.6 (~1.8s), phonetic dictionary, zero dose changes | none | DONE |
+
 
 ## Interface Contracts
 
@@ -112,24 +118,29 @@
 
 ## Code Layout
 - `supabase/migrations/`: Database migrations
-  - `20261016000000_mcq_anti_repetition_queue.sql`
-  - `20261016000001_batch_generation_ledger.sql`
+  - `20261015000000_bed_case_bank.sql` (Bed case repository for plantão reuse)
+  - `20261016000000_mcq_anti_repetition_queue.sql` (User question history and anti-repetition queue)
+  - `20261016000001_batch_generation_ledger.sql` (Ledger for OpenRouter Batch API budget tracking)
 - `lib/`: Domain business logic and services
-  - `lib/ai/prompts.ts` (plantão prompts, 60/40 MCQ prompts)
-  - `lib/ai/openrouter.ts` (generation & evaluation functions)
-  - `lib/ai/openrouter-batch.ts` (Batch API client)
-  - `lib/mcq-queue-service.ts` (Anti-repetition queue service)
-  - `lib/spaced-repetition.ts` (PlantaoBed sequence definition)
+  - `lib/ai/model-router.ts` (Model profiles: CLINICAL_CORE, CLINICAL_EVALUATION, CLINICAL_FEEDBACK, PRESCRIPTION_FAST_FORMAT)
+  - `lib/ai/prompts.ts` (Plantão 2-stage prompts, 60/40 MCQ difficulty prompts, phonetic medical STT dictionary)
+  - `lib/ai/openrouter.ts` (Cascade executor, generation & evaluation functions, formatPrescriptionWithAI)
+  - `lib/ai/openrouter-batch.ts` (Batch API client for openai/gpt-6-luna:batch)
+  - `lib/mcq-queue-service.ts` (Anti-repetition queue service: Unseen > Wrong > Correct)
+  - `lib/spaced-repetition.ts` (PlantaoBed sequence definition & FSRS calculations)
 - `app/api/`: Next.js Route handlers
-  - `app/api/generate-plantao/route.ts` (2-stage bed + 2 MCQs, reuse scale)
-  - `app/api/generate-questions/route.ts` (10-MCQ post-chapter, queue integration)
-  - `app/api/evaluate-bed/route.ts` (evaluation of 2-stage beds)
-- `app/(authenticated)/testes/`: UI pages
-  - `app/(authenticated)/testes/[id]/page.tsx` (execution, anti-spoiler blinding, auto-save, question history recording)
-  - `app/(authenticated)/testes/[id]/resultado/page.tsx` (result cards, dynamic step mapping)
+  - `app/api/format-prescription/route.ts` (Ultra-fast voice dictation normalization with Xiaomi MiMo V2.6)
+  - `app/api/generate-plantao/route.ts` (2-stage bed + 2 MCQs, hybrid bed_case_bank reuse)
+  - `app/api/generate-questions/route.ts` (10-MCQ post-chapter test with 60/40 difficulty mix)
+  - `app/api/evaluate-bed/route.ts` (Evaluation of 2-stage continuous beds)
+- `app/(authenticated)/`: UI pages
+  - `app/(authenticated)/testes/[id]/page.tsx` (Test execution, voice dictation, anti-spoiler, mobile tabs, auto-save)
+  - `app/(authenticated)/testes/[id]/resultado/page.tsx` (Result cards, step-by-step scoring, feedback)
 - `components/`: UI components
+  - `components/layout/Sidebar.tsx` (Responsive 1024px drawer sidebar)
   - `components/chapter/ChapterReaderModal.tsx` (10-MCQ post-reading trigger)
   - `components/dashboard/StudyQueueWidget.tsx` (10-MCQ post-rereading trigger)
 - `scripts/`: CLI pipelines and test runners
   - `scripts/nightly-batch-pipeline.ts` (Nightly batch script with mock & live support)
   - `scripts/run-e2e-tests.ts` (Opaque-box E2E test runner for Tiers 1-4)
+
