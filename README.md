@@ -115,6 +115,11 @@ Script autônomo (`scripts/nightly-batch-pipeline.ts`) que roda assincronamente 
   - **Hard Cap Diário:** \$0.15 USD.
   - **Hard Cap Mensal:** \$0.90 USD.
   - Interrupção automática imediata antes do envio se o teto for atingido.
+* **Execução Noturna Automática:**
+  - Workflow dedicado: `.github/workflows/nightly-batch.yml`.
+  - Fase 1: `batch:submit` (envio de lote).
+  - Fase 2: `batch:poll` (polling + ingestão), executada depois do submit.
+  - O polling é **limitado (bounded)** por tentativas no mesmo run. Se o lote ainda estiver em processamento, o próximo run noturno volta a tentar ingestão dos lotes pendentes do `batch_generation_ledger`.
 
 ---
 
@@ -204,6 +209,21 @@ npm run batch:submit
 # Fazer polling e ingerir resultados do lote no banco
 npm run batch:poll
 ```
+
+### Automação Noturna (GitHub Actions)
+O pipeline roda automaticamente toda noite via `.github/workflows/nightly-batch.yml` (com `schedule` + `workflow_dispatch`), sem depender de `.env.local` no runner.
+
+Secrets necessários no repositório:
+
+- `OPENROUTER_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Observações operacionais:
+
+- `batch:submit` roda antes de `batch:poll`; se o submit falhar, o polling não roda no mesmo workflow.
+- O polling no workflow tem número máximo de tentativas por execução (sem loop infinito).
+- Se a OpenRouter ainda não tiver finalizado o lote na mesma noite, execuções noturnas seguintes continuam o polling/ingestão dos lotes pendentes.
 
 ### Suíte de Testes Automatizados E2E
 ```bash

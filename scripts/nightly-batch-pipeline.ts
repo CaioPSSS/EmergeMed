@@ -68,7 +68,7 @@ loadEnv();
 
 function getSupabaseClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   try {
     return createClient(url, key);
@@ -942,6 +942,15 @@ async function main(): Promise<void> {
     if (!process.env.OPENROUTER_API_KEY || !process.env.OPENROUTER_API_KEY.trim()) {
       console.error('❌ Erro: Variável OPENROUTER_API_KEY não encontrada no ambiente (.env.local).');
       console.error('   Para testes locais ou simulação sem custos, use a flag --mock.');
+      process.exit(1);
+    }
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_URL.trim()) {
+      console.error('❌ Erro: Variável NEXT_PUBLIC_SUPABASE_URL não encontrada no ambiente (.env.local).');
+      process.exit(1);
+    }
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY.trim()) {
+      console.error('❌ Erro: Variável SUPABASE_SERVICE_ROLE_KEY não encontrada no ambiente (.env.local).');
+      console.error('   O pipeline noturno requer service role key para gravações no ledger/bancos.');
       process.exit(1);
     }
   }
