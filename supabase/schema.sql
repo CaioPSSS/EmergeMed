@@ -212,6 +212,8 @@ CREATE TABLE IF NOT EXISTS public.question_bank (
   evaluation_criteria JSONB,
   ideal_ventilator JSONB,
   prompt_text TEXT,
+  difficulty_tier TEXT DEFAULT 'standard' CHECK (difficulty_tier IN ('standard', 'advanced')),
+  question_subformat TEXT DEFAULT 'case_conduct' CHECK (question_subformat IN ('case_conduct', 'direct_content', 'diagnostic_criteria')),
   times_shown INTEGER DEFAULT 0,
   times_correct INTEGER DEFAULT 0,
   times_incorrect INTEGER DEFAULT 0,
@@ -222,6 +224,22 @@ CREATE TABLE IF NOT EXISTS public.question_bank (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Table: user_question_history (SRS queue tracking per user and question)
+CREATE TABLE IF NOT EXISTS public.user_question_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL,
+  question_id UUID NOT NULL REFERENCES public.question_bank(id) ON DELETE CASCADE,
+  chapter_id TEXT NOT NULL,
+  last_is_correct BOOLEAN NOT NULL,
+  times_answered INTEGER DEFAULT 1,
+  times_correct INTEGER DEFAULT 0,
+  last_answered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT uq_user_question_history_user_question UNIQUE(user_id, question_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_question_history_user_chapter ON public.user_question_history(user_id, chapter_id);
+CREATE INDEX IF NOT EXISTS idx_user_question_history_last_answered ON public.user_question_history(last_answered_at ASC);
 
 -- Table: error_pattern_tags (Transversal competency error tracking)
 CREATE TABLE IF NOT EXISTS public.error_pattern_tags (
@@ -373,4 +391,61 @@ CREATE POLICY "Allow authenticated insert bed_case_bank"
 
 CREATE POLICY "Allow authenticated update times_used on bed_case_bank"
   ON bed_case_bank FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+-- ==============================================================================
+-- TABLE: batch_generation_ledger (OpenRouter Nightly Batch Ledger & Budget Caps)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.batch_generation_ledger (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id TEXT UNIQUE NOT NULL,
+  submission_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completion_timestamp TIMESTAMPTZ,
+  model TEXT DEFAULT 'openai/gpt-6-luna:batch',
+  prompt_tokens INT DEFAULT 0,
+  completion_tokens INT DEFAULT 0,
+  cost_usd NUMERIC(10, 6) DEFAULT 0,
+  daily_accumulated_usd NUMERIC(10, 6) DEFAULT 0,
+  monthly_accumulated_usd NUMERIC(10, 6) DEFAULT 0,
+  hard_cap_interrupted BOOLEAN DEFAULT FALSE,
+  items_requested INT DEFAULT 0,
+  items_ingested INT DEFAULT 0,
+  items_failed INT DEFAULT 0,
+  status TEXT DEFAULT 'submitted' CHECK (status IN ('submitted', 'completed', 'failed', 'capped'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_batch_ledger_submission_timestamp 
+  ON public.batch_generation_ledger(submission_timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_batch_ledger_batch_id 
+  ON public.batch_generation_ledger(batch_id);
+
+CREATE INDEX IF NOT EXISTS idx_batch_ledger_status 
+  ON public.batch_generation_ledger(status);
+
+ALTER TABLE public.batch_generation_ledger ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow authenticated read batch_generation_ledger" 
+  ON public.batch_generation_ledger 
+  FOR SELECT 
+  TO authenticated 
+  USING (true);
+
+CREATE POLICY "Allow authenticated insert batch_generation_ledger" 
+  ON public.batch_generation_ledger 
+  FOR INSERT 
+  TO authenticated 
+  WITH CHECK (true);
+
+CREATE POLICY "Allow authenticated update batch_generation_ledger" 
+  ON public.batch_generation_ledger 
+  FOR UPDATE 
+  TO authenticated 
+  USING (true) 
+  WITH CHECK (true);
+
+CREATE POLICY "Allow service_role all batch_generation_ledger" 
+  ON public.batch_generation_ledger 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
 

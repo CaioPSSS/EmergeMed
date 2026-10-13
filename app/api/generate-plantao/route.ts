@@ -11,7 +11,7 @@ import {
   buildReadinessSnapshot,
   selectPlantaoBedsWithEngine,
 } from '@/lib/learning-engine';
-import { generatePlantaoBedQuestionsWithAI, QuestionItem } from '@/lib/ai/openrouter';
+import { generatePlantaoBedQuestionsWithAI, generateQuestionsWithAI, QuestionItem } from '@/lib/ai/openrouter';
 
 export async function POST(request: Request) {
   try {
@@ -126,6 +126,28 @@ export async function POST(request: Request) {
       console.warn('[Plantao Bank] Erro ao consultar bed_case_bank:', err);
     }
 
+    // 6.1 Fetch MCQs from question_bank for each selected chapter
+    const bankedMcqsByChapter: Record<number, any[]> = {};
+    try {
+      const { data: mcqData } = await supabase
+        .from('question_bank')
+        .select('*')
+        .in('chapter_id', selectedChapterIds)
+        .eq('question_type', 'multiple_choice')
+        .order('times_shown', { ascending: true });
+
+      if (mcqData && Array.isArray(mcqData)) {
+        mcqData.forEach((row) => {
+          if (!bankedMcqsByChapter[row.chapter_id]) {
+            bankedMcqsByChapter[row.chapter_id] = [];
+          }
+          bankedMcqsByChapter[row.chapter_id].push(row);
+        });
+      }
+    } catch (err) {
+      console.warn('[Plantao Bank] Erro ao consultar question_bank:', err);
+    }
+
     // Se algum capítulo selecionado ainda não possui casos no banco, busca nos plantões anteriores do usuário em 'tests'
     const missingChapterIds = selectedChapterIds.filter(
       (id) => !bankedCasesByChapter[id] || bankedCasesByChapter[id].length === 0
@@ -149,13 +171,14 @@ export async function POST(request: Request) {
             for (const b of pBeds) {
               if (missingChapterIds.includes(b.chapterId) && (!bankedCasesByChapter[b.chapterId] || bankedCasesByChapter[b.chapterId].length === 0)) {
                 const bedQs = pQuestions.filter((q) => (b.questionIds || []).includes(q.id));
-                if (bedQs.length >= 4) {
+                const prescStages = bedQs.filter((q) => q.type !== 'multiple_choice');
+                if (prescStages.length >= 2) {
                   const newBankRow = {
                     chapter_id: b.chapterId,
                     chapter_title: b.chapterTitle,
                     section_title: b.sectionTitle || '',
-                    phenotype_title: bedQs[0]?.vignette ? bedQs[0].vignette.slice(0, 90) + '...' : b.chapterTitle,
-                    questions: bedQs,
+                    phenotype_title: prescStages[0]?.vignette ? prescStages[0].vignette.slice(0, 90) + '...' : b.chapterTitle,
+                    questions: [prescStages[0], prescStages[1]],
                     complexity_level: 'classic' as const,
                     times_used: 1,
                   };
@@ -181,8 +204,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // 7. Organize beds and generate questions using hybrid algorithm (40% to 80% weighted reuse)
-    // with resilient concurrency (Promise.allSettled + retry fallback)
+    // 7. Organize beds and generate questions using hybrid algorithm
+    // with 2 prescription stages + 2 MCQs per bed and resilient concurrency
     const beds = organizePlantaoBeds(selectedChapterIds, chaptersList, customWeights);
     const allQuestions: QuestionItem[] = [];
     const plantaoBedsData: any[] = [];
@@ -192,25 +215,51 @@ export async function POST(request: Request) {
       if (!capInfo) return null;
 
       const availableCases = bankedCasesByChapter[bed.chapterId] || [];
-      const caseCount = availableCases.length;
+      // Filter for valid 2-stage cases (starts with prescription_immediate)
+      const valid2StageCases = availableCases.filter((c: any) => {
+        const qs = c.questions;
+        return Array.isArray(qs) && qs.length >= 2 && qs[0]?.type === 'prescription_immediate';
+      });
+      const caseCount = valid2StageCases.length;
 
-      // Ponderação do usuário: quanto mais casos salvos, maior a chance de reutilizar (40% a 80%, nunca 100%)
+      // Ponderação do usuário atualizada (35% a 90%):
+      // 1 (35%), 2 (50%), 3 (65%), 4 (75%), 5 (85%), 6 (90% teto máximo)
       let reuseChance = 0;
-      if (caseCount === 1) reuseChance = 0.40;
-      else if (caseCount === 2) reuseChance = 0.55;
-      else if (caseCount === 3) reuseChance = 0.68;
-      else if (caseCount >= 4) reuseChance = 0.80;
+      if (caseCount === 1) reuseChance = 0.35;
+      else if (caseCount === 2) reuseChance = 0.50;
+      else if (caseCount === 3) reuseChance = 0.65;
+      else if (caseCount === 4) reuseChance = 0.75;
+      else if (caseCount === 5) reuseChance = 0.85;
+      else if (caseCount >= 6) reuseChance = 0.90;
 
       const shouldReuse = caseCount > 0 && Math.random() < reuseChance;
 
-      if (shouldReuse && availableCases.length > 0) {
+      let stage1Immediate: QuestionItem | null = null;
+      let stage2Maintenance: QuestionItem | null = null;
+      let isCaseFromBank = false;
+
+      if (shouldReuse && valid2StageCases.length > 0) {
         // Seleção aleatória entre os casos menos utilizados para evitar repetição do mesmo fenótipo
-        const minTimesUsed = Math.min(...availableCases.map((c: any) => c.times_used || 0));
-        const candidateCases = availableCases.filter((c: any) => (c.times_used || 0) <= minTimesUsed + 1);
-        const chosenCase = candidateCases[Math.floor(Math.random() * candidateCases.length)] || availableCases[0];
+        const minTimesUsed = Math.min(...valid2StageCases.map((c: any) => c.times_used || 0));
+        const candidateCases = valid2StageCases.filter((c: any) => (c.times_used || 0) <= minTimesUsed + 1);
+        const chosenCase = candidateCases[Math.floor(Math.random() * candidateCases.length)] || valid2StageCases[0];
 
         const rawQs = chosenCase.questions;
-        if (Array.isArray(rawQs) && rawQs.length >= 4) {
+        if (Array.isArray(rawQs) && rawQs.length >= 2) {
+          stage1Immediate = {
+            ...rawQs[0],
+            chapterId: bed.chapterId,
+            chapterTitle: capInfo.title,
+            isFromBank: true,
+          };
+          stage2Maintenance = {
+            ...rawQs[1],
+            chapterId: bed.chapterId,
+            chapterTitle: capInfo.title,
+            isFromBank: true,
+          };
+          isCaseFromBank = true;
+
           // Increment times_used in background
           if (chosenCase.id) {
             void (async () => {
@@ -224,39 +273,47 @@ export async function POST(request: Request) {
               }
             })();
           }
-
-          const clonedQs = rawQs.map((q: any) => ({
-            ...q,
-            chapterId: bed.chapterId,
-            chapterTitle: capInfo.title,
-            isFromBank: true,
-          }));
-
-          return { bed, questions: clonedQs, isFromBank: true };
         }
       }
 
-      // Generate fresh bed via AI, passing existing phenotypes so AI creates diverse cases
-      const existingPhenotypes = availableCases.map((c: any) => {
-        return c.phenotype_title || c.questions?.[0]?.vignette?.slice(0, 100) || '';
-      }).filter(Boolean);
+      // Generate fresh 2-stage bed case via AI if not reused from bank
+      if (!stage1Immediate || !stage2Maintenance) {
+        const existingPhenotypes = availableCases.map((c: any) => {
+          return c.phenotype_title || c.questions?.[0]?.vignette?.slice(0, 100) || '';
+        }).filter(Boolean);
 
-      try {
-        const questions = await generatePlantaoBedQuestionsWithAI({
-          apiKey,
-          model: questionModel,
-          fallbackModel,
-          bedNumber: bed.bedNumber,
-          chapterInfo: capInfo,
-          chapterText: chapterTexts[bed.chapterId],
-          existingPhenotypes,
-        });
+        try {
+          const generatedStages = await generatePlantaoBedQuestionsWithAI({
+            apiKey,
+            model: questionModel,
+            fallbackModel,
+            bedNumber: bed.bedNumber,
+            chapterInfo: capInfo,
+            chapterText: chapterTexts[bed.chapterId],
+            existingPhenotypes,
+          });
 
-        // Persist newly generated case into bed_case_bank for future plantões with appropriate complexity level
-        if (questions && questions.length >= 4) {
+          if (!generatedStages || generatedStages.length < 2) {
+            throw new Error(`Falha ao gerar as 2 etapas do leito ${bed.bedNumber}`);
+          }
+
+          stage1Immediate = {
+            ...generatedStages[0],
+            chapterId: bed.chapterId,
+            chapterTitle: capInfo.title,
+            isFromBank: false,
+          };
+          stage2Maintenance = {
+            ...generatedStages[1],
+            chapterId: bed.chapterId,
+            chapterTitle: capInfo.title,
+            isFromBank: false,
+          };
+
+          // Persist newly generated 2-stage case into bed_case_bank
           let complexityLevel: 'classic' | 'complex' | 'atypical' = 'classic';
-          if (caseCount === 1) complexityLevel = 'complex';
-          else if (caseCount >= 2) complexityLevel = 'atypical';
+          if (caseCount === 1 || caseCount === 2) complexityLevel = 'complex';
+          else if (caseCount >= 3) complexityLevel = 'atypical';
 
           void (async () => {
             try {
@@ -266,8 +323,8 @@ export async function POST(request: Request) {
                   chapter_id: bed.chapterId,
                   chapter_title: capInfo.title,
                   section_title: capInfo.sectionTitle,
-                  phenotype_title: questions[0]?.vignette ? questions[0].vignette.slice(0, 90) + '...' : capInfo.title,
-                  questions: questions,
+                  phenotype_title: stage1Immediate?.vignette ? stage1Immediate.vignette.slice(0, 90) + '...' : capInfo.title,
+                  questions: [stage1Immediate, stage2Maintenance],
                   complexity_level: complexityLevel,
                   times_used: 1,
                 });
@@ -276,27 +333,118 @@ export async function POST(request: Request) {
               console.warn('[Plantao Bank] Insert error:', e);
             }
           })();
-        }
-
-        return { bed, questions, isFromBank: false };
-      } catch (aiError: any) {
-        console.warn(`[Plantao Bed ${bed.bedNumber}] AI generation failed, checking fallback bank:`, aiError);
-        // Fallback: If AI fails and we have a banked case, use it!
-        if (availableCases.length > 0) {
-          const fallbackCase = availableCases[0];
-          const rawQs = fallbackCase.questions;
-          if (Array.isArray(rawQs) && rawQs.length >= 4) {
-            const clonedQs = rawQs.map((q: any) => ({
-              ...q,
+        } catch (aiError: any) {
+          console.warn(`[Plantao Bed ${bed.bedNumber}] AI case generation failed, checking fallback bank:`, aiError);
+          if (valid2StageCases.length > 0) {
+            const fallbackCase = valid2StageCases[0];
+            const rawQs = fallbackCase.questions;
+            stage1Immediate = {
+              ...rawQs[0],
               chapterId: bed.chapterId,
               chapterTitle: capInfo.title,
               isFromBank: true,
-            }));
-            return { bed, questions: clonedQs, isFromBank: true };
+            };
+            stage2Maintenance = {
+              ...rawQs[1],
+              chapterId: bed.chapterId,
+              chapterTitle: capInfo.title,
+              isFromBank: true,
+            };
+            isCaseFromBank = true;
+          } else {
+            throw aiError;
           }
         }
-        throw aiError;
       }
+
+      // Fetch 2 MCQs from question_bank for bed.chapterId (or generate via AI if unavailable)
+      const availableMcqs = bankedMcqsByChapter[bed.chapterId] || [];
+      const bedMcqs: QuestionItem[] = [];
+
+      const mcqsFromBank = availableMcqs.slice(0, 2);
+      for (const mcqRow of mcqsFromBank) {
+        bedMcqs.push({
+          id: 0,
+          chapterId: bed.chapterId,
+          chapterTitle: capInfo.title,
+          type: 'multiple_choice',
+          vignette: mcqRow.vignette,
+          options: mcqRow.options,
+          correctOption: mcqRow.correct_option,
+          explanation: mcqRow.explanation,
+          isFromBank: true,
+        });
+
+        if (mcqRow.id) {
+          void (async () => {
+            try {
+              await supabase
+                .from('question_bank')
+                .update({ times_shown: (mcqRow.times_shown || 0) + 1 })
+                .eq('id', mcqRow.id);
+            } catch (e: any) {
+              console.warn('[Question Bank] Update times_shown failed:', e);
+            }
+          })();
+        }
+      }
+
+      const mcqsNeeded = 2 - bedMcqs.length;
+      if (mcqsNeeded > 0) {
+        try {
+          const generatedMcqs = await generateQuestionsWithAI({
+            apiKey,
+            model: questionModel,
+            fallbackModel,
+            chaptersInfo: [capInfo],
+            chapterTexts: chapterTexts[bed.chapterId] ? { [bed.chapterId]: chapterTexts[bed.chapterId] } : undefined,
+            count: mcqsNeeded,
+            questionType: 'multiple_choice',
+          });
+
+          for (const q of generatedMcqs) {
+            q.chapterId = bed.chapterId;
+            q.chapterTitle = capInfo.title;
+            bedMcqs.push(q);
+          }
+
+          if (generatedMcqs.length > 0) {
+            const toInsert = generatedMcqs.map((q) => ({
+              chapter_id: bed.chapterId,
+              question_type: 'multiple_choice',
+              vignette: q.vignette,
+              options: q.options || null,
+              correct_option: q.correctOption !== undefined ? q.correctOption : null,
+              explanation: q.explanation || null,
+              source: 'ai_generated',
+              times_shown: 1,
+            }));
+
+            void (async () => {
+              try {
+                await supabase.from('question_bank').insert(toInsert);
+              } catch (err) {
+                console.warn('[Question Bank] Falha ao persistir MCQs:', err);
+              }
+            })();
+          }
+        } catch (mcqErr) {
+          console.warn(`[Plantao Bed ${bed.bedNumber}] Falha ao gerar MCQs via IA:`, mcqErr);
+        }
+      }
+
+      if (!stage1Immediate || !stage2Maintenance) {
+        throw new Error(`Falha ao obter as etapas clínicas para o Leito ${bed.bedNumber}`);
+      }
+
+      // Assemble the 4 bed questions: [etapa1_immediate, etapa2_maintenance, mcq1, mcq2]
+      const bedQuestions: QuestionItem[] = [
+        stage1Immediate,
+        stage2Maintenance,
+        ...bedMcqs.slice(0, 2),
+      ];
+
+      return { bed, questions: bedQuestions, isFromBank: isCaseFromBank };
     });
 
     // Execute with resilient Promise.allSettled

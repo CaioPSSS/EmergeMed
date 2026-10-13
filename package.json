@@ -11,7 +11,8 @@
     "index-pdf": "node scripts/index-pdf.mjs",
     "insert-chapter": "node scripts/insert-chapter-manual.mjs",
     "upload-db": "node scripts/upload-to-supabase.mjs",
-    "preview-chapter-tails": "node scripts/preview-chapter-tails.mjs"
+    "preview-chapter-tails": "node scripts/preview-chapter-tails.mjs",
+    "batch:nightly": "tsx scripts/nightly-batch-pipeline.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -32,6 +33,7 @@
     "@types/pdf-parse": "^1.1.4",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3"
   }
 }

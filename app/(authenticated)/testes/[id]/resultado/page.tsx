@@ -129,7 +129,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
     if (parentBed.bonusQuestionId === q.id) {
       return {
         bedNumber: parentBed.bedNumber,
-        step: 'Etapa 5 (Bônus)',
+        step: 'Etapa de Complicação (Bônus)',
         title: 'Manejo de Complicação Adversa',
         color: '#f43f5e',
         bg: 'rgba(244, 63, 94, 0.15)',
@@ -137,16 +137,89 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
     }
 
     const idxInBed = (parentBed.questionIds || []).indexOf(q.id);
-    const steps = [
-      { step: 'Etapa 1', title: 'Triagem & Suspeita Diagnóstica', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' },
-      { step: 'Etapa 2', title: 'Exames & Confirmação Diagnóstica', color: '#fbbf24', bg: 'rgba(245, 158, 11, 0.15)' },
-      { step: 'Etapa 3', title: 'Conduta Imediata de Resgate', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.15)' },
-      { step: 'Etapa 4', title: 'Prescrição do Dia / Ventilação Mecânica', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)' },
-    ];
 
+    // Check if bed follows the R1 structure (starts with prescription_immediate) or legacy (starts with multiple_choice)
+    const firstQInBed = questions.find((item: any) => item.id === parentBed.questionIds?.[0]);
+    const isR1Sequence = firstQInBed?.type === 'prescription_immediate';
+
+    if (isR1Sequence) {
+      if (idxInBed === 0) {
+        return {
+          bedNumber: parentBed.bedNumber,
+          step: 'Etapa 1',
+          title: 'Conduta Imediata de Resgate',
+          color: '#fb923c',
+          bg: 'rgba(249, 115, 22, 0.15)',
+        };
+      }
+      if (idxInBed === 1) {
+        return {
+          bedNumber: parentBed.bedNumber,
+          step: 'Etapa 2',
+          title: 'Conduta de Manutenção / Ventilação',
+          color: '#a78bfa',
+          bg: 'rgba(167, 139, 250, 0.15)',
+        };
+      }
+      if (idxInBed === 2) {
+        return {
+          bedNumber: parentBed.bedNumber,
+          step: 'Múltipla Escolha 1',
+          title: 'Questão de Múltipla Escolha (1/2)',
+          color: '#38bdf8',
+          bg: 'rgba(56, 189, 248, 0.15)',
+        };
+      }
+      if (idxInBed === 3) {
+        return {
+          bedNumber: parentBed.bedNumber,
+          step: 'Múltipla Escolha 2',
+          title: 'Questão de Múltipla Escolha (2/2)',
+          color: '#34d399',
+          bg: 'rgba(16, 185, 129, 0.15)',
+        };
+      }
+    } else {
+      // Legacy structure backward compatibility
+      const legacySteps = [
+        { step: 'Etapa 1', title: 'Triagem & Suspeita Diagnóstica', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' },
+        { step: 'Etapa 2', title: 'Exames & Confirmação Diagnóstica', color: '#fbbf24', bg: 'rgba(245, 158, 11, 0.15)' },
+        { step: 'Etapa 3', title: 'Conduta Imediata de Resgate', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.15)' },
+        { step: 'Etapa 4', title: 'Prescrição do Dia / Ventilação Mecânica', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)' },
+      ];
+      if (legacySteps[idxInBed]) {
+        return {
+          bedNumber: parentBed.bedNumber,
+          ...legacySteps[idxInBed],
+        };
+      }
+    }
+
+    // Dynamic fallback based on question type
+    if (q.type === 'prescription_immediate') {
+      return {
+        bedNumber: parentBed.bedNumber,
+        step: `Etapa ${idxInBed + 1}`,
+        title: 'Conduta Imediata de Resgate',
+        color: '#fb923c',
+        bg: 'rgba(249, 115, 22, 0.15)',
+      };
+    }
+    if (q.type === 'prescription_complete' || q.type === 'ventilator') {
+      return {
+        bedNumber: parentBed.bedNumber,
+        step: `Etapa ${idxInBed + 1}`,
+        title: 'Conduta de Manutenção / Ventilação',
+        color: '#a78bfa',
+        bg: 'rgba(167, 139, 250, 0.15)',
+      };
+    }
     return {
       bedNumber: parentBed.bedNumber,
-      ...(steps[idxInBed] || { step: `Etapa ${idxInBed + 1}`, title: 'Evolução Clínica do Leito', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' }),
+      step: `Questão ${idxInBed + 1}`,
+      title: 'Questão de Múltipla Escolha',
+      color: '#38bdf8',
+      bg: 'rgba(56, 189, 248, 0.15)',
     };
   };
 

@@ -79,7 +79,7 @@ export function ChapterReaderModal({
 
   const handleStartTest = () => {
     onClose();
-    router.push(`/testes?chapterId=${chapter.id}`);
+    router.push(`/testes?chapterId=${chapter.id}&count=10&questionType=multiple_choice&isPostChapter=true`);
   };
 
   const handleEdit = () => {
@@ -351,7 +351,7 @@ export function ChapterReaderModal({
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.4)' }}
               >
                 <Sparkles size={14} />
-                Quiz de Releitura (3 Qs)
+                Quiz de Releitura (10 MCQs)
               </button>
             )}
           </div>

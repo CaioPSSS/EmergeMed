@@ -10,6 +10,7 @@ import {
   SYSTEM_PROMPT_CUSTOM_CHAPTER_ANALYZER,
   SYSTEM_PROMPT_BED_SEQUENCE_EVALUATOR,
   SYSTEM_PROMPT_PRESCRIPTION_FORMATTER,
+  MCQ_DIFFICULTY_DISTRIBUTION_INSTRUCTIONS,
 } from './prompts';
 import { AI_TASK_PROFILES, getModelCascade } from './model-router';
 
@@ -31,13 +32,16 @@ export interface QuestionOption {
 export interface QuestionItem {
   id: number;
   type: 'multiple_choice' | 'prescription_complete' | 'prescription_immediate' | 'ventilator';
-  chapterId: number;
-  chapterTitle: string;
+  chapterId: number | string;
+  chapterTitle?: string;
   vignette: string;
   // Multiple choice fields
   options?: string[];
   correctOption?: number; // 0-indexed: 0=A, 1=B, 2=C, 3=D, 4=E
   explanation?: string;
+  difficulty_tier?: 'standard' | 'advanced';
+  question_subformat?: 'case_conduct' | 'direct_content' | 'diagnostic_criteria';
+  bankQuestionId?: string;
   // Prescription fields (complete + immediate)
   promptText?: string;
   idealPrescription?: string;
@@ -47,6 +51,7 @@ export interface QuestionItem {
   idealVentilator?: Record<string, string>;
   // Patient data (extracted for drug math validation)
   patientWeight?: number;
+  isFromBank?: boolean;
 }
 
 export interface PrescriptionEvaluation {
@@ -206,6 +211,28 @@ export function normalizeQuestionItem(q: any): QuestionItem {
     q.patientWeight = Number(q.weight) || undefined;
   }
 
+  // 6. Normalize difficulty_tier and question_subformat
+  const rawTier = String(q.difficulty_tier || q.difficulty || '').trim().toLowerCase();
+  if (rawTier === 'advanced') {
+    q.difficulty_tier = 'advanced';
+  } else {
+    q.difficulty_tier = 'standard';
+  }
+
+  const rawSubformat = String(q.question_subformat || q.subformat || '').trim().toLowerCase();
+  if (rawSubformat === 'direct_content') {
+    q.question_subformat = 'direct_content';
+  } else if (rawSubformat === 'diagnostic_criteria') {
+    q.question_subformat = 'diagnostic_criteria';
+  } else {
+    q.question_subformat = 'case_conduct';
+  }
+
+  // 7. Preserve bankQuestionId
+  if (q.bankQuestionId || q.bank_question_id) {
+    q.bankQuestionId = String(q.bankQuestionId || q.bank_question_id);
+  }
+
   return q as QuestionItem;
 }
 
@@ -264,6 +291,8 @@ export async function generateQuestionsWithAI({
   chapterTexts,
   count = 5,
   questionType = 'mixed',
+  difficultyMix,
+  isPostChapter,
 }: {
   apiKey?: string;
   model?: string;
@@ -272,6 +301,8 @@ export async function generateQuestionsWithAI({
   chapterTexts?: Record<number, string>;
   count?: number;
   questionType?: 'multiple_choice' | 'prescription' | 'ventilator' | 'mixed';
+  difficultyMix?: { standard: number; advanced: number };
+  isPostChapter?: boolean;
 }): Promise<QuestionItem[]> {
   const openai = getOpenAIClient(apiKey);
 
@@ -297,10 +328,17 @@ export async function generateQuestionsWithAI({
     ventilator: 'apenas configuração de ventilador mecânico (somente se a patologia justificar ventilação mecânica invasiva)',
   };
 
+  let mcqDistributionContext = '';
+  if (questionType === 'multiple_choice' && (difficultyMix || isPostChapter || count === 10)) {
+    const stdCount = difficultyMix?.standard ?? Math.round(count * 0.6);
+    const advCount = difficultyMix?.advanced ?? (count - stdCount);
+    mcqDistributionContext = `\n\n${MCQ_DIFFICULTY_DISTRIBUTION_INSTRUCTIONS}\nMETAS RÍGIDAS DESTA GERAÇÃO:\n- Exatamente ${stdCount} questões com "difficulty_tier": "standard"\n- Exatamente ${advCount} questões com "difficulty_tier": "advanced"\n- Distribuição equilibrada entre subformatos ("case_conduct", "direct_content", "diagnostic_criteria").\n`;
+  }
+
   const userPrompt = `Gere ${count} questões clínicas de medicina de emergência para UPA sobre os seguintes capítulos:
 ${chaptersPrompt}
 ${textContext}
-
+${mcqDistributionContext}
 INSTRUÇÕES FUNDAMENTAIS:
 1. O TEXTO COMPLETO DO CAPÍTULO FORNECIDO ACIMA É SUA FONTE PRIMÁRIA E OBRIGATÓRIA. Todas as questões devem ser derivadas de conceitos, dados, tabelas e protocolos presentes no capítulo.
 2. Tipo de questões desejadas: ${typeDescriptions[questionType] || typeDescriptions.mixed}.
@@ -466,13 +504,14 @@ export async function generatePlantaoBedQuestionsWithAI({
   const userPrompt = `Crie a simulação completa para o LEITO ${bedNumber} (Capítulo ${chapterInfo.number}: ${chapterInfo.title} - Seção: ${chapterInfo.sectionTitle}).
 ${cleanText ? `\nTEXTO DE REFERÊNCIA DO LIVRO:\n${cleanText}\n` : ''}
 ${phenotypeContext}
-Gere exatamente 4 questões sequenciais formando uma narrativa clínica contínua para um paciente atendido neste leito:
-Q1: Múltipla escolha A-E (Triagem / Diagnóstico inicial) - "options" DEVE SER UMA ARRAY JSON DE STRINGS ex: ["Opção A", "Opção B", ...], "correctOption" DEVE SER ÍNDICE 0-BASED (0=A, 1=B, 2=C, 3=D, 4=E).
-Q2: Múltipla escolha A-E (Exames / Confirmação diagnóstica) - "options" DEVE SER UMA ARRAY JSON DE STRINGS, "correctOption" DEVE SER ÍNDICE 0-BASED.
-Q3: Prescrição Imediata ("prescription_immediate") - Resgate de emergência
-Q4: Prescrição Completa ("prescription_complete") OU Ventilador Mecânico ("ventilator", se indicado)
+Gere exatamente 2 etapas sequenciais focadas em conduta/prescrição formando o caso clínico contínuo para este paciente atendido no leito:
+Etapa 1: Prescrição Imediata ("prescription_immediate") — Conduta imediata de resgate/estabilização na chegada aguda à Sala Vermelha.
+Etapa 2: Prescrição de Manutenção ("prescription_complete") OU Configuração de Ventilador Mecânico ("ventilator", se cabível) — Evolução clínica com exames complementares e resposta à conduta inicial.
 
-Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato especificado. Sem explicações ou markdown adicional.`;
+REGRA DE OURO ANTI-SPOILER: O diagnóstico NUNCA deve estar escrito de forma explícita nas vinhetas (é proibido 'Diagnóstico: ...', 'HD: ...' ou nomear a doença no texto). O médico deve interpretar o quadro e deduzir a hipótese diagnóstica.
+CAMPO OBRIGATÓRIO: "patientWeight" em kg (número inteiro) em ambos os objetos para validação matemática de doses.
+
+Retorne ESTRITAMENTE uma array JSON com os 2 objetos de questão no formato especificado. Sem explicações ou markdown adicional.`;
 
   const modelsCascade = Array.from(new Set([
     ...getModelCascade('CLINICAL_CORE', model),
@@ -487,7 +526,7 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.4,
-      max_tokens: 8000,
+      max_tokens: 5000,
     } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
@@ -555,7 +594,7 @@ export async function evaluateBedSequenceWithAI({
 
   let mcqSection = '';
   if (mcqResults && mcqResults.length > 0) {
-    mcqSection = `\n═══════════════════════════════════════════════════════════\nRESPOSTAS DO MÉDICO NAS QUESTÕES DE TRIAGEM / DIAGNÓSTICO (Q1 / Q2):\n═══════════════════════════════════════════════════════════\n` +
+    mcqSection = `\n═══════════════════════════════════════════════════════════\nRESPOSTAS DO MÉDICO NAS 2 QUESTÕES DE MÚLTIPLA ESCOLHA COMPLEMENTARES:\n═══════════════════════════════════════════════════════════\n` +
       mcqResults.map((m, idx) => `
 QUESTÃO ${idx + 1} (ID: ${m.id}) - Múltipla Escolha:
 - Caso Clínico: ${m.vignette}
@@ -565,6 +604,10 @@ ${m.explanation ? `- Gabarito / Justificativa: ${m.explanation}` : ''}
   }
 
   const prescriptionsSection = prescriptions.map((p, idx) => {
+    const stageLabel = idx === 0
+      ? 'ETAPA 1: CONDUTA IMEDIATA DE RESGATE'
+      : 'ETAPA 2: CONDUTA DE MANUTENÇÃO / RESGATE / VENTILAÇÃO';
+
     const typeLabel = p.type === 'ventilator'
       ? 'CONFIGURAÇÃO DE VENTILADOR MECÂNICO'
       : p.type === 'prescription_immediate'
@@ -577,7 +620,7 @@ ${m.explanation ? `- Gabarito / Justificativa: ${m.explanation}` : ''}
 
     return `
 ═══════════════════════════════════════════════════════════
-PRESCRIÇÃO ${idx + 1} (QUESTÃO ID: ${p.id}) — ${typeLabel}:
+${stageLabel} (QUESTÃO ID: ${p.id}) — ${typeLabel}:
 ═══════════════════════════════════════════════════════════
 TIPO DE QUESTÃO: ${p.type}
 CASO CLÍNICO / EVOLUÇÃO NO MOMENTO DESTA CONDUTA:

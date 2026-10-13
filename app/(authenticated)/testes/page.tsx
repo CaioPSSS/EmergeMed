@@ -29,16 +29,19 @@ function TestGeneratorForm() {
   const supabase = createClient();
   const preselectedChapterId = searchParams.get('chapterId');
   const initialMode = searchParams.get('mode') === 'plantao' ? 'plantao' : 'classic';
+  const isPostChapterParam = searchParams.get('isPostChapter') === 'true';
+  const paramCount = searchParams.get('count') ? Number(searchParams.get('count')) : (isPostChapterParam ? 10 : 5);
+  const paramType = (searchParams.get('questionType') as any) || (isPostChapterParam ? 'multiple_choice' : 'mixed');
 
   const [activeTab, setActiveTab] = useState<'classic' | 'plantao'>(initialMode);
   const [chaptersList, setChaptersList] = useState<Chapter[]>(CHAPTERS_DATA);
 
   // Classic mode state
   const [selectedChapterIds, setSelectedChapterIds] = useState<number[]>([]);
-  const [questionCount, setQuestionCount] = useState<number>(5);
+  const [questionCount, setQuestionCount] = useState<number>(!isNaN(paramCount) ? paramCount : 5);
   const [questionType, setQuestionType] = useState<
     'multiple_choice' | 'prescription' | 'ventilator' | 'mixed'
-  >('mixed');
+  >(paramType);
   const [chapterSearch, setChapterSearch] = useState<string>('');
 
   // Plantão mode state
@@ -146,6 +149,7 @@ function TestGeneratorForm() {
           chapterIds: selectedChapterIds,
           count: questionCount,
           questionType: questionType,
+          isPostChapter: isPostChapterParam || questionCount === 10,
         }),
       });
 

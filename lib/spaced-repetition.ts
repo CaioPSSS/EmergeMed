@@ -138,10 +138,10 @@ export function organizePlantaoBeds(
       frequencyScore: cap?.frequencyScore || weight.frequencyScore,
       importanceScore: cap?.importanceScore || weight.importanceScore,
       questionSequence: [
-        'multiple_choice',       // Q1: Triagem / Diagnóstico inicial
-        'multiple_choice',       // Q2: Conduta diagnóstica / Exames
-        'prescription_immediate',// Q3: Prescrição imediata de emergência
-        'prescription_complete', // Q4: Prescrição completa ou Ventilador (se cabível)
+        'prescription_immediate', // Q1: Etapa 1 - Conduta Imediata de Resgate
+        'prescription_complete',  // Q2: Etapa 2 - Conduta de Manutenção / Ventilação
+        'multiple_choice',        // Q3: Questão de Múltipla Escolha 1/2
+        'multiple_choice',        // Q4: Questão de Múltipla Escolha 2/2
       ],
     };
   });

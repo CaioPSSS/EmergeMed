@@ -242,9 +242,9 @@ export function StudyQueueWidget({
     }
   };
 
-  // Direct test redirection
+  // Direct test redirection (10-MCQ post-chapter test)
   const handleGoToTest = (chapterId: number) => {
-    router.push(`/testes?chapterId=${chapterId}`);
+    router.push(`/testes?chapterId=${chapterId}&count=10&questionType=multiple_choice&isPostChapter=true`);
   };
 
   // Filter chapters in add modal
@@ -990,7 +990,7 @@ export function StudyQueueWidget({
                 : '1ª Leitura Registrada com Sucesso!'}
             </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '22px', lineHeight: 1.4 }}>
-              Você concluiu o estudo de <strong>{studiedModalInfo.chapter.isCustom ? studiedModalInfo.chapter.title : `Cap. ${studiedModalInfo.chapter.number}: ${studiedModalInfo.chapter.title}`}</strong>. Deseja gerar questões com IA para testar sua retenção clínica agora?
+              Você concluiu o estudo de <strong>{studiedModalInfo.chapter.isCustom ? studiedModalInfo.chapter.title : `Cap. ${studiedModalInfo.chapter.number}: ${studiedModalInfo.chapter.title}`}</strong>. Deseja realizar o simulado de 10 questões de múltipla escolha com repetição espaçada agora?
             </p>
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
@@ -1011,7 +1011,7 @@ export function StudyQueueWidget({
                 className="btn-primary"
                 style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               >
-                <Sparkles size={16} /> Gerar Questões IA
+                <Sparkles size={16} /> Fazer Teste (10 MCQs)
               </button>
             </div>
           </div>

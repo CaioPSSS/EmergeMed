@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getChapterMetadata } from '@/lib/chapters-service';
-import { generateQuestionsWithAI } from '@/lib/ai/openrouter';
+import { selectMCQsWithAntiRepetition } from '@/lib/mcq-queue-service';
 
 export async function POST(request: Request) {
   try {
@@ -14,9 +13,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'chapterId é obrigatório' }, { status: 400 });
     }
 
-    const cap = await getChapterMetadata(supabase, Number(chapterId), user.id);
-    const capInfo = cap ? [cap] : [];
-    
     const { data: settings } = await supabase
       .from('user_settings')
       .select('*')
@@ -27,29 +23,44 @@ export async function POST(request: Request) {
     const model = settings?.question_model || 'openai/gpt-6-luna';
     const fallback = settings?.fallback_model || 'deepseek/deepseek-v4.1-flash';
 
-    // Buscar texto do capítulo se disponível
-    const { data: content } = await supabase
-      .from('chapter_contents')
-      .select('content')
-      .eq('chapter_id', chapterId)
+    // Generate 10 MCQs via the Anti-Repetition Spaced Repetition Queue Service (R2 & R3)
+    const queueResult = await selectMCQsWithAntiRepetition(
+      user.id,
+      String(chapterId),
+      10,
+      {
+        supabase,
+        userSettings: {
+          apiKey,
+          questionModel: model,
+          fallbackModel: fallback,
+        },
+      }
+    );
+
+    const questions = queueResult.questions;
+
+    // Persist test record in tests table
+    const cidNum = Number(chapterId);
+    const { data: newTest } = await supabase
+      .from('tests')
+      .insert({
+        user_id: user.id,
+        chapter_ids: isNaN(cidNum) ? [1] : [cidNum],
+        question_type: 'multiple_choice',
+        total_questions: questions.length,
+        questions: questions,
+        completed: false,
+      })
+      .select()
       .single();
-    
-    const chapterTexts: Record<number, string> = {};
-    if (content?.content) {
-      chapterTexts[chapterId] = content.content;
-    }
 
-    const questions = await generateQuestionsWithAI({
-      apiKey,
-      model,
-      fallbackModel: fallback,
-      chaptersInfo: capInfo,
-      chapterTexts,
-      count: 3,
-      questionType: 'multiple_choice',
+    return NextResponse.json({
+      testId: newTest?.id,
+      questions,
+      source: queueResult.source,
+      deficit: queueResult.deficit,
     });
-
-    return NextResponse.json({ questions });
   } catch (err: any) {
     console.error('Erro ao gerar quiz de releitura:', err);
     return NextResponse.json({ error: err.message || 'Erro ao gerar quiz' }, { status: 500 });

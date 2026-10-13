@@ -930,6 +930,74 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           plantaoScore: finalScore,
         }).catch(() => {});
 
+        // Persist multiple choice answers into user_question_history and question_bank (R2 & R3)
+        const mcqQuestions = questions.filter(
+          (q) => q.type === 'multiple_choice' && evaluations[q.id]
+        );
+
+        for (const q of mcqQuestions) {
+          const targetQId = q.bankQuestionId || (typeof (q.id as unknown) === 'string' ? String(q.id) : null);
+          if (!targetQId) continue;
+
+          const evalObj = evaluations[q.id];
+          const isCorrect = Boolean(evalObj?.isCorrect);
+          const qChapterId = String(q.chapterId || (Array.isArray(testRecord?.chapter_ids) ? testRecord.chapter_ids[0] : '1'));
+          const nowIso = new Date().toISOString();
+
+          try {
+            // 1. Upsert into user_question_history
+            const { data: existingHist } = await supabase
+              .from('user_question_history')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('question_id', targetQId)
+              .maybeSingle();
+
+            const timesAnswered = (existingHist?.times_answered || 0) + 1;
+            const timesCorrect = (existingHist?.times_correct || 0) + (isCorrect ? 1 : 0);
+
+            await supabase.from('user_question_history').upsert(
+              {
+                user_id: user.id,
+                question_id: targetQId,
+                chapter_id: qChapterId,
+                last_is_correct: isCorrect,
+                times_answered: timesAnswered,
+                times_correct: timesCorrect,
+                last_answered_at: nowIso,
+              },
+              { onConflict: 'user_id,question_id' }
+            );
+
+            // 2. Increment question_bank usage statistics
+            const { data: qbRow } = await supabase
+              .from('question_bank')
+              .select('times_shown, times_correct, times_incorrect')
+              .eq('id', targetQId)
+              .maybeSingle();
+
+            if (qbRow) {
+              const shown = (qbRow.times_shown || 0) + 1;
+              const correct = (qbRow.times_correct || 0) + (isCorrect ? 1 : 0);
+              const incorrect = (qbRow.times_incorrect || 0) + (isCorrect ? 0 : 1);
+              const avgScore = Number(((correct / shown) * 10).toFixed(2));
+
+              await supabase
+                .from('question_bank')
+                .update({
+                  times_shown: shown,
+                  times_correct: correct,
+                  times_incorrect: incorrect,
+                  avg_score: avgScore,
+                  updated_at: nowIso,
+                })
+                .eq('id', targetQId);
+            }
+          } catch (histErr) {
+            console.warn('Erro ao persistir histórico de questão no banco:', histErr);
+          }
+        }
+
         // Save error pattern tags into error_pattern_tags table
         const errorPatternRows: any[] = [];
         questions.forEach((q) => {
@@ -1044,6 +1112,29 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const isLastQuestion = currentIndex === questions.length - 1;
   const currentAnswer = userAnswers[currentQ.id];
   const typeBadge = getTypeBadge(currentQ.type);
+
+  const bedStepIndex = currentBed ? (currentBed.questionIds || []).indexOf(currentQ.id) : -1;
+  const isBonusQuestion = Boolean(currentBed?.bonusQuestionId && currentBed.bonusQuestionId === currentQ.id);
+
+  const bedQuestionHeader = (() => {
+    if (!isPlantao || !currentBed) return null;
+    if (isBonusQuestion) {
+      return `🚨 Leito ${currentBed.bedNumber} — Etapa de Complicação (Evolução Adversa)`;
+    }
+    if (bedStepIndex === 0) {
+      return `🛏️ Leito ${currentBed.bedNumber} — Etapa 1: Conduta Imediata de Resgate`;
+    }
+    if (bedStepIndex === 1) {
+      return `🛏️ Leito ${currentBed.bedNumber} — Etapa 2: Conduta de Manutenção / Ventilação`;
+    }
+    if (bedStepIndex === 2) {
+      return `🛏️ Leito ${currentBed.bedNumber} — Questão de Múltipla Escolha 1/2`;
+    }
+    if (bedStepIndex === 3) {
+      return `🛏️ Leito ${currentBed.bedNumber} — Questão de Múltipla Escolha 2/2`;
+    }
+    return `🛏️ Leito ${currentBed.bedNumber} — Questão ${bedStepIndex + 1}`;
+  })();
 
   return (
     <div className="exam-layout">
@@ -1233,7 +1324,9 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Stethoscope size={22} color={isPlantao ? '#34d399' : '#38bdf8'} />
             <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
-              {isPlantao ? `Modo Plantão UPA (Leito ${currentBed?.bedNumber || 1})` : 'Simulado de Emergência'}
+              {isPlantao
+                ? bedQuestionHeader || `Modo Plantão UPA (Leito ${currentBed?.bedNumber || 1})`
+                : 'Simulado de Emergência'}
             </span>
           </div>
 
@@ -1395,44 +1488,82 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
         >
           {/* Chapter Tag + Type Badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {isPlantao ? (
-              showPlantaoTopics ? (
+            {isPlantao && currentBed ? (
+              <>
                 <span
                   style={{
-                    padding: '4px 12px',
+                    padding: '6px 14px',
                     borderRadius: '9999px',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    background: 'rgba(56, 189, 248, 0.15)',
-                    color: '#38bdf8',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    fontSize: '0.82rem',
+                    fontWeight: 800,
+                    background:
+                      isBonusQuestion
+                        ? 'rgba(244, 63, 94, 0.2)'
+                        : bedStepIndex === 0
+                        ? 'rgba(249, 115, 22, 0.2)'
+                        : bedStepIndex === 1
+                        ? 'rgba(167, 139, 250, 0.2)'
+                        : 'rgba(56, 189, 248, 0.2)',
+                    color:
+                      isBonusQuestion
+                        ? '#fda4af'
+                        : bedStepIndex === 0
+                        ? '#fb923c'
+                        : bedStepIndex === 1
+                        ? '#c4b5fd'
+                        : '#38bdf8',
+                    border: `1px solid ${
+                      isBonusQuestion
+                        ? 'rgba(244, 63, 94, 0.4)'
+                        : bedStepIndex === 0
+                        ? 'rgba(249, 115, 22, 0.4)'
+                        : bedStepIndex === 1
+                        ? 'rgba(167, 139, 250, 0.4)'
+                        : 'rgba(56, 189, 248, 0.4)'
+                    }`,
                   }}
                 >
-                  Capítulo: {currentQ.chapterTitle}
+                  {bedQuestionHeader}
                 </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowPlantaoTopics(true)}
-                  title="Clique para revelar o capítulo/diagnóstico deste leito"
-                  style={{
-                    padding: '4px 12px',
-                    borderRadius: '9999px',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    background: 'rgba(15, 23, 42, 0.6)',
-                    color: 'var(--text-muted)',
-                    border: '1px dashed var(--border-subtle)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <EyeOff size={13} color="#38bdf8" />
-                  <span>🔒 Leito {currentBed?.bedNumber || 1} — Caso em Atendimento (Clique para revelar capítulo)</span>
-                </button>
-              )
+
+                {showPlantaoTopics ? (
+                  <span
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '9999px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                    }}
+                  >
+                    Capítulo: {currentQ.chapterTitle}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowPlantaoTopics(true)}
+                    title="Clique para revelar o capítulo/diagnóstico deste leito"
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '9999px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      color: 'var(--text-muted)',
+                      border: '1px dashed var(--border-subtle)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <EyeOff size={13} color="#38bdf8" />
+                    <span>🔒 Revelar capítulo</span>
+                  </button>
+                )}
+              </>
             ) : (
               <span
                 style={{
