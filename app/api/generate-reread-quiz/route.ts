@@ -24,8 +24,8 @@ export async function POST(request: Request) {
       .single();
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
-    const model = settings?.question_model || 'openai/gpt-5.6-luna';
-    const fallback = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    const model = settings?.question_model || 'openai/gpt-6-luna';
+    const fallback = settings?.fallback_model || 'deepseek/deepseek-v4.1-flash';
 
     // Buscar texto do capítulo se disponível
     const { data: content } = await supabase

@@ -89,8 +89,8 @@ export async function POST(request: Request) {
       .single();
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
-    const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
-    const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    const questionModel = settings?.question_model || 'openai/gpt-6-luna';
+    const fallbackModel = settings?.fallback_model || 'deepseek/deepseek-v4.1-flash';
 
     // 5. Fetch chapter full text contents (if uploaded to DB)
     const { data: contents } = await supabase
@@ -105,58 +105,179 @@ export async function POST(request: Request) {
       });
     }
 
-    // 6. Generate 4 questions per bed using OpenRouter AI in parallel
+    // 6. Check bed_case_bank for previously validated bed quartets
+    const bankedCasesByChapter: Record<number, any[]> = {};
+    try {
+      const { data: bankData } = await supabase
+        .from('bed_case_bank')
+        .select('*')
+        .in('chapter_id', selectedChapterIds)
+        .order('times_used', { ascending: true });
+
+      if (bankData && Array.isArray(bankData)) {
+        bankData.forEach((row) => {
+          if (!bankedCasesByChapter[row.chapter_id]) {
+            bankedCasesByChapter[row.chapter_id] = [];
+          }
+          bankedCasesByChapter[row.chapter_id].push(row);
+        });
+      }
+    } catch (err) {
+      console.warn('[Plantao Bank] Erro ao consultar bed_case_bank:', err);
+    }
+
+    // 7. Organize beds and generate questions using hybrid algorithm (40% to 80% weighted reuse)
+    // with resilient concurrency (Promise.allSettled + retry fallback)
     const beds = organizePlantaoBeds(selectedChapterIds, chaptersList, customWeights);
     const allQuestions: QuestionItem[] = [];
     const plantaoBedsData: any[] = [];
-
-    let globalQuestionIdCounter = 1;
 
     const bedPromises = beds.map(async (bed) => {
       const capInfo = chaptersList.find((c) => c.id === bed.chapterId);
       if (!capInfo) return null;
 
-      const questions = await generatePlantaoBedQuestionsWithAI({
-        apiKey,
-        model: questionModel,
-        fallbackModel,
-        bedNumber: bed.bedNumber,
-        chapterInfo: capInfo,
-        chapterText: chapterTexts[bed.chapterId],
-      });
+      const availableCases = bankedCasesByChapter[bed.chapterId] || [];
+      const caseCount = availableCases.length;
 
-      return { bed, questions };
+      // Ponderação do usuário: quanto mais casos salvos, maior a chance de reutilizar (40% a 80%, nunca 100%)
+      let reuseChance = 0;
+      if (caseCount === 1) reuseChance = 0.40;
+      else if (caseCount === 2) reuseChance = 0.55;
+      else if (caseCount === 3) reuseChance = 0.68;
+      else if (caseCount >= 4) reuseChance = 0.80;
+
+      const shouldReuse = caseCount > 0 && Math.random() < reuseChance;
+
+      if (shouldReuse && availableCases.length > 0) {
+        // Reuse least-used case from bank
+        const chosenCase = availableCases[0];
+        const rawQs = chosenCase.questions;
+        if (Array.isArray(rawQs) && rawQs.length >= 4) {
+          // Increment times_used in background
+          void (async () => {
+            try {
+              await supabase
+                .from('bed_case_bank')
+                .update({ times_used: (chosenCase.times_used || 0) + 1, updated_at: new Date().toISOString() })
+                .eq('id', chosenCase.id);
+            } catch (e: any) {
+              console.warn('[Plantao Bank] Update times_used failed:', e);
+            }
+          })();
+
+          const clonedQs = rawQs.map((q: any) => ({
+            ...q,
+            chapterId: bed.chapterId,
+            chapterTitle: capInfo.title,
+            isFromBank: true,
+          }));
+
+          return { bed, questions: clonedQs, isFromBank: true };
+        }
+      }
+
+      // Generate fresh bed via AI, passing existing phenotypes so AI creates diverse cases
+      const existingPhenotypes = availableCases.map((c: any) => {
+        return c.phenotype_title || c.questions?.[0]?.vignette?.slice(0, 100) || '';
+      }).filter(Boolean);
+
+      try {
+        const questions = await generatePlantaoBedQuestionsWithAI({
+          apiKey,
+          model: questionModel,
+          fallbackModel,
+          bedNumber: bed.bedNumber,
+          chapterInfo: capInfo,
+          chapterText: chapterTexts[bed.chapterId],
+          existingPhenotypes,
+        });
+
+        // Persist newly generated case into bed_case_bank for future plantões
+        if (questions && questions.length >= 4) {
+          void (async () => {
+            try {
+              const { error: insertBankErr } = await supabase
+                .from('bed_case_bank')
+                .insert({
+                  chapter_id: bed.chapterId,
+                  chapter_title: capInfo.title,
+                  section_title: capInfo.sectionTitle,
+                  phenotype_title: questions[0]?.vignette ? questions[0].vignette.slice(0, 90) + '...' : capInfo.title,
+                  questions: questions,
+                  complexity_level: 'classic',
+                  times_used: 1,
+                });
+              if (insertBankErr) console.warn('[Plantao Bank] Falha ao persistir no bed_case_bank:', insertBankErr);
+            } catch (e: any) {
+              console.warn('[Plantao Bank] Insert error:', e);
+            }
+          })();
+        }
+
+        return { bed, questions, isFromBank: false };
+      } catch (aiError: any) {
+        console.warn(`[Plantao Bed ${bed.bedNumber}] AI generation failed, checking fallback bank:`, aiError);
+        // Fallback: If AI fails and we have a banked case, use it!
+        if (availableCases.length > 0) {
+          const fallbackCase = availableCases[0];
+          const rawQs = fallbackCase.questions;
+          if (Array.isArray(rawQs) && rawQs.length >= 4) {
+            const clonedQs = rawQs.map((q: any) => ({
+              ...q,
+              chapterId: bed.chapterId,
+              chapterTitle: capInfo.title,
+              isFromBank: true,
+            }));
+            return { bed, questions: clonedQs, isFromBank: true };
+          }
+        }
+        throw aiError;
+      }
     });
 
-    const bedResults = await Promise.all(bedPromises);
+    // Execute with resilient Promise.allSettled
+    const settledResults = await Promise.allSettled(bedPromises);
 
-    for (const res of bedResults) {
-      if (!res) continue;
+    let globalQuestionIdCounter = 1;
 
-      const questionIdsForBed: number[] = [];
+    for (let i = 0; i < settledResults.length; i++) {
+      const outcome = settledResults[i];
+      const bed = beds[i];
 
-      res.questions.forEach((q) => {
-        const uniqueId = globalQuestionIdCounter++;
-        q.id = uniqueId;
-        questionIdsForBed.push(uniqueId);
-        allQuestions.push(q);
-      });
+      if (outcome.status === 'fulfilled' && outcome.value) {
+        const res = outcome.value;
+        const questionIdsForBed: number[] = [];
 
-      plantaoBedsData.push({
-        bedNumber: res.bed.bedNumber,
-        chapterId: res.bed.chapterId,
-        chapterTitle: res.bed.chapterTitle,
-        sectionTitle: res.bed.sectionTitle,
-        frequencyScore: res.bed.frequencyScore,
-        importanceScore: res.bed.importanceScore,
-        questionIds: questionIdsForBed,
-        patientSummary: res.questions[0]?.vignette
-          ? res.questions[0].vignette.slice(0, 140) + '...'
-          : `Paciente no Leito ${res.bed.bedNumber}`,
-      });
+        res.questions.forEach((q: QuestionItem) => {
+          const uniqueId = globalQuestionIdCounter++;
+          q.id = uniqueId;
+          questionIdsForBed.push(uniqueId);
+          allQuestions.push(q);
+        });
+
+        plantaoBedsData.push({
+          bedNumber: res.bed.bedNumber,
+          chapterId: res.bed.chapterId,
+          chapterTitle: res.bed.chapterTitle,
+          sectionTitle: res.bed.sectionTitle,
+          frequencyScore: res.bed.frequencyScore,
+          importanceScore: res.bed.importanceScore,
+          questionIds: questionIdsForBed,
+          isFromBank: res.isFromBank || false,
+          patientSummary: res.questions[0]?.vignette
+            ? res.questions[0].vignette.slice(0, 140) + '...'
+            : `Paciente no Leito ${res.bed.bedNumber}`,
+        });
+      } else {
+        console.error(`[Plantao Error] Falha definitiva no leito ${bed.bedNumber}:`, (outcome as PromiseRejectedResult).reason);
+      }
     }
 
-    // 7. Get user's plantão count for numbering
+    if (plantaoBedsData.length === 0) {
+      throw new Error('Não foi possível gerar nenhum dos leitos do plantão. Verifique sua chave da API OpenRouter ou tente novamente.');
+    }
+
+    // 8. Get user's plantão count for numbering
     const { count: plantaoCount } = await supabase
       .from('tests')
       .select('*', { count: 'exact', head: true })
@@ -165,12 +286,12 @@ export async function POST(request: Request) {
 
     const plantaoNumber = (plantaoCount || 0) + 1;
 
-    // 8. Save test record in Supabase
+    // 9. Save test record in Supabase
     const { data: newTest, error: insertErr } = await supabase
       .from('tests')
       .insert({
         user_id: user.id,
-        chapter_ids: selectedChapterIds,
+        chapter_ids: plantaoBedsData.map((b) => b.chapterId),
         question_type: 'mixed',
         total_questions: allQuestions.length,
         questions: allQuestions,
@@ -178,7 +299,7 @@ export async function POST(request: Request) {
         mode: 'plantao',
         plantao_data: {
           plantaoNumber,
-          bedCount: validBedCount,
+          bedCount: plantaoBedsData.length,
           beds: plantaoBedsData,
           adverseEvolutions: 0,
           algorithmVersion: engineSnapshot.algorithmVersion,

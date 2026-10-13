@@ -41,8 +41,8 @@ export async function POST(request: Request) {
       .single();
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
-    const prescriptionModel = settings?.prescription_model || 'openai/gpt-5.6-luna';
-    const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    const prescriptionModel = settings?.prescription_model || 'openai/gpt-6-luna';
+    const fallbackModel = settings?.fallback_model || 'deepseek/deepseek-v4.1-flash';
 
     // Optional chapter text
     let chapterText: string | undefined = undefined;

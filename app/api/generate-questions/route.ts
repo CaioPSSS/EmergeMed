@@ -30,8 +30,8 @@ export async function POST(request: Request) {
       .single();
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
-    const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
-    const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    const questionModel = settings?.question_model || 'openai/gpt-6-luna';
+    const fallbackModel = settings?.fallback_model || 'deepseek/deepseek-v4.1-flash';
 
     // Get chapter titles and section info (Official + Custom)
     const allChapters = await getUnifiedChapters(supabase, user.id);

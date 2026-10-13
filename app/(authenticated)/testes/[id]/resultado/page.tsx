@@ -156,7 +156,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
       <div
         className="glass-panel"
         style={{
-          padding: '36px',
+          padding: 'clamp(20px, 4vw, 36px)',
           borderRadius: '24px',
           textAlign: 'center',
           background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.7) 100%)',
@@ -181,11 +181,11 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
           {isPlantao ? <Stethoscope size={36} /> : <Award size={36} />}
         </div>
 
-        <h1 style={{ fontSize: '2.2rem', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>
+        <h1 style={{ fontSize: 'clamp(1.5rem, 3.5vw, 2.2rem)', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>
           {isPlantao ? `Relatório de Passagem de Plantão Noturno #${plantaoData.plantaoNumber || 1}` : 'Desempenho no Simulado IA'}
         </h1>
 
-        <div style={{ fontSize: '3rem', fontWeight: 900, color: mainScoreColor, margin: '16px 0 8px 0' }}>
+        <div style={{ fontSize: 'clamp(2.2rem, 5vw, 3rem)', fontWeight: 900, color: mainScoreColor, margin: '16px 0 8px 0' }}>
           {score} <span style={{ fontSize: '1.4rem', color: 'var(--text-subtle)', fontWeight: 600 }}>/ 10.0</span>
         </div>
 
@@ -195,7 +195,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
             : `Avaliação do simulado contendo ${questions.length} questões de emergência.`}
         </p>
 
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '24px', flexWrap: 'wrap' }}>
           <button onClick={() => router.push(isPlantao ? '/plantoes' : '/historico')} className="btn-secondary">
             Ver Histórico
           </button>
@@ -218,7 +218,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
         <div
           className="glass-panel"
           style={{
-            padding: '28px',
+            padding: 'clamp(16px, 3vw, 28px)',
             borderRadius: '20px',
             background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%)',
             border: '1px solid rgba(56, 189, 248, 0.3)',
@@ -243,7 +243,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
           <div
             style={{
               background: 'rgba(15, 23, 42, 0.5)',
-              padding: '22px',
+              padding: 'clamp(14px, 2.5vw, 22px)',
               borderRadius: '14px',
               border: '1px solid rgba(255, 255, 255, 0.06)',
             }}
@@ -255,7 +255,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
 
       {/* PLANTÃO BEDS MAP GRID */}
       {isPlantao && beds.length > 0 && (
-        <div className="glass-panel" style={{ padding: '28px', borderRadius: '20px' }}>
+        <div className="glass-panel" style={{ padding: 'clamp(16px, 3vw, 28px)', borderRadius: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
             <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
               <Stethoscope size={20} color="#34d399" />
@@ -272,7 +272,7 @@ export default function TestResultPage({ params }: { params: Promise<{ id: strin
             )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '16px' }}>
             {beds.map((bed: any) => {
               const isSelected = selectedBedNumber === bed.bedNumber;
               const bedQs = questions.filter(

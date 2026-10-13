@@ -39,8 +39,9 @@ export async function POST(request: Request) {
       .single();
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
-    const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
-    const fallbackModel = settings?.fallback_model || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    // Route to specialized CLINICAL_FEEDBACK profile: deepseek/deepseek-v4.1-flash (champion in health/preceptorship)
+    const feedbackModel = 'deepseek/deepseek-v4.1-flash';
+    const fallbackModel = settings?.question_model || 'openai/gpt-6-luna';
 
     // 2. Fetch test record to get chapter_ids for book reference text and test mode
     const { data: testRecord } = await supabase
@@ -66,13 +67,14 @@ export async function POST(request: Request) {
     // 3. Generate general feedback markdown via AI with full chapter texts and mode context
     const generalFeedback = await generateGeneralFeedbackWithAI({
       apiKey,
-      model: questionModel,
+      model: feedbackModel,
       fallbackModel,
       overallScore,
       totalQuestions: evaluationsSummary ? evaluationsSummary.length : 0,
       evaluationsSummary: evaluationsSummary || [],
       chapterTexts,
       mode: (testRecord?.mode as 'simulado' | 'plantao') || 'simulado',
+      enableWebSearch: false,
     });
 
     const updatedResults = {

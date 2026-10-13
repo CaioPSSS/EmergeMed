@@ -281,9 +281,9 @@ body {
 }
 
 /* =============================================
-   MOBILE STYLES (max-width: 768px)
+   MOBILE & TABLET STYLES (max-width: 1024px)
    ============================================= */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   /* Mobile topbar */
   .mobile-topbar {
     display: flex;
@@ -345,7 +345,7 @@ body {
     max-width: 100%;
   }
 
-  /* Trilhas grid: single column on mobile */
+  /* Trilhas grid: single column on tablet/mobile */
   .trilhas-grid {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -358,14 +358,138 @@ body {
   }
 }
 
-/* Tablet tweaks */
-@media (min-width: 769px) and (max-width: 1024px) {
-  .trilhas-grid {
-    grid-template-columns: 1fr;
-    gap: 20px;
+/* =============================================
+   CLINICAL EXAM & PLANTÃO RESPONSIVE SYSTEM
+   ============================================= */
+
+/* Exam Layout Container */
+.exam-layout {
+  display: flex;
+  gap: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.exam-desktop-sidebar {
+  display: block;
+  width: 240px;
+  flex-shrink: 0;
+}
+
+.exam-mobile-bed-bar {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .exam-layout {
+    flex-direction: column;
+    gap: 16px;
   }
 
-  .main-content {
-    padding: 24px 24px;
+  .exam-desktop-sidebar {
+    display: none;
+  }
+
+  .exam-mobile-bed-bar {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 6px;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
   }
 }
+
+/* Exam Card */
+.exam-card {
+  padding: 32px;
+  border-radius: 20px;
+  transition: padding 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .exam-card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+}
+
+/* Floating Action Bar (Sticky thumb navigation for mobile/tablets) */
+.floating-action-bar {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .floating-action-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    margin: 16px -16px -16px -16px;
+    padding: 12px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: rgba(6, 9, 17, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border-subtle);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Quick Conduct Chips Bar */
+.quick-conduct-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0 8px 0;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+}
+
+.quick-chip {
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: rgba(14, 165, 233, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.quick-chip:hover {
+  background: rgba(14, 165, 233, 0.25);
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.quick-chip:active {
+  transform: scale(0.97);
+}
+
+/* Ventilator responsive grid */
+.ventilator-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  .ventilator-grid {
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 10px;
+  }
+}
+

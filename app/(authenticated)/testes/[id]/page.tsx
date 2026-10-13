@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { QuestionItem } from '@/lib/ai/openrouter';
@@ -24,6 +24,10 @@ import {
   EyeOff,
   Bookmark,
   Cloud,
+  Mic,
+  MicOff,
+  Wand2,
+  Plus,
 } from 'lucide-react';
 
 const VENTILATOR_FIELD_LABELS: Record<string, { label: string; unit: string; placeholder: string }> = {
@@ -166,6 +170,140 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       };
     });
   };
+
+  // Voice Dictation & Fast AI Formatting State
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [isFormattingAI, setIsFormattingAI] = useState<boolean>(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  };
+
+  const formatPrescriptionText = async (questionId: number, textOverride?: string) => {
+    const rawToFormat = textOverride !== undefined ? textOverride : userAnswers[questionId];
+    if (!rawToFormat || typeof rawToFormat !== 'string' || !rawToFormat.trim()) {
+      return;
+    }
+
+    setIsFormattingAI(true);
+    setSpeechError(null);
+
+    try {
+      const res = await fetch('/api/format-prescription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText: rawToFormat }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.formattedPrescription) {
+        setUserAnswers((prev) => ({
+          ...prev,
+          [questionId]: data.formattedPrescription,
+        }));
+      } else if (data.error) {
+        console.warn('Format prescription response error:', data.error);
+      }
+    } catch (err: any) {
+      console.error('Error formatting prescription with AI:', err);
+    } finally {
+      setIsFormattingAI(false);
+    }
+  };
+
+  const startListening = (questionId: number) => {
+    setSpeechError(null);
+
+    const SpeechRecognition =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognition) {
+      setSpeechError('Ditado de voz não suportado neste navegador. Recomendamos o Google Chrome, Edge ou Safari.');
+      return;
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'pt-BR';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      let accumulated = '';
+      const initialText = userAnswers[questionId] || '';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let interim = '';
+        let finalChunk = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalChunk += event.results[i][0].transcript + ' ';
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+
+        accumulated += finalChunk;
+        const separator = initialText.trim() ? '\n' : '';
+        const preview = initialText + separator + accumulated + interim;
+        setUserAnswers((prev) => ({
+          ...prev,
+          [questionId]: preview,
+        }));
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('Speech recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          setSpeechError(`Erro no microfone (${event.error}). Verifique a permissão.`);
+        }
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        recognitionRef.current = null;
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: any) {
+      console.error('Speech recognition start failed:', err);
+      setSpeechError('Não foi possível ativar o microfone.');
+      setIsListening(false);
+    }
+  };
+
+  const appendQuickConduct = (questionId: number, conductText: string) => {
+    setUserAnswers((prev) => {
+      const current = prev[questionId] || '';
+      const trimmed = typeof current === 'string' ? current.trim() : '';
+      if (!trimmed) return { ...prev, [questionId]: conductText };
+      return { ...prev, [questionId]: `${trimmed}\n${conductText}` };
+    });
+  };
+
+  useEffect(() => {
+    stopListening();
+  }, [currentIndex]);
 
   // Helper to find which bed the current question belongs to
   const currentBed = beds.find((b: any) =>
@@ -884,18 +1022,10 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const typeBadge = getTypeBadge(currentQ.type);
 
   return (
-    <div style={{ display: 'flex', gap: '24px', maxWidth: '1100px', margin: '0 auto' }}>
-      {/* Plantão Bed Sidebar (If in Plantão Mode) */}
+    <div className="exam-layout">
+      {/* Plantão Bed Sidebar (Desktop > 1024px) */}
       {isPlantao && beds.length > 0 && (
-        <aside
-          style={{
-            width: '240px',
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}
-        >
+        <aside className="exam-desktop-sidebar">
           <div
             className="glass-panel"
             style={{
@@ -1000,7 +1130,69 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       )}
 
       {/* Main Question Card Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
+        {/* Plantão Horizontal Bed Bar (Mobile & Tablet <= 1024px) */}
+        {isPlantao && beds.length > 0 && (
+          <div className="exam-mobile-bed-bar">
+            {beds.map((bed: any) => {
+              const bedQuestionIds = [...(bed.questionIds || []), bed.bonusQuestionId].filter(Boolean);
+              const isCurrentBed = bedQuestionIds.includes(currentQ.id);
+              const answeredInBed = bedQuestionIds.filter((qId) => userAnswers[qId] !== undefined).length;
+              const totalInBed = bedQuestionIds.length;
+              const isComplete = answeredInBed === totalInBed;
+
+              return (
+                <button
+                  key={bed.bedNumber}
+                  type="button"
+                  onClick={async () => {
+                    await forceSave();
+                    const firstQIndex = questions.findIndex((q) => q.id === bedQuestionIds[0]);
+                    if (firstQIndex !== -1) setCurrentIndex(firstQIndex);
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '9999px',
+                    background: isCurrentBed
+                      ? 'rgba(16, 185, 129, 0.25)'
+                      : 'rgba(15, 23, 42, 0.7)',
+                    border: isCurrentBed ? '1px solid #34d399' : '1px solid var(--border-subtle)',
+                    color: isCurrentBed ? '#34d399' : '#e2e8f0',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    scrollSnapAlign: 'start',
+                    boxShadow: isCurrentBed ? '0 0 12px rgba(16, 185, 129, 0.3)' : 'none',
+                  }}
+                >
+                  <span>🛏️ Leito {bed.bedNumber}</span>
+                  {showPlantaoTopics ? (
+                    <span style={{ fontSize: '0.74rem', opacity: 0.85, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {bed.chapterTitle}
+                    </span>
+                  ) : null}
+                  {isComplete ? (
+                    <span style={{ color: '#34d399' }}>✅</span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                      ({answeredInBed}/{totalInBed})
+                    </span>
+                  )}
+                  {bed.bonusQuestionId && (
+                    <span style={{ fontSize: '0.62rem', background: '#f43f5e', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                      +Q5
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Test Top Bar */}
         <div
           className="glass-panel"
@@ -1314,10 +1506,146 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           {/* Prescription Complete Text Area */}
           {currentQ.type === 'prescription_complete' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <FileText size={16} color="#fbbf24" />
-                {currentQ.promptText || 'Escreva sua prescrição COMPLETA de internação para este caso:'}
-              </label>
+              {/* Quick Conduct Chips */}
+              <div className="quick-conduct-bar">
+                <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-subtle)', flexShrink: 0 }}>
+                  Condutas Rápidas:
+                </span>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ Acesso Venoso Periférico Calibroso (2x 18G ou 16G)')}
+                >
+                  <Plus size={12} /> Acesso Calibroso
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ Monitorização Multiparamétrica Contínua + O2 sob cateter')}
+                >
+                  <Plus size={12} /> Monitorização + O2
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, 'SF 0,9% 500 mL, correr EV em bolus em 20 minutos')}
+                >
+                  <Plus size={12} /> SF 0,9% 500mL Bolus
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ ECG 12 Derivações de Imediato')}
+                >
+                  <Plus size={12} /> ECG 12 Derivações
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ Gasometria Arterial + Lactato + Eletrólitos agora')}
+                >
+                  <Plus size={12} /> Gasometria + Lactato
+                </button>
+              </div>
+
+              {/* Dictation + Action Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={16} color="#fbbf24" />
+                  {currentQ.promptText || 'Escreva sua prescrição COMPLETA de internação para este caso:'}
+                </label>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isListening ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopListening();
+                        formatPrescriptionText(currentQ.id);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: 'rgba(244, 63, 94, 0.25)',
+                        color: '#fda4af',
+                        border: '1px solid #f43f5e',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span className="pulse-dot" style={{ width: '8px', height: '8px' }} />
+                      <span>Gravando... Concluir & Organizar com IA</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startListening(currentQ.id)}
+                      disabled={isFormattingAI}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: 'rgba(14, 165, 233, 0.15)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        cursor: 'pointer',
+                      }}
+                      title="Dite sua conduta por voz"
+                    >
+                      <Mic size={14} />
+                      <span>🎙️ Ditar Conduta</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => formatPrescriptionText(currentQ.id)}
+                    disabled={isFormattingAI || !userAnswers[currentQ.id]}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      borderRadius: '9999px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      color: '#34d399',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      cursor: isFormattingAI || !userAnswers[currentQ.id] ? 'not-allowed' : 'pointer',
+                      opacity: isFormattingAI || !userAnswers[currentQ.id] ? 0.6 : 1,
+                    }}
+                    title="Formatar prescrição no padrão da UPA sem alterar doses"
+                  >
+                    {isFormattingAI ? (
+                      <>
+                        <Loader2 size={13} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                        <span>Formatando IA...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={13} />
+                        <span>✨ Organizar Padrão</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {speechError && (
+                <div style={{ fontSize: '0.75rem', color: '#fda4af', padding: '6px 10px', background: 'rgba(244, 63, 94, 0.12)', borderRadius: '8px', border: '1px solid rgba(244, 63, 94, 0.3)' }}>
+                  ⚠️ {speechError}
+                </div>
+              )}
+
               <textarea
                 className="input-field"
                 rows={14}
@@ -1349,10 +1677,146 @@ SINTOMÁTICOS E PROTOCOLOS:
           {/* Prescription Immediate Text Area */}
           {currentQ.type === 'prescription_immediate' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Zap size={16} color="#fb923c" />
-                {currentQ.promptText || 'Prescreva a MEDICAÇÃO/CONDUTA IMEDIATA para este momento:'}
-              </label>
+              {/* Quick Conduct Chips */}
+              <div className="quick-conduct-bar">
+                <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-subtle)', flexShrink: 0 }}>
+                  Condutas Rápidas:
+                </span>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ Acesso Venoso Periférico Calibroso (2x 18G ou 16G)')}
+                >
+                  <Plus size={12} /> Acesso Calibroso
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ Monitorização Multiparamétrica Contínua + O2 sob máscara')}
+                >
+                  <Plus size={12} /> Monitorização + O2
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, 'SF 0,9% 500 mL, correr EV em bolus em 20 minutos')}
+                >
+                  <Plus size={12} /> SF 0,9% 500mL Bolus
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ ECG 12 Derivações de Imediato')}
+                >
+                  <Plus size={12} /> ECG 12 Derivações
+                </button>
+                <button
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => appendQuickConduct(currentQ.id, '+ Gasometria Arterial + Lactato + Eletrólitos agora')}
+                >
+                  <Plus size={12} /> Gasometria + Lactato
+                </button>
+              </div>
+
+              {/* Dictation + Action Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Zap size={16} color="#fb923c" />
+                  {currentQ.promptText || 'Prescreva a MEDICAÇÃO/CONDUTA IMEDIATA para este momento:'}
+                </label>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isListening ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopListening();
+                        formatPrescriptionText(currentQ.id);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: 'rgba(244, 63, 94, 0.25)',
+                        color: '#fda4af',
+                        border: '1px solid #f43f5e',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span className="pulse-dot" style={{ width: '8px', height: '8px' }} />
+                      <span>Gravando... Concluir & Organizar com IA</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startListening(currentQ.id)}
+                      disabled={isFormattingAI}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: 'rgba(14, 165, 233, 0.15)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        cursor: 'pointer',
+                      }}
+                      title="Dite sua conduta por voz"
+                    >
+                      <Mic size={14} />
+                      <span>🎙️ Ditar Conduta</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => formatPrescriptionText(currentQ.id)}
+                    disabled={isFormattingAI || !userAnswers[currentQ.id]}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      borderRadius: '9999px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      color: '#34d399',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      cursor: isFormattingAI || !userAnswers[currentQ.id] ? 'not-allowed' : 'pointer',
+                      opacity: isFormattingAI || !userAnswers[currentQ.id] ? 0.6 : 1,
+                    }}
+                    title="Formatar prescrição no padrão da UPA sem alterar doses"
+                  >
+                    {isFormattingAI ? (
+                      <>
+                        <Loader2 size={13} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                        <span>Formatando IA...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={13} />
+                        <span>✨ Organizar Padrão</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {speechError && (
+                <div style={{ fontSize: '0.75rem', color: '#fda4af', padding: '6px 10px', background: 'rgba(244, 63, 94, 0.12)', borderRadius: '8px', border: '1px solid rgba(244, 63, 94, 0.3)' }}>
+                  ⚠️ {speechError}
+                </div>
+              )}
+
               <textarea
                 className="input-field"
                 rows={5}
@@ -1483,7 +1947,7 @@ Se sem acesso: Midazolam 10mg IM`}
                       <strong style={{ color: '#a78bfa' }}>{modeConfig.title}:</strong> {modeConfig.subtitle}
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+                    <div className="ventilator-grid">
                       {modeConfig.fields.map((field) => (
                         <div key={field.key} style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '14px 16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#a78bfa' }}>
@@ -1518,7 +1982,7 @@ Se sem acesso: Midazolam 10mg IM`}
             );
           })()}
 
-          {/* Bottom Navigation & Submit Buttons */}
+          {/* Bottom Navigation & Submit Buttons (Desktop) */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)' }}>
             <button
               onClick={handlePrev}
@@ -1557,6 +2021,43 @@ Se sem acesso: Midazolam 10mg IM`}
               </button>
             )}
           </div>
+        </div>
+
+        {/* Floating Action Bar for Mobile & Tablets (Thumb-friendly sticky bottom navigation) */}
+        <div className="floating-action-bar">
+          <button
+            onClick={handlePrev}
+            disabled={currentIndex === 0 || submitting}
+            className="btn-secondary"
+            style={{ opacity: currentIndex === 0 ? 0.5 : 1, padding: '8px 14px', fontSize: '0.86rem' }}
+          >
+            <ChevronLeft size={16} /> Anterior
+          </button>
+
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+            Q{currentIndex + 1} de {questions.length}
+          </span>
+
+          {!isLastQuestion ? (
+            <button onClick={handleNext} className="btn-primary" style={{ padding: '8px 18px', fontSize: '0.86rem' }}>
+              Próxima <ChevronRight size={16} />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmitTest}
+              disabled={submitting}
+              className="btn-primary"
+              style={{
+                padding: '8px 18px',
+                fontSize: '0.86rem',
+                background: isPlantao
+                  ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                  : 'linear-gradient(135deg, #0284c7 0%, #0d9488 100%)',
+              }}
+            >
+              {submitting ? 'Avaliando...' : 'Finalizar'} <Send size={14} />
+            </button>
+          )}
         </div>
       </div>
     </div>

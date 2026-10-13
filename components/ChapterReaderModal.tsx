@@ -98,7 +98,7 @@ export function ChapterReaderModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '16px',
+        padding: 'clamp(0px, 2vw, 16px)',
       }}
       onClick={onClose}
     >
@@ -107,10 +107,11 @@ export function ChapterReaderModal({
         style={{
           width: '100%',
           maxWidth: '900px',
-          maxHeight: '90vh',
+          height: 'min(94vh, 100%)',
+          maxHeight: 'min(94vh, 100%)',
           display: 'flex',
           flexDirection: 'column',
-          borderRadius: '20px',
+          borderRadius: 'clamp(0px, 3vw, 20px)',
           border: '1px solid rgba(56, 189, 248, 0.25)',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
           overflow: 'hidden',
@@ -121,7 +122,7 @@ export function ChapterReaderModal({
         {/* Header */}
         <div
           style={{
-            padding: '20px 24px',
+            padding: 'clamp(12px, 2.5vw, 20px) clamp(14px, 3vw, 24px)',
             borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'flex-start',
@@ -300,7 +301,7 @@ export function ChapterReaderModal({
         {/* Footer Actions */}
         <div
           style={{
-            padding: '16px 24px',
+            padding: 'clamp(12px, 2vw, 16px) clamp(14px, 3vw, 24px)',
             borderTop: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'center',
@@ -310,7 +311,7 @@ export function ChapterReaderModal({
             background: 'rgba(15, 23, 42, 0.8)',
           }}
         >
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
             {chapter.isCustom && (
               <button
                 onClick={handleEdit}

@@ -61,8 +61,8 @@ export async function POST(request: Request) {
       .single();
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
-    const questionModel = settings?.question_model || 'openai/gpt-5.6-luna';
-    const fallbackModel = settings?.fallback_model || 'minimax/minimax-m3';
+    const questionModel = settings?.question_model || 'openai/gpt-6-luna';
+    const fallbackModel = settings?.fallback_model || 'deepseek/deepseek-v4.1-flash';
 
     // 3. Compute math facts if not provided
     let finalMathFactsText = mathFactsText || '';

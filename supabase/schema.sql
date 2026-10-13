@@ -341,3 +341,23 @@ CREATE POLICY "Users can delete own study queue"
   ON public.study_queue FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 
+
+-- ==============================================================================
+-- TABLE: bed_case_bank (Banco de Casos Clínicos Estruturados para Modo Plantão)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS bed_case_bank (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chapter_id INTEGER NOT NULL,
+  chapter_title TEXT NOT NULL,
+  section_title TEXT,
+  phenotype_title TEXT,
+  complexity_level TEXT DEFAULT 'classic' CHECK (complexity_level IN ('classic', 'complex', 'atypical')),
+  questions JSONB NOT NULL,
+  times_used INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bed_case_bank_chapter_id ON bed_case_bank(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_bed_case_bank_times_used ON bed_case_bank(times_used ASC);
+CREATE INDEX IF NOT EXISTS idx_bed_case_bank_complexity ON bed_case_bank(complexity_level);

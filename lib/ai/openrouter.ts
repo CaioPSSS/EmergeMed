@@ -9,7 +9,9 @@ import {
   SYSTEM_PROMPT_PLANTAO_FEEDBACK,
   SYSTEM_PROMPT_CUSTOM_CHAPTER_ANALYZER,
   SYSTEM_PROMPT_BED_SEQUENCE_EVALUATOR,
+  SYSTEM_PROMPT_PRESCRIPTION_FORMATTER,
 } from './prompts';
+import { AI_TASK_PROFILES, getModelCascade } from './model-router';
 
 export interface CustomChapterAnalysisResult {
   title: string;
@@ -256,8 +258,8 @@ export function getOpenAIClient(userApiKey?: string) {
 
 export async function generateQuestionsWithAI({
   apiKey,
-  model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'minimax/minimax-m3',
+  model = 'openai/gpt-6-luna',
+  fallbackModel = 'deepseek/deepseek-v4.1-flash',
   chaptersInfo,
   chapterTexts,
   count = 5,
@@ -309,7 +311,10 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
   // Scale max_tokens dynamically: ~1200 tokens per question, minimum 6000, maximum 24000
   const calculatedMaxTokens = Math.min(24000, Math.max(6000, count * 1200));
 
-  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('CLINICAL_CORE', model),
+    fallbackModel,
+  ])).filter(Boolean);
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -320,7 +325,6 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
       ],
       temperature: 0.4,
       max_tokens: calculatedMaxTokens,
-      plugins: [{ id: 'web', max_results: 3 }],
     } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
@@ -335,8 +339,8 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
 
 export async function evaluatePrescriptionWithAI({
   apiKey,
-  model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'minimax/minimax-m3',
+  model = 'openai/gpt-6-luna',
+  fallbackModel = 'deepseek/deepseek-v4.1-flash',
   vignette,
   userPrescription,
   idealPrescription,
@@ -384,7 +388,10 @@ ${cleanChapterText ? `TEXTO COMPLETO DE REFERÊNCIA DO LIVRO:\n${cleanChapterTex
 
 Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markdown extra.`;
 
-  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('CLINICAL_EVALUATION', model),
+    fallbackModel,
+  ])).filter(Boolean);
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -395,7 +402,6 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
       ],
       temperature: 0.3,
       max_tokens: 8000,
-      plugins: [{ id: 'web', max_results: 3 }],
     } as any);
 
     const finishReason = response.choices[0]?.finish_reason;
@@ -424,11 +430,12 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
 
 export async function generatePlantaoBedQuestionsWithAI({
   apiKey,
-  model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'minimax/minimax-m3',
+  model = 'openai/gpt-6-luna',
+  fallbackModel = 'deepseek/deepseek-v4.1-flash',
   bedNumber,
   chapterInfo,
   chapterText,
+  existingPhenotypes = [],
 }: {
   apiKey?: string;
   model?: string;
@@ -436,13 +443,18 @@ export async function generatePlantaoBedQuestionsWithAI({
   bedNumber: number;
   chapterInfo: { id: number; number: number; title: string; sectionTitle: string };
   chapterText?: string;
+  existingPhenotypes?: string[];
 }): Promise<QuestionItem[]> {
   const openai = getOpenAIClient(apiKey);
   const cleanText = fixMojibake(chapterText || '');
 
+  const phenotypeContext = existingPhenotypes.length > 0
+    ? `\nFENÓTIPOS / CASOS CLÍNICOS ANTERIORES JÁ REGISTRADOS DESTE TEMA (EVITE REPETIR O MESMO QUADRO):\n${existingPhenotypes.map((p) => `- ${p}`).join('\n')}\nCrie uma apresentação clínica DIFERENCIADA para o paciente deste leito (variação de fenótipo, gravidade ou perfil de comorbidades), mantendo o rigor das condutas de emergência.\n`
+    : '';
+
   const userPrompt = `Crie a simulação completa para o LEITO ${bedNumber} (Capítulo ${chapterInfo.number}: ${chapterInfo.title} - Seção: ${chapterInfo.sectionTitle}).
 ${cleanText ? `\nTEXTO DE REFERÊNCIA DO LIVRO:\n${cleanText}\n` : ''}
-
+${phenotypeContext}
 Gere exatamente 4 questões sequenciais formando uma narrativa clínica contínua para um paciente atendido neste leito:
 Q1: Múltipla escolha A-E (Triagem / Diagnóstico inicial) - "options" DEVE SER UMA ARRAY JSON DE STRINGS ex: ["Opção A", "Opção B", ...], "correctOption" DEVE SER ÍNDICE 0-BASED (0=A, 1=B, 2=C, 3=D, 4=E).
 Q2: Múltipla escolha A-E (Exames / Confirmação diagnóstica) - "options" DEVE SER UMA ARRAY JSON DE STRINGS, "correctOption" DEVE SER ÍNDICE 0-BASED.
@@ -451,7 +463,10 @@ Q4: Prescrição Completa ("prescription_complete") OU Ventilador Mecânico ("ve
 
 Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato especificado. Sem explicações ou markdown adicional.`;
 
-  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('CLINICAL_CORE', model),
+    fallbackModel,
+  ])).filter(Boolean);
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -462,7 +477,6 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
       ],
       temperature: 0.4,
       max_tokens: 8000,
-      plugins: [{ id: 'web', max_results: 3 }],
     } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
@@ -482,8 +496,8 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
 
 export async function evaluateBedSequenceWithAI({
   apiKey,
-  model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'minimax/minimax-m3',
+  model = 'openai/gpt-6-luna',
+  fallbackModel = 'deepseek/deepseek-v4.1-flash',
   bedNumber,
   patientWeight,
   chapterTitle,
@@ -572,7 +586,10 @@ ${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", 
   }
 }`;
 
-  const modelsCascade = [model, fallbackModel, 'deepseek/deepseek-v4-flash-0731', 'thinkingmachines/inkling-small:free'];
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('CLINICAL_EVALUATION', model),
+    fallbackModel,
+  ])).filter(Boolean);
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -583,7 +600,6 @@ ${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", 
       ],
       temperature: 0.3,
       max_tokens: Math.min(24000, Math.max(8000, prescriptions.length * 4000)),
-      plugins: [{ id: 'web', max_results: 3 }],
     } as any);
 
     const finishReason = response.choices[0]?.finish_reason;
@@ -630,8 +646,8 @@ ${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", 
 
 export async function generateAdverseEvolutionQuestionWithAI({
   apiKey,
-  model = 'openai/gpt-5.6-luna',
-  fallbackModel = 'deepseek/deepseek-v4-flash-0731',
+  model = 'openai/gpt-6-luna',
+  fallbackModel = 'deepseek/deepseek-v4.1-flash',
   bedNumber,
   chapterTitle,
   originalVignette,
@@ -669,7 +685,10 @@ Gere UMA única questão bônus (tipo "prescription_immediate" ou "multiple_choi
 
 Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdown extra.`;
 
-  const modelsCascade = [model, fallbackModel, 'thinkingmachines/inkling-small:free'];
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('CLINICAL_CORE', model),
+    fallbackModel,
+  ])).filter(Boolean);
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -680,7 +699,6 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
       ],
       temperature: 0.5,
       max_tokens: 3000,
-      plugins: [{ id: 'web', max_results: 3 }],
     } as any);
 
     const content = response.choices[0]?.message?.content || '{}';
@@ -691,13 +709,14 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
 
 export async function generateGeneralFeedbackWithAI({
   apiKey,
-  model = 'deepseek/deepseek-v4-flash-0731',
-  fallbackModel = 'openai/gpt-5.6-luna',
+  model = 'deepseek/deepseek-v4.1-flash',
+  fallbackModel = 'openai/gpt-6-luna',
   overallScore,
   totalQuestions,
   evaluationsSummary,
   chapterTexts,
   mode = 'simulado',
+  enableWebSearch = false,
 }: {
   apiKey?: string;
   model?: string;
@@ -715,6 +734,7 @@ export async function generateGeneralFeedbackWithAI({
   }[];
   chapterTexts?: Record<number, string>;
   mode?: 'simulado' | 'plantao';
+  enableWebSearch?: boolean;
 }): Promise<string> {
   const openai = getOpenAIClient(apiKey);
 
@@ -758,11 +778,15 @@ ${isPlantao ? 'Gere o Feedback de Passagem de Plantão Noturno em Markdown.' : '
 
 Responda diretamente em Markdown sem blocos de código JSON.`;
 
-  const modelsCascade = [model, fallbackModel, 'minimax/minimax-m3', 'thinkingmachines/inkling-small:free'];
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('CLINICAL_FEEDBACK', model),
+    fallbackModel,
+  ])).filter(Boolean);
+
   const systemPrompt = isPlantao ? SYSTEM_PROMPT_PLANTAO_FEEDBACK : SYSTEM_PROMPT_GENERAL_FEEDBACK;
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
-    const response = await openai.chat.completions.create({
+    const payload: any = {
       model: selectedModel,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -770,8 +794,13 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
       ],
       temperature: 0.4,
       max_tokens: 3000,
-      plugins: [{ id: 'web', max_results: 3 }],
-    } as any);
+    };
+
+    if (enableWebSearch) {
+      payload.plugins = [{ id: 'web', max_results: 3 }];
+    }
+
+    const response = await openai.chat.completions.create(payload);
 
     const content = response.choices[0]?.message?.content || '';
     return fixMojibake(content.trim());
@@ -783,8 +812,8 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
  */
 export async function analyzeCustomChapterWithAI({
   apiKey,
-  model = 'deepseek/deepseek-v4-flash-0731',
-  fallbackModel = 'openai/gpt-5.6-luna',
+  model = 'xiaomi/mimo-v2.6-flash',
+  fallbackModel = 'deepseek/deepseek-v4.1-flash',
   rawText,
   suggestedBookTitle,
 }: {
@@ -805,11 +834,10 @@ ${rawText}
 
 Retorne ESTRITAMENTE o JSON estruturado conforme as instruções do prompt de sistema.`;
 
-  const modelsCascade = [
-    model,
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('DOCUMENT_EXTRACTION', model),
     fallbackModel,
-    'thinkingmachines/inkling-small:free',
-  ];
+  ])).filter(Boolean);
 
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
@@ -834,6 +862,63 @@ Retorne ESTRITAMENTE o JSON estruturado conforme as instruções do prompt de si
       frequencyScore: Math.min(10, Math.max(1, Number(parsed.frequencyScore) || 5.0)),
       importanceScore: Math.min(10, Math.max(1, Number(parsed.importanceScore) || 5.0)),
     };
+  });
+}
+
+/**
+ * Fast AI prescription formatter for voice dictation.
+ * Formats unstructured voice transcripts or rough notes into emergency prescription format
+ * while strictly preserving all doses, numbers, routes, flow rates, and medical terminology.
+ */
+export async function formatPrescriptionWithAI({
+  rawText,
+  apiKey,
+  model = 'deepseek/deepseek-v4.1-flash',
+  fallbackModel = 'xiaomi/mimo-v2.6-flash',
+}: {
+  rawText: string;
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+}): Promise<string> {
+  if (!rawText || !rawText.trim()) return '';
+
+  const openai = getOpenAIClient(apiKey);
+  const modelsCascade = Array.from(new Set([
+    ...getModelCascade('PRESCRIPTION_FAST_FORMAT', model),
+    fallbackModel,
+  ])).filter(Boolean);
+
+  const userPrompt = `TEXTO MÉDICO DITADO / BRUTO:
+"""
+${rawText}
+"""
+
+Estruture este texto no formato padrão de prontuário de emergência médica da UPA/Sala Vermelha seguindo rigorosamente todas as regras do prompt de sistema:
+- Preserve rigorosamente 100% de todas as doses, números, vias, vazões e aprazamentos.
+- NUNCA corrija eventuais erros médicos.
+- Organize os itens com numeração clara e quebras de linha limpas.
+- Retorne apenas o texto da prescrição sem markdown de código ou preâmbulo.`;
+
+  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
+    const response = await openai.chat.completions.create({
+      model: selectedModel,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT_PRESCRIPTION_FORMATTER },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.1,
+      max_tokens: 2500,
+    } as any);
+
+    const content = response.choices[0]?.message?.content || '';
+    // Clean any leading/trailing codeblocks if present
+    const cleaned = content
+      .replace(/^```(?:markdown|text)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    return fixMojibake(cleaned);
   });
 }
 
