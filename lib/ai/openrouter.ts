@@ -328,10 +328,16 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
     } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
-    const parsedRaw = parseJsonFromMarkdown<any[]>(content);
-    const parsed = Array.isArray(parsedRaw)
-      ? parsedRaw.map((q) => normalizeQuestionItem(q))
-      : [];
+    const parsedRaw = parseJsonFromMarkdown<any>(content);
+    let rawList: any[] = [];
+    if (Array.isArray(parsedRaw)) {
+      rawList = parsedRaw;
+    } else if (parsedRaw && typeof parsedRaw === 'object') {
+      if (Array.isArray(parsedRaw.questions)) rawList = parsedRaw.questions;
+      else if (Array.isArray(parsedRaw.items)) rawList = parsedRaw.items;
+      else if (Array.isArray(parsedRaw.data)) rawList = parsedRaw.data;
+    }
+    const parsed = rawList.map((q) => normalizeQuestionItem(q));
 
     return parsed;
   });
@@ -448,9 +454,14 @@ export async function generatePlantaoBedQuestionsWithAI({
   const openai = getOpenAIClient(apiKey);
   const cleanText = fixMojibake(chapterText || '');
 
-  const phenotypeContext = existingPhenotypes.length > 0
-    ? `\nFENÓTIPOS / CASOS CLÍNICOS ANTERIORES JÁ REGISTRADOS DESTE TEMA (EVITE REPETIR O MESMO QUADRO):\n${existingPhenotypes.map((p) => `- ${p}`).join('\n')}\nCrie uma apresentação clínica DIFERENCIADA para o paciente deste leito (variação de fenótipo, gravidade ou perfil de comorbidades), mantendo o rigor das condutas de emergência.\n`
-    : '';
+  let phenotypeContext = '';
+  if (existingPhenotypes.length === 0) {
+    phenotypeContext = `\nFOCO CLÍNICO DESTE LEITO: Apresentação clássica e mais frequente desta patologia na porta de emergência / sala vermelha da UPA (quadro típico de alta prevalência).\n`;
+  } else if (existingPhenotypes.length === 1) {
+    phenotypeContext = `\nFENÓTIPOS / CASOS CLÍNICOS ANTERIORES JÁ REGISTRADOS DESTE TEMA (EVITE REPETIR O MESMO QUADRO):\n${existingPhenotypes.map((p) => `- ${p}`).join('\n')}\nFOCO CLÍNICO DESTE LEITO: Apresentação clínica DIFERENCIADA para o paciente deste leito (variação de fenótipo, faixa etária, comorbidades ou gravidade), mantendo o rigor das condutas de emergência.\n`;
+  } else {
+    phenotypeContext = `\nFENÓTIPOS / CASOS CLÍNICOS ANTERIORES JÁ REGISTRADOS DESTE TEMA (EVITE REPETIR O MESMO QUADRO):\n${existingPhenotypes.map((p) => `- ${p}`).join('\n')}\nFOCO CLÍNICO DESTE LEITO: Apresentação DESAFIADORA, COMPLEXA ou ATÍPICA desta patologia (ex: choque refratário, comorbidades graves associadas, manifestação atípica ou armadilha diagnóstica de alto risco).\n`;
+  }
 
   const userPrompt = `Crie a simulação completa para o LEITO ${bedNumber} (Capítulo ${chapterInfo.number}: ${chapterInfo.title} - Seção: ${chapterInfo.sectionTitle}).
 ${cleanText ? `\nTEXTO DE REFERÊNCIA DO LIVRO:\n${cleanText}\n` : ''}
@@ -480,15 +491,23 @@ Retorne ESTRITAMENTE uma array JSON com os 4 objetos de questão no formato espe
     } as any);
 
     const content = response.choices[0]?.message?.content || '[]';
-    const parsedRaw = parseJsonFromMarkdown<any[]>(content);
-    const parsed = Array.isArray(parsedRaw)
-      ? parsedRaw.map((q) => {
-          const norm = normalizeQuestionItem(q);
-          norm.chapterId = chapterInfo.id;
-          norm.chapterTitle = chapterInfo.title;
-          return norm;
-        })
-      : [];
+    const parsedRaw = parseJsonFromMarkdown<any>(content);
+    let rawList: any[] = [];
+    if (Array.isArray(parsedRaw)) {
+      rawList = parsedRaw;
+    } else if (parsedRaw && typeof parsedRaw === 'object') {
+      if (Array.isArray(parsedRaw.questions)) rawList = parsedRaw.questions;
+      else if (Array.isArray(parsedRaw.items)) rawList = parsedRaw.items;
+      else if (Array.isArray(parsedRaw.beds)) rawList = parsedRaw.beds;
+      else if (Array.isArray(parsedRaw.data)) rawList = parsedRaw.data;
+    }
+
+    const parsed = rawList.map((q) => {
+      const norm = normalizeQuestionItem(q);
+      norm.chapterId = chapterInfo.id;
+      norm.chapterTitle = chapterInfo.title;
+      return norm;
+    });
 
     return parsed;
   });
@@ -912,11 +931,20 @@ Estruture este texto no formato padrão de prontuário de emergência médica da
     } as any);
 
     const content = response.choices[0]?.message?.content || '';
-    // Clean any leading/trailing codeblocks if present
-    const cleaned = content
-      .replace(/^```(?:markdown|text)?\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
+    let cleaned = content.trim();
+    const codeBlockMatch = cleaned.match(/```(?:markdown|text)?\s*([\s\S]*?)\s*```/i);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      cleaned = codeBlockMatch[1].trim();
+    } else {
+      cleaned = cleaned
+        .replace(/^```(?:markdown|text)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+    }
+
+    if (!cleaned) {
+      return fixMojibake(rawText);
+    }
 
     return fixMojibake(cleaned);
   });

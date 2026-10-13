@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       fallbackModel: 'xiaomi/mimo-v2.6-flash',
     });
 
-    return NextResponse.json({ formattedPrescription });
+    return NextResponse.json({ formattedPrescription: formattedPrescription || rawText });
   } catch (error: any) {
     console.error('Error formatting prescription with fast AI:', error);
     return NextResponse.json(

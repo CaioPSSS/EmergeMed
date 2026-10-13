@@ -40,4 +40,51 @@ CREATE POLICY "Allow authenticated update times_used on bed_case_bank"
   ON bed_case_bank
   FOR UPDATE
   TO authenticated
-  USING (true);
+  USING (true)
+  WITH CHECK (true);
+
+-- Backfill existing plantão beds from public.tests table if any exist
+DO $$
+DECLARE
+  test_record RECORD;
+  bed_elem JSONB;
+  bed_qs JSONB;
+  q_ids JSONB;
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tests') THEN
+    FOR test_record IN SELECT id, questions, plantao_data FROM public.tests WHERE mode = 'plantao' AND plantao_data IS NOT NULL LOOP
+      IF test_record.plantao_data->'beds' IS NOT NULL THEN
+        FOR bed_elem IN SELECT * FROM jsonb_array_elements(test_record.plantao_data->'beds') LOOP
+          q_ids := bed_elem->'questionIds';
+          SELECT jsonb_agg(q) INTO bed_qs
+          FROM jsonb_array_elements(test_record.questions) q
+          WHERE (q->>'id')::int IN (SELECT (jsonb_array_elements_text(q_ids))::int);
+
+          IF bed_qs IS NOT NULL AND jsonb_array_length(bed_qs) >= 4 THEN
+            INSERT INTO public.bed_case_bank (
+              chapter_id,
+              chapter_title,
+              section_title,
+              phenotype_title,
+              questions,
+              complexity_level,
+              times_used
+            ) VALUES (
+              (bed_elem->>'chapterId')::int,
+              COALESCE(bed_elem->>'chapterTitle', 'Capítulo Clínico'),
+              bed_elem->>'sectionTitle',
+              COALESCE(SUBSTRING(bed_qs->0->>'vignette' FROM 1 FOR 90) || '...', bed_elem->>'chapterTitle'),
+              bed_qs,
+              'classic',
+              1
+            );
+          END IF;
+        END LOOP;
+      END IF;
+    END LOOP;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  -- Fallback silencioso caso schema de testes seja heterogêneo
+  RAISE NOTICE 'Nota: Backfill de leitos anteriores ignorado: %', SQLERRM;
+END $$;
+

@@ -121,7 +121,7 @@ RECURSOS E ESTRUTURA TÍPICA DA UPA / SAMU
 - Exames LABORATORIAIS disponíveis de urgência: Gasometria arterial/venosa, ECG de 12 derivações, Hemograma, Eletrólitos, Função Renal, Glicemia capilar e Marcadores de Necrose Miocárdica.
 - A UPA NÃO possui centro cirúrgico, hemodinâmica imediata na unidade, UTI própria nem banco de sangue/hemocomponentes. Pacientes graves devem ser estabilizados na Sala Vermelha (estabilização, drogas vasoativas, VNI/IOT) e regulados via central de vagas (SAMU/CROSS).
 
-\${REMUME_MEDICATIONS_UPA}
+${REMUME_MEDICATIONS_UPA}
 
 ═══════════════════════════════════════════════════════════
 NÍVEL DE DIFICULDADE — ALTO (Residência / Prova de Título)
@@ -327,7 +327,7 @@ Você avalia prescrições médicas, condutas imediatas e configurações de ven
 
 O TEXTO COMPLETO DO CAPÍTULO DO LIVRO será fornecido como referência de autoridade para validar as condutas.
 
-\${REMUME_MEDICATIONS_UPA}
+${REMUME_MEDICATIONS_UPA}
 
 ═══════════════════════════════════════════════════════════
 AUTONOMIA PARA PESQUISA DE PROTOCOLOS E DIRETRIZES
@@ -577,7 +577,7 @@ Você avalia prescrições médicas, condutas imediatas e configurações de ven
 
 O TEXTO COMPLETO DO CAPÍTULO DO LIVRO será fornecido como referência de autoridade para validar as condutas.
 
-\${REMUME_MEDICATIONS_UPA}
+${REMUME_MEDICATIONS_UPA}
 
 ═══════════════════════════════════════════════════════════
 AUTONOMIA PARA PESQUISA DE PROTOCOLOS E DIRETRIZES
@@ -757,6 +757,61 @@ Prescrição imediata:
 1. [Droga/Volume], [Via], [Tempo/Vazão], [Momento]
 2. [Droga/Diluição], [Via], [Vazão], [Momento/Concentração]
 ...
+
+═══════════════════════════════════════════════════════════
+EXEMPLOS REAIS DE PRESCRIÇÃO DO NOSSO SERVIÇO (FEW-SHOT):
+═══════════════════════════════════════════════════════════
+Exemplo 1 (Ressuscitação imediata com POCUS):
+"Farei o pocus de pulmão e cardíaco buscando 2 coisas: Ausência de sinais de congestão pulmonar e elevação do débito cardíaco à elevação passiva das pernas. Se essas duas condições foram satisfeitas, farei volume conforme a prescrição que irei falar, e já adicionarei droga vasoativa precoce, evitando necessitar de fluidos em excesso, mirando em uma expansão mais controlada, de 20ml/kg + DVA precoce, conforme estudos mais recentes vem mostrado evidencia. Logo após cada alíquota de volume eu farei uma reavaliação e em outra prescrição eu coloco a nova alíquota, para manter o máximo de controle. O ajuste da nora será constante, mirando uma PAM de 65 mmHg.
+
+Prescrição imediata:
+1. SRL 500 ml, EV, correr em 30 minutos, imediato
+2. Hemitartarato de norepinefrina 8mg/4ml, diluir 8 ml em 242 ml de SF0,9%, correr EV em BIC a vazão inicial de 8 ml/h - Solução concentrada (32 mcg/ml)
+3. Ceftriaxona 2 g, EV, imediato
+4. Azitromicina 500 mg, EV, imediato
+5. Hemoculturas de 2 acessos, antes do início do ATB, mas sem atrasar ATB"
+
+Exemplo 2 (Prescrição do dia sala vermelha):
+"1. Repouso absoluto no leito com cabeceira elevada 30% + Monitorização multiparamétrica contínua + Sondagem vesical de demora + Quantificação do débito urinário e balanço hídrico + Tax 6/6 h + Gasometria arterial 12/12 horas + LABS (Eletrólitos, função renal, função hepática, enzimas hepáticas e canaliculares, hemograma completo, PCR) 12/12 horas + RX tórax 1x dia.
+2. Hemitartarato de norepinefrina 8mg/4ml, diluir 16 ml em 242 ml de SF0,9%, correr EV em BIC a vazão inicial de 23 ml/h - Solução 2x concentrada (64 mcg/ml).
+3. Vasopressina 20UI/1ml, Diluir 1 amp de 20UI + SF0,9% 200mL, correr EV em BIC a vazão inicial de 6 ml/h.
+4. Hidrocortisona 50 mg, EV, 6/6 h.
+5. Ceftriaxona 1 g, EV, 12/12 h.
+6. Azitromicina 500 mg, EV, 1x dia.
+7. Dipirona 1 g, EV, se dor ou febre, 6/6 horas.
+8. Ondasetrona 8 mg, EV, se náusea ou vômitos.
+9. Insulina regular, EV, se HGT > 200, aplicar conforme protoclo institucional.
+10. Soro glicosado 25%, 80ml EV, se HGT < 70.
+
+OBS: Como já foi feito um volume expressivo de líquidos, a prescrição do dia será apenas de DVA, mirando em uma PAM 65-70 mmHg, melhora da perfusão periférica com TEC e melhora do lactato."
+
+Exemplo 3 (CAD com prescrições extras condicionais):
+"1. Repouso absoluto no leito com cabeceira elevada 30% + Monitorização multiparamétrica contínua + Quantificação do débito urinário e balanço hídrico + Tax 6/6 h + Gasometria arterial 12/12 horas + LABS (Eletrólitos, função renal, função hepática, enzimas hepáticas e canaliculares, hemograma completo, PCR) 12/12 horas + RX tórax 1x dia + HGT 1/1 h + Dieta ZERO.
+2. SF0,9% 1000 ml, correr EV em BIC em a 250 ml/h, contínuo - Hidratação manutenção.
+3. KCl 19,1%, diluir 10 ml a cada 1000 ml do item 2 da prescrição, contínuo.
+4. Insulina regular 100 UI, diluir em 100 ml de SF0,9%, correr em BIC a 7 ml/h, contínuo (Ajuste: Se queda de HGT < 50 por hora, dobrar taxa de infusão; Se queda de HGT > 70, dividir ao meio a taxa de infusão).
+5. SF0,9% 100 ml, para diluir item 3, contínuo.
+6. Ceftriaxona 1 g, EV, 12/12 h.
+7. Dipirona 1 g, EV, se dor ou febre, 6/6 horas.
+8. Ondasetrona 8 mg, EV, se náusea ou vômitos.
+
+Prescrição extra quando HGT < 300:
+9. SUSPENDO item 2 e item 3.
+10. SG5% 1000 ml, correr EV em BIC em a 250 ml/h, contínuo - Hidratação manutenção.
+11. KCl 19,1%, diluir 10 ml a cada 1000 ml do item 10 da prescrição, contínuo.
+12. NaCl 50%, diluir 20 ml a cada 1000 ml do item 10 da prescrição, contínuo.
+
+Prescrição extra quando Critérios de resolução da CAD (pH > 7,3, Anion Gap < 12, BIC > 15):
+13. Dieta branda para diabetes
+14. Insulina regular, aplicar 6 UI SC após o café da manhã, após o almoço e após o jantar (Iniciar após ingesta da primeira dieta após liberação)
+15. Insulina NPH, aplicar 9 UI 06:00 e 18:00."
+
+Exemplo 4 (Trombólise de AVC em sala vermelha):
+"Iremos trombolisar na ausência de contraindicações absolutas não reversíveis + Défict claramente incapacitante:
+1. Nitroprussiato de sódio 50mg/2ml, diluir 50 mg em 248 ml de SG5%, correr EV em BIC a 6 ml/h, inicialmente, titulando para uma PA< 185x110 antes da trombólise, e < 180x105 durante e após, mas mantendo uma hipertensão controlada PAS 160-170 mmHg, imediato
+2. Alteplase 7,4 mg em bolus EV, seguido por 66,6 mg EV em BIC em 1 hora, imediato
+
+REGULAÇÃO IMEDIATA PARA TROMBECTOMIA MECÂNICA + UTI NEURO"
 
 Retorne APENAS o texto da prescrição formatada diretamente, SEM explicações antes ou depois, SEM blocos de markdown de código (\`\`\`).`;
 

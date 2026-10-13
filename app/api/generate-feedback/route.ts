@@ -64,7 +64,10 @@ export async function POST(request: Request) {
       }
     }
 
+    const hasBookContext = Object.keys(chapterTexts).length > 0;
+
     // 3. Generate general feedback markdown via AI with full chapter texts and mode context
+    // Conforme instrução do usuário: apenas usar busca web se for estritamente necessário (ausência do texto do livro)
     const generalFeedback = await generateGeneralFeedbackWithAI({
       apiKey,
       model: feedbackModel,
@@ -74,7 +77,7 @@ export async function POST(request: Request) {
       evaluationsSummary: evaluationsSummary || [],
       chapterTexts,
       mode: (testRecord?.mode as 'simulado' | 'plantao') || 'simulado',
-      enableWebSearch: false,
+      enableWebSearch: !hasBookContext,
     });
 
     const updatedResults = {

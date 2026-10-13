@@ -361,3 +361,16 @@ CREATE TABLE IF NOT EXISTS bed_case_bank (
 CREATE INDEX IF NOT EXISTS idx_bed_case_bank_chapter_id ON bed_case_bank(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_bed_case_bank_times_used ON bed_case_bank(times_used ASC);
 CREATE INDEX IF NOT EXISTS idx_bed_case_bank_complexity ON bed_case_bank(complexity_level);
+
+-- Enable RLS
+ALTER TABLE bed_case_bank ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow authenticated read bed_case_bank"
+  ON bed_case_bank FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Allow authenticated insert bed_case_bank"
+  ON bed_case_bank FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "Allow authenticated update times_used on bed_case_bank"
+  ON bed_case_bank FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+

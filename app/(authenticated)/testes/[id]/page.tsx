@@ -176,6 +176,18 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const [isFormattingAI, setIsFormattingAI] = useState<boolean>(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const latestDictationRef = useRef<string>('');
+
+  const isQuestionAnswered = (qId: number) => {
+    const ans = userAnswers[qId];
+    if (ans === undefined || ans === null) return false;
+    if (typeof ans === 'string') return ans.trim().length > 0;
+    if (typeof ans === 'number') return true;
+    if (typeof ans === 'object') {
+      return Object.values(ans).some((v) => typeof v === 'string' && v.trim().length > 0);
+    }
+    return false;
+  };
 
   const stopListening = () => {
     if (recognitionRef.current) {
@@ -188,7 +200,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   };
 
   const formatPrescriptionText = async (questionId: number, textOverride?: string) => {
-    const rawToFormat = textOverride !== undefined ? textOverride : userAnswers[questionId];
+    const rawToFormat = textOverride !== undefined ? textOverride : (latestDictationRef.current || userAnswers[questionId]);
     if (!rawToFormat || typeof rawToFormat !== 'string' || !rawToFormat.trim()) {
       return;
     }
@@ -209,6 +221,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           ...prev,
           [questionId]: data.formattedPrescription,
         }));
+        latestDictationRef.current = data.formattedPrescription;
       } else if (data.error) {
         console.warn('Format prescription response error:', data.error);
       }
@@ -216,6 +229,14 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       console.error('Error formatting prescription with AI:', err);
     } finally {
       setIsFormattingAI(false);
+    }
+  };
+
+  const handleStopAndFormat = (questionId: number) => {
+    const textToFormat = latestDictationRef.current || userAnswers[questionId] || '';
+    stopListening();
+    if (textToFormat && typeof textToFormat === 'string' && textToFormat.trim()) {
+      formatPrescriptionText(questionId, textToFormat);
     }
   };
 
@@ -242,28 +263,30 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       recognition.continuous = true;
       recognition.interimResults = true;
 
-      let accumulated = '';
       const initialText = userAnswers[questionId] || '';
+      latestDictationRef.current = initialText;
 
       recognition.onstart = () => {
         setIsListening(true);
       };
 
       recognition.onresult = (event: any) => {
-        let interim = '';
-        let finalChunk = '';
+        let currentFinal = '';
+        let currentInterim = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalChunk += event.results[i][0].transcript + ' ';
+        for (let i = 0; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            currentFinal += item[0].transcript + ' ';
           } else {
-            interim += event.results[i][0].transcript;
+            currentInterim += item[0].transcript;
           }
         }
 
-        accumulated += finalChunk;
         const separator = initialText.trim() ? '\n' : '';
-        const preview = initialText + separator + accumulated + interim;
+        const preview = (initialText + separator + currentFinal + currentInterim).trim();
+        latestDictationRef.current = preview;
+
         setUserAnswers((prev) => ({
           ...prev,
           [questionId]: preview,
@@ -296,8 +319,9 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
     setUserAnswers((prev) => {
       const current = prev[questionId] || '';
       const trimmed = typeof current === 'string' ? current.trim() : '';
-      if (!trimmed) return { ...prev, [questionId]: conductText };
-      return { ...prev, [questionId]: `${trimmed}\n${conductText}` };
+      const nextText = !trimmed ? conductText : `${trimmed}\n${conductText}`;
+      latestDictationRef.current = nextText;
+      return { ...prev, [questionId]: nextText };
     });
   };
 
@@ -1070,7 +1094,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                 const isCurrentBed = bedQuestionIds.includes(currentQ.id);
 
                 // Check how many answered in this bed
-                const answeredInBed = bedQuestionIds.filter((qId) => userAnswers[qId] !== undefined).length;
+                const answeredInBed = bedQuestionIds.filter((qId) => isQuestionAnswered(qId)).length;
                 const totalInBed = bedQuestionIds.length;
 
                 return (
@@ -1137,9 +1161,9 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             {beds.map((bed: any) => {
               const bedQuestionIds = [...(bed.questionIds || []), bed.bonusQuestionId].filter(Boolean);
               const isCurrentBed = bedQuestionIds.includes(currentQ.id);
-              const answeredInBed = bedQuestionIds.filter((qId) => userAnswers[qId] !== undefined).length;
+              const answeredInBed = bedQuestionIds.filter((qId) => isQuestionAnswered(qId)).length;
               const totalInBed = bedQuestionIds.length;
-              const isComplete = answeredInBed === totalInBed;
+              const isComplete = totalInBed > 0 && answeredInBed === totalInBed;
 
               return (
                 <button
@@ -1559,10 +1583,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                   {isListening ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        stopListening();
-                        formatPrescriptionText(currentQ.id);
-                      }}
+                      onClick={() => handleStopAndFormat(currentQ.id)}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1730,10 +1751,7 @@ SINTOMÁTICOS E PROTOCOLOS:
                   {isListening ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        stopListening();
-                        formatPrescriptionText(currentQ.id);
-                      }}
+                      onClick={() => handleStopAndFormat(currentQ.id)}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
