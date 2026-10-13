@@ -935,8 +935,8 @@ Retorne ESTRITAMENTE o JSON estruturado conforme as instruções do prompt de si
 export async function formatPrescriptionWithAI({
   rawText,
   apiKey,
-  model = 'deepseek/deepseek-v4.1-flash',
-  fallbackModel = 'xiaomi/mimo-v2.6-flash',
+  model = 'xiaomi/mimo-v2.6-flash',
+  fallbackModel = 'openai/gpt-6-luna',
 }: {
   rawText: string;
   apiKey?: string;
@@ -962,34 +962,45 @@ Estruture este texto no formato padrão de prontuário de emergência médica da
 - Organize os itens com numeração clara e quebras de linha limpas.
 - Retorne apenas o texto da prescrição sem markdown de código ou preâmbulo.`;
 
-  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
-    const response = await openai.chat.completions.create({
-      model: selectedModel,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT_PRESCRIPTION_FORMATTER },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.1,
-      max_tokens: 2500,
-    } as any);
+  try {
+    return await executeWithModelCascade(modelsCascade, async (selectedModel) => {
+      const response = await openai.chat.completions.create({
+        model: selectedModel,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT_PRESCRIPTION_FORMATTER },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 2500,
+      } as any);
 
-    const content = response.choices[0]?.message?.content || '';
-    let cleaned = content.trim();
-    const codeBlockMatch = cleaned.match(/```(?:markdown|text)?\s*([\s\S]*?)\s*```/i);
-    if (codeBlockMatch && codeBlockMatch[1]) {
-      cleaned = codeBlockMatch[1].trim();
-    } else {
+      const message = response.choices[0]?.message;
+      const rawContent = message?.content || (message as any)?.reasoning || (message as any)?.thought || '';
+      let cleaned = (typeof rawContent === 'string' ? rawContent : '').trim();
+      const codeBlockMatch = cleaned.match(/```(?:markdown|text)?\s*([\s\S]*?)\s*```/i);
+      if (codeBlockMatch && codeBlockMatch[1]) {
+        cleaned = codeBlockMatch[1].trim();
+      } else {
+        cleaned = cleaned
+          .replace(/^```(?:markdown|text)?\s*/i, '')
+          .replace(/\s*```$/i, '')
+          .trim();
+      }
+
+      // Remove conversational preambles like "Aqui está a prescrição:"
       cleaned = cleaned
-        .replace(/^```(?:markdown|text)?\s*/i, '')
-        .replace(/\s*```$/i, '')
+        .replace(/^(?:Aqui está|Segue|Prescrição formatada|Com base no ditado|Abaixo está)[^\n]*:\s*/i, '')
         .trim();
-    }
 
-    if (!cleaned) {
-      return fixMojibake(rawText);
-    }
+      if (!cleaned || cleaned.length < 5) {
+        throw new Error(`Modelo '${selectedModel}' retornou resposta vazia.`);
+      }
 
-    return fixMojibake(cleaned);
-  });
+      return fixMojibake(cleaned);
+    });
+  } catch (error) {
+    console.error('[formatPrescriptionWithAI] Falha em todos os modelos da cascata:', error);
+    return fixMojibake(rawText);
+  }
 }
 

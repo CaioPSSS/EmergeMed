@@ -30,12 +30,12 @@ export async function POST(request: Request) {
 
     const apiKey = settings?.openrouter_api_key || process.env.OPENROUTER_API_KEY;
 
-    // Use fast formatting model (DeepSeek V4.1 Flash / Xiaomi MiMo V2.6 Flash)
+    // Use fast formatting model (Xiaomi MiMo V2.6 Flash ~2s / OpenAI GPT-6 Luna fallback)
     const formattedPrescription = await formatPrescriptionWithAI({
       rawText,
       apiKey,
-      model: 'deepseek/deepseek-v4.1-flash',
-      fallbackModel: 'xiaomi/mimo-v2.6-flash',
+      model: 'xiaomi/mimo-v2.6-flash',
+      fallbackModel: 'openai/gpt-6-luna',
     });
 
     return NextResponse.json({ formattedPrescription: formattedPrescription || rawText });

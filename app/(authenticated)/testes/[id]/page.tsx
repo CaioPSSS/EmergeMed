@@ -155,6 +155,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   };
 
   const handlePrescriptionTextChange = (questionId: number, text: string) => {
+    latestDictationRef.current = text;
     setUserAnswers((prev) => ({
       ...prev,
       [questionId]: text,
@@ -175,6 +176,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isFormattingAI, setIsFormattingAI] = useState<boolean>(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [formatSuccessMessage, setFormatSuccessMessage] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const latestDictationRef = useRef<string>('');
 
@@ -200,13 +202,18 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   };
 
   const formatPrescriptionText = async (questionId: number, textOverride?: string) => {
-    const rawToFormat = textOverride !== undefined ? textOverride : (latestDictationRef.current || userAnswers[questionId]);
+    const currentVal = userAnswers[questionId];
+    const rawToFormat = textOverride !== undefined
+      ? textOverride
+      : (typeof currentVal === 'string' && currentVal.trim() ? currentVal : latestDictationRef.current);
+
     if (!rawToFormat || typeof rawToFormat !== 'string' || !rawToFormat.trim()) {
       return;
     }
 
     setIsFormattingAI(true);
     setSpeechError(null);
+    setFormatSuccessMessage(null);
 
     try {
       const res = await fetch('/api/format-prescription', {
@@ -222,11 +229,17 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           [questionId]: data.formattedPrescription,
         }));
         latestDictationRef.current = data.formattedPrescription;
+        setFormatSuccessMessage('✨ Prescrição organizada e padronizada com sucesso!');
+        setTimeout(() => setFormatSuccessMessage(null), 3500);
       } else if (data.error) {
         console.warn('Format prescription response error:', data.error);
+        setSpeechError(`Erro ao organizar: ${data.error}`);
+        setTimeout(() => setSpeechError(null), 4500);
       }
     } catch (err: any) {
       console.error('Error formatting prescription with AI:', err);
+      setSpeechError('Erro de conexão ao organizar prescrição com IA.');
+      setTimeout(() => setSpeechError(null), 4500);
     } finally {
       setIsFormattingAI(false);
     }
@@ -313,16 +326,6 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       setSpeechError('Não foi possível ativar o microfone.');
       setIsListening(false);
     }
-  };
-
-  const appendQuickConduct = (questionId: number, conductText: string) => {
-    setUserAnswers((prev) => {
-      const current = prev[questionId] || '';
-      const trimmed = typeof current === 'string' ? current.trim() : '';
-      const nextText = !trimmed ? conductText : `${trimmed}\n${conductText}`;
-      latestDictationRef.current = nextText;
-      return { ...prev, [questionId]: nextText };
-    });
   };
 
   useEffect(() => {
@@ -1661,48 +1664,6 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           {/* Prescription Complete Text Area */}
           {currentQ.type === 'prescription_complete' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* Quick Conduct Chips */}
-              <div className="quick-conduct-bar">
-                <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-subtle)', flexShrink: 0 }}>
-                  Condutas Rápidas:
-                </span>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ Acesso Venoso Periférico Calibroso (2x 18G ou 16G)')}
-                >
-                  <Plus size={12} /> Acesso Calibroso
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ Monitorização Multiparamétrica Contínua + O2 sob cateter')}
-                >
-                  <Plus size={12} /> Monitorização + O2
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, 'SF 0,9% 500 mL, correr EV em bolus em 20 minutos')}
-                >
-                  <Plus size={12} /> SF 0,9% 500mL Bolus
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ ECG 12 Derivações de Imediato')}
-                >
-                  <Plus size={12} /> ECG 12 Derivações
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ Gasometria Arterial + Lactato + Eletrólitos agora')}
-                >
-                  <Plus size={12} /> Gasometria + Lactato
-                </button>
-              </div>
-
               {/* Dictation + Action Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                 <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1798,6 +1759,12 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                 </div>
               )}
 
+              {formatSuccessMessage && (
+                <div style={{ fontSize: '0.75rem', color: '#34d399', padding: '6px 10px', background: 'rgba(16, 185, 129, 0.12)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  {formatSuccessMessage}
+                </div>
+              )}
+
               <textarea
                 className="input-field"
                 rows={14}
@@ -1829,48 +1796,6 @@ SINTOMÁTICOS E PROTOCOLOS:
           {/* Prescription Immediate Text Area */}
           {currentQ.type === 'prescription_immediate' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* Quick Conduct Chips */}
-              <div className="quick-conduct-bar">
-                <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-subtle)', flexShrink: 0 }}>
-                  Condutas Rápidas:
-                </span>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ Acesso Venoso Periférico Calibroso (2x 18G ou 16G)')}
-                >
-                  <Plus size={12} /> Acesso Calibroso
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ Monitorização Multiparamétrica Contínua + O2 sob máscara')}
-                >
-                  <Plus size={12} /> Monitorização + O2
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, 'SF 0,9% 500 mL, correr EV em bolus em 20 minutos')}
-                >
-                  <Plus size={12} /> SF 0,9% 500mL Bolus
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ ECG 12 Derivações de Imediato')}
-                >
-                  <Plus size={12} /> ECG 12 Derivações
-                </button>
-                <button
-                  type="button"
-                  className="quick-chip"
-                  onClick={() => appendQuickConduct(currentQ.id, '+ Gasometria Arterial + Lactato + Eletrólitos agora')}
-                >
-                  <Plus size={12} /> Gasometria + Lactato
-                </button>
-              </div>
-
               {/* Dictation + Action Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                 <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1963,6 +1888,12 @@ SINTOMÁTICOS E PROTOCOLOS:
               {speechError && (
                 <div style={{ fontSize: '0.75rem', color: '#fda4af', padding: '6px 10px', background: 'rgba(244, 63, 94, 0.12)', borderRadius: '8px', border: '1px solid rgba(244, 63, 94, 0.3)' }}>
                   ⚠️ {speechError}
+                </div>
+              )}
+
+              {formatSuccessMessage && (
+                <div style={{ fontSize: '0.75rem', color: '#34d399', padding: '6px 10px', background: 'rgba(16, 185, 129, 0.12)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  {formatSuccessMessage}
                 </div>
               )}
 

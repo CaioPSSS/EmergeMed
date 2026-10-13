@@ -443,42 +443,6 @@ body {
   }
 }
 
-/* Quick Conduct Chips Bar */
-.quick-conduct-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 4px 0 8px 0;
-  -webkit-overflow-scrolling: touch;
-  white-space: nowrap;
-}
-
-.quick-chip {
-  padding: 6px 12px;
-  border-radius: 9999px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  background: rgba(14, 165, 233, 0.12);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.quick-chip:hover {
-  background: rgba(14, 165, 233, 0.25);
-  border-color: #38bdf8;
-  transform: translateY(-1px);
-}
-
-.quick-chip:active {
-  transform: scale(0.97);
-}
 
 /* Ventilator responsive grid */
 .ventilator-grid {

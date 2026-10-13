@@ -41,10 +41,9 @@ export const AI_TASK_PROFILES = {
 
   // Formatação rápida e padronização de prescrição ditada por voz
   PRESCRIPTION_FAST_FORMAT: [
-    'deepseek/deepseek-v4.1-flash',
     'xiaomi/mimo-v2.6-flash',
     'openai/gpt-6-luna',
-    'deepseek/deepseek-v4-flash-0731',
+    'deepseek/deepseek-v4.1-flash',
   ],
 } as const;
 
