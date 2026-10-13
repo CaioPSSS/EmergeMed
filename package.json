@@ -12,7 +12,11 @@
     "insert-chapter": "node scripts/insert-chapter-manual.mjs",
     "upload-db": "node scripts/upload-to-supabase.mjs",
     "preview-chapter-tails": "node scripts/preview-chapter-tails.mjs",
-    "batch:nightly": "tsx scripts/nightly-batch-pipeline.ts"
+    "batch:nightly": "tsx scripts/nightly-batch-pipeline.ts",
+    "batch:submit": "tsx scripts/nightly-batch-pipeline.ts --submit",
+    "batch:poll": "tsx scripts/nightly-batch-pipeline.ts --poll-and-ingest",
+    "batch:status": "tsx scripts/nightly-batch-pipeline.ts --status",
+    "batch:dry": "tsx scripts/nightly-batch-pipeline.ts --submit --mock"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
