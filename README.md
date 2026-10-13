@@ -117,9 +117,11 @@ Script autônomo (`scripts/nightly-batch-pipeline.ts`) que roda assincronamente 
   - Interrupção automática imediata antes do envio se o teto for atingido.
 * **Execução Noturna Automática:**
   - Workflow dedicado: `.github/workflows/nightly-batch.yml`.
-  - Fase 1: `batch:submit` (envio de lote).
-  - Fase 2: `batch:poll` (polling + ingestão), executada depois do submit.
-  - O polling é **limitado (bounded)** por tentativas no mesmo run. Se o lote ainda estiver em processamento, o próximo run noturno volta a tentar ingestão dos lotes pendentes do `batch_generation_ledger`.
+  - Fase 1: `batch:poll` primeiro (polling + ingestão dos lotes já submetidos).
+  - Fase 2: somente se **não existir lote pendente** (`status = submitted`), executa `batch:submit`.
+  - Se ainda houver lote pendente após o polling bounded, o workflow termina com sucesso e **bloqueia nova submissão** nessa noite.
+  - O próximo run noturno volta a tentar ingestão dos lotes pendentes do `batch_generation_ledger`.
+  - A proteção de teto considera custo realizado **+ reserva estimada de lotes pendentes** com base em `items_requested`, evitando novas submissões por “falso saldo livre”.
 
 ---
 
@@ -208,6 +210,9 @@ npm run batch:submit
 
 # Fazer polling e ingerir resultados do lote no banco
 npm run batch:poll
+
+# Status machine-readable de lotes pendentes (orquestração/workflow)
+npm run batch:pending-status -- --json
 ```
 
 ### Automação Noturna (GitHub Actions)
@@ -218,12 +223,15 @@ Secrets necessários no repositório:
 - `OPENROUTER_API_KEY`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `BATCH_TARGET_USER_ID` (opcional; se ausente, usa fallback automático do `study_queue`)
 
 Observações operacionais:
 
-- `batch:submit` roda antes de `batch:poll`; se o submit falhar, o polling não roda no mesmo workflow.
+- O workflow roda às **03:00 UTC** (schedule) e também suporta `workflow_dispatch`.
+- A ordem é **poll -> verificar pendência -> submit condicional**.
 - O polling no workflow tem número máximo de tentativas por execução (sem loop infinito).
-- Se a OpenRouter ainda não tiver finalizado o lote na mesma noite, execuções noturnas seguintes continuam o polling/ingestão dos lotes pendentes.
+- Se a OpenRouter ainda não tiver finalizado o lote na mesma noite, a execução encerra com sucesso sem novo submit, e as execuções seguintes continuam o polling/ingestão.
+- O pipeline usa `SUPABASE_SERVICE_ROLE_KEY` para leitura/escrita de ledger e ingestão com privilégios de service role.
 
 ### Suíte de Testes Automatizados E2E
 ```bash
