@@ -29,6 +29,8 @@ import {
   BedStage1Immediate,
   BedStage2Maintenance,
 } from './common';
+import { estimatePendingBatchReservationUsd, PENDING_RESERVATION_USD_PER_ITEM } from '../../lib/ai/openrouter-batch';
+import { shouldBlockSubmissionDueToPending, classifyBatchProgressStatus } from '../../scripts/nightly-batch-pipeline';
 
 export async function runTier2Tests(): Promise<TestResult[]> {
   const results: TestResult[] = [];
@@ -922,12 +924,21 @@ export async function runTier2Tests(): Promise<TestResult[]> {
     })
   );
 
+  results.push(
+    await runTest('T2.17.6', 'F5.2', 'Pending reservation is included before evaluating if a new batch can proceed', () => {
+      const pendingReserved = estimatePendingBatchReservationUsd(200);
+      const check = evaluateBudgetCapBreach(0.08 + pendingReserved, 0.4, 0.05);
+      assert(!check.canProceed, 'Reserved pending spend must reduce remaining cap headroom');
+      assertEqual(check.reason, 'daily_cap', 'Daily cap should trigger when pending reservation consumes budget');
+    })
+  );
+
   // ==========================================================================
   // F5.3: CLI Pipeline Script Boundaries
   // ==========================================================================
   results.push(
     await runTest('T2.18.1', 'F5.3', 'Unrecognized CLI flags produce error output with usage syntax', () => {
-      const allowedFlags = ['--submit', '--poll-and-ingest', '--status', '--mock'];
+      const allowedFlags = ['--submit', '--poll-and-ingest', '--status', '--pending-status', '--mock', '--json'];
       const passedFlag = '--unknown-flag';
       const isAllowed = allowedFlags.includes(passedFlag);
       assert(!isAllowed, 'Flag not allowed');
@@ -935,39 +946,42 @@ export async function runTier2Tests(): Promise<TestResult[]> {
   );
 
   results.push(
-    await runTest('T2.18.2', 'F5.3', 'Running with --mock ensures zero external API requests and zero billed cost', () => {
-      const isMock = true;
-      let actualApiCost = 0;
-      if (isMock) {
-        actualApiCost = 0;
-      }
-      assertEqual(actualApiCost, 0, 'Zero cost in mock mode');
+    await runTest('T2.18.2', 'F5.3', 'Pending submitted batches block any new submission orchestration path', () => {
+      assertEqual(shouldBlockSubmissionDueToPending(1), true, 'Single pending submitted batch must block submit');
+      assertEqual(shouldBlockSubmissionDueToPending(3), true, 'Multiple pending submitted batches must block submit');
+      assertEqual(shouldBlockSubmissionDueToPending(0), false, 'No pending batches allows submit path');
     })
   );
 
   results.push(
-    await runTest('T2.18.3', 'F5.3', 'Missing OPENROUTER_API_KEY in non-mock mode raises informative error', () => {
-      const getApiKey = (envKey?: string, mockMode?: boolean) => {
-        if (!mockMode && !envKey) throw new Error('OPENROUTER_API_KEY required in live mode');
-        return envKey || 'mock-key';
+    await runTest('T2.18.3', 'F5.3', 'Pending reservation uses items_requested and contributes deterministic reserved spend', () => {
+      const reservedForThree = estimatePendingBatchReservationUsd(3);
+      const expected = Number((PENDING_RESERVATION_USD_PER_ITEM * 3).toFixed(6));
+      assertEqual(reservedForThree, expected, 'Reservation should be proportional to requested items');
+      assertEqual(estimatePendingBatchReservationUsd(0), 0, 'Zero requested items should reserve zero');
+    })
+  );
+
+  results.push(
+    await runTest('T2.18.4', 'F5.3', 'Completed and failed terminal statuses are classified for ingestion progression', () => {
+      assertEqual(classifyBatchProgressStatus('completed'), 'completed', 'Completed batch should be ingested');
+      assertEqual(classifyBatchProgressStatus('failed'), 'failed', 'Failed batch should be marked terminal');
+      assertEqual(classifyBatchProgressStatus('cancelled'), 'failed', 'Cancelled batch should be marked terminal');
+      assertEqual(classifyBatchProgressStatus('processing'), 'pending', 'Non-terminal status should stay pending');
+    })
+  );
+
+  results.push(
+    await runTest('T2.18.5', 'F5.3', 'Machine-readable pending status payload supports workflow gating without log grep', () => {
+      const payload = {
+        pendingSubmittedCount: 2,
+        hasPendingSubmitted: true,
+        pendingBatchIds: ['batch_a', 'batch_b'],
       };
-      assertThrows(() => getApiKey(undefined, false), 'Throws on missing key in live mode');
-      assertEqual(getApiKey(undefined, true), 'mock-key', 'Mock mode bypasses key');
-    })
-  );
-
-  results.push(
-    await runTest('T2.18.4', 'F5.3', 'Lock file mechanism prevents simultaneous pipeline runs', () => {
-      let isLocked = true;
-      const canAcquireLock = !isLocked;
-      assert(!canAcquireLock, 'Second process cannot acquire lock while first is running');
-    })
-  );
-
-  results.push(
-    await runTest('T2.18.5', 'F5.3', 'Pipeline interruption handles partial batches safely', () => {
-      const batchStatus = 'interrupted';
-      assert(batchStatus === 'interrupted', 'Interrupted state handled cleanly');
+      const serialized = JSON.stringify(payload);
+      const parsed = JSON.parse(serialized);
+      assertEqual(parsed.pendingSubmittedCount, 2, 'Workflow can read pending count deterministically');
+      assertEqual(parsed.hasPendingSubmitted, true, 'Workflow can gate submit deterministically');
     })
   );
 

@@ -43,7 +43,25 @@ import {
 // ============================================================================
 
 const LOCK_FILE = path.join(process.cwd(), '.nightly-batch.lock');
-const ALLOWED_FLAGS = ['--submit', '--poll-and-ingest', '--status', '--mock'];
+const ALLOWED_FLAGS = ['--submit', '--poll-and-ingest', '--status', '--pending-status', '--mock', '--json'];
+
+export interface PollAndIngestSummary {
+  pendingAtStart: number;
+  completedBatches: number;
+  failedBatches: number;
+  stillPendingBatches: number;
+}
+
+export function shouldBlockSubmissionDueToPending(pendingCount: number): boolean {
+  return Number.isFinite(pendingCount) && pendingCount > 0;
+}
+
+export function classifyBatchProgressStatus(status: string): 'completed' | 'failed' | 'pending' {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'completed') return 'completed';
+  if (normalized === 'failed' || normalized === 'cancelled' || normalized === 'expired') return 'failed';
+  return 'pending';
+}
 
 function loadEnv(): void {
   const envPath = path.join(process.cwd(), '.env.local');
@@ -488,14 +506,32 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
 
   const supabase = getSupabaseClient();
 
-  // 1. Budget hard cap check before doing any work
-  const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase);
-  console.log(`[Budget] Current Daily Accumulated:   $${dailyAccumulated.toFixed(6)} / $${DAILY_HARD_CAP_USD.toFixed(2)}`);
-  console.log(`[Budget] Current Monthly Accumulated: $${monthlyAccumulated.toFixed(6)} / $${MONTHLY_HARD_CAP_USD.toFixed(2)}`);
+  const pendingBatches = await listPendingBatchLedgers(supabase);
+  if (shouldBlockSubmissionDueToPending(pendingBatches.length)) {
+    console.log(`[Queue] Found ${pendingBatches.length} pending submitted batch(es).`);
+    console.log('✓ Submission skipped: existing batch work is still in progress and must finish before creating a new batch.');
+    return;
+  }
 
-  if (dailyAccumulated >= DAILY_HARD_CAP_USD || monthlyAccumulated >= MONTHLY_HARD_CAP_USD) {
+  // 1. Budget hard cap check before doing any work
+  const {
+    dailyAccumulated,
+    monthlyAccumulated,
+    dailyPendingReserved,
+    monthlyPendingReserved,
+    dailyTotalWithPendingReserved,
+    monthlyTotalWithPendingReserved,
+  } = await fetchAccumulatedBudget(supabase);
+  console.log(`[Budget] Daily Realized:              $${dailyAccumulated.toFixed(6)} / $${DAILY_HARD_CAP_USD.toFixed(2)}`);
+  console.log(`[Budget] Monthly Realized:            $${monthlyAccumulated.toFixed(6)} / $${MONTHLY_HARD_CAP_USD.toFixed(2)}`);
+  console.log(`[Budget] Daily Pending Reserved:      $${dailyPendingReserved.toFixed(6)}`);
+  console.log(`[Budget] Monthly Pending Reserved:    $${monthlyPendingReserved.toFixed(6)}`);
+  console.log(`[Budget] Daily Total (Realized+Res):  $${dailyTotalWithPendingReserved.toFixed(6)} / $${DAILY_HARD_CAP_USD.toFixed(2)}`);
+  console.log(`[Budget] Monthly Total (Realized+Res):$${monthlyTotalWithPendingReserved.toFixed(6)} / $${MONTHLY_HARD_CAP_USD.toFixed(2)}`);
+
+  if (dailyTotalWithPendingReserved >= DAILY_HARD_CAP_USD || monthlyTotalWithPendingReserved >= MONTHLY_HARD_CAP_USD) {
     console.warn(`\n⚠️  [HARD BUDGET CAP HALT] Budget ceiling reached!`);
-    console.warn(`   Daily: $${dailyAccumulated.toFixed(4)} >= $${DAILY_HARD_CAP_USD.toFixed(2)} OR Monthly: $${monthlyAccumulated.toFixed(4)} >= $${MONTHLY_HARD_CAP_USD.toFixed(2)}`);
+    console.warn(`   Daily Total: $${dailyTotalWithPendingReserved.toFixed(4)} >= $${DAILY_HARD_CAP_USD.toFixed(2)} OR Monthly Total: $${monthlyTotalWithPendingReserved.toFixed(4)} >= $${MONTHLY_HARD_CAP_USD.toFixed(2)}`);
     console.warn(`   Execution halted automatically. Flagging hard_cap_interrupted = true in ledger.`);
 
     await insertBatchLedgerRecord(
@@ -531,8 +567,8 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
   }
 
   // 3. Construct batch requests (limit batch size to respect remaining daily & monthly caps)
-  const remainingDaily = DAILY_HARD_CAP_USD - dailyAccumulated;
-  const remainingMonthly = MONTHLY_HARD_CAP_USD - monthlyAccumulated;
+  const remainingDaily = DAILY_HARD_CAP_USD - dailyTotalWithPendingReserved;
+  const remainingMonthly = MONTHLY_HARD_CAP_USD - monthlyTotalWithPendingReserved;
   const maxSpendAllowed = Math.min(remainingDaily, remainingMonthly);
 
   const requests: BatchRequestItem[] = [];
@@ -685,7 +721,7 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
 // 6. BATCH POLLING & INGESTION WORKFLOW (--poll-and-ingest)
 // ============================================================================
 
-export async function runPollAndIngest(isMock: boolean = false): Promise<void> {
+export async function runPollAndIngest(isMock: boolean = false): Promise<PollAndIngestSummary> {
   console.log('\n================================================================================');
   console.log(`▶ [NIGHTLY BATCH PIPELINE] POLL & INGEST RUN — ${new Date().toISOString()}`);
   console.log(`  Mode: ${isMock ? 'MOCK (Offline Simulation)' : 'LIVE (OpenRouter Batch API)'}`);
@@ -693,10 +729,16 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<void> {
 
   const supabase = getSupabaseClient();
   const pendingBatches = await listPendingBatchLedgers(supabase);
+  const summary: PollAndIngestSummary = {
+    pendingAtStart: pendingBatches.length,
+    completedBatches: 0,
+    failedBatches: 0,
+    stillPendingBatches: 0,
+  };
 
   if (pendingBatches.length === 0) {
     console.log('✓ No pending submitted batches found in ledger.');
-    return;
+    return summary;
   }
 
   console.log(`[Queue] Found ${pendingBatches.length} pending batches awaiting ingestion.`);
@@ -720,9 +762,25 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<void> {
     );
 
     console.log(`[Status] Batch State: ${statusResponse.status}`);
+    const batchProgress = classifyBatchProgressStatus(statusResponse.status);
 
-    if (statusResponse.status !== 'completed') {
+    if (batchProgress === 'failed') {
+      await updateBatchLedgerRecord(
+        batchRow.batch_id,
+        {
+          completion_timestamp: new Date().toISOString(),
+          status: 'failed',
+        },
+        supabase
+      );
+      summary.failedBatches += 1;
+      console.warn(`[Status] Batch ${batchRow.batch_id} is terminal with status "${statusResponse.status}". Marked as failed in ledger.`);
+      continue;
+    }
+
+    if (batchProgress !== 'completed') {
       console.log(`[Status] Batch still in progress. Skipping ingestion for now.`);
+      summary.stillPendingBatches += 1;
       continue;
     }
 
@@ -851,7 +909,10 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<void> {
     );
 
     console.log(`✓ Batch ${batchRow.batch_id} finalized and marked completed.`);
+    summary.completedBatches += 1;
   }
+
+  return summary;
 }
 
 // ============================================================================
@@ -864,15 +925,22 @@ export async function runStatusDisplay(): Promise<void> {
   console.log('================================================================================\n');
 
   const supabase = getSupabaseClient();
-  const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase);
+  const {
+    dailyAccumulated,
+    monthlyAccumulated,
+    dailyPendingReserved,
+    monthlyPendingReserved,
+    dailyTotalWithPendingReserved,
+    monthlyTotalWithPendingReserved,
+  } = await fetchAccumulatedBudget(supabase);
 
-  const remainingDaily = Math.max(0, DAILY_HARD_CAP_USD - dailyAccumulated);
-  const remainingMonthly = Math.max(0, MONTHLY_HARD_CAP_USD - monthlyAccumulated);
+  const remainingDaily = Math.max(0, DAILY_HARD_CAP_USD - dailyTotalWithPendingReserved);
+  const remainingMonthly = Math.max(0, MONTHLY_HARD_CAP_USD - monthlyTotalWithPendingReserved);
 
   console.log('📊 GOVERNANÇA ORÇAMENTÁRIA (HARD BUDGET CAPS):');
   console.log('--------------------------------------------------------------------------------');
-  console.log(`• Teto Diário ($0.15/dia):     Gasto: $${dailyAccumulated.toFixed(6)} | Restante: $${remainingDaily.toFixed(6)} (${((dailyAccumulated / DAILY_HARD_CAP_USD) * 100).toFixed(1)}% usado)`);
-  console.log(`• Teto Mensal ($0.90/mês):    Gasto: $${monthlyAccumulated.toFixed(6)} | Restante: $${remainingMonthly.toFixed(6)} (${((monthlyAccumulated / MONTHLY_HARD_CAP_USD) * 100).toFixed(1)}% usado)`);
+  console.log(`• Teto Diário ($0.15/dia):     Realizado: $${dailyAccumulated.toFixed(6)} | Reserva Pendente: $${dailyPendingReserved.toFixed(6)} | Total: $${dailyTotalWithPendingReserved.toFixed(6)} | Restante: $${remainingDaily.toFixed(6)} (${((dailyTotalWithPendingReserved / DAILY_HARD_CAP_USD) * 100).toFixed(1)}% usado)`);
+  console.log(`• Teto Mensal ($0.90/mês):    Realizado: $${monthlyAccumulated.toFixed(6)} | Reserva Pendente: $${monthlyPendingReserved.toFixed(6)} | Total: $${monthlyTotalWithPendingReserved.toFixed(6)} | Restante: $${remainingMonthly.toFixed(6)} (${((monthlyTotalWithPendingReserved / MONTHLY_HARD_CAP_USD) * 100).toFixed(1)}% usado)`);
   console.log(`• Modelo em Lote:             ${BATCH_MODEL} ($0.05 / 1M prompt, $0.25 / 1M completion)`);
 
   const pending = await listPendingBatchLedgers(supabase);
@@ -899,6 +967,20 @@ export async function runStatusDisplay(): Promise<void> {
   console.log('================================================================================\n');
 }
 
+export async function getPendingBatchStatus(): Promise<{
+  pendingSubmittedCount: number;
+  hasPendingSubmitted: boolean;
+  pendingBatchIds: string[];
+}> {
+  const supabase = getSupabaseClient();
+  const pending = await listPendingBatchLedgers(supabase);
+  return {
+    pendingSubmittedCount: pending.length,
+    hasPendingSubmitted: pending.length > 0,
+    pendingBatchIds: pending.map((row) => row.batch_id),
+  };
+}
+
 // ============================================================================
 // 8. CLI ENTRYPOINT & ARGUMENT PARSER
 // ============================================================================
@@ -913,23 +995,40 @@ async function main(): Promise<void> {
       console.error('Uso syntax:');
       console.error('  npx tsx scripts/nightly-batch-pipeline.ts --submit [--mock]');
       console.error('  npx tsx scripts/nightly-batch-pipeline.ts --poll-and-ingest [--mock]');
-      console.error('  npx tsx scripts/nightly-batch-pipeline.ts --status\n');
+      console.error('  npx tsx scripts/nightly-batch-pipeline.ts --status');
+      console.error('  npx tsx scripts/nightly-batch-pipeline.ts --pending-status [--json]\n');
       process.exit(1);
     }
   }
 
   const isMock = args.includes('--mock');
+  const isJson = args.includes('--json');
   const isSubmit = args.includes('--submit');
   const isPoll = args.includes('--poll-and-ingest');
   const isStatus = args.includes('--status');
+  const isPendingStatus = args.includes('--pending-status');
 
-  if (!isSubmit && !isPoll && !isStatus) {
+  if (!isSubmit && !isPoll && !isStatus && !isPendingStatus) {
     console.log('EmergeMed Nightly Batch Pipeline CLI');
     console.log('Uso:');
     console.log('  npx tsx scripts/nightly-batch-pipeline.ts --submit [--mock]');
     console.log('  npx tsx scripts/nightly-batch-pipeline.ts --poll-and-ingest [--mock]');
     console.log('  npx tsx scripts/nightly-batch-pipeline.ts --status');
+    console.log('  npx tsx scripts/nightly-batch-pipeline.ts --pending-status [--json]');
     process.exit(0);
+  }
+
+  if (isPendingStatus) {
+    const pendingStatus = await getPendingBatchStatus();
+    if (isJson) {
+      process.stdout.write(`${JSON.stringify(pendingStatus)}\n`);
+    } else {
+      console.log(`Pending submitted batches: ${pendingStatus.pendingSubmittedCount}`);
+      if (pendingStatus.hasPendingSubmitted) {
+        console.log(`Batch IDs: ${pendingStatus.pendingBatchIds.join(', ')}`);
+      }
+    }
+    return;
   }
 
   if (isStatus) {
@@ -966,7 +1065,10 @@ async function main(): Promise<void> {
       await runBatchSubmission(isMock);
     }
     if (isPoll) {
-      await runPollAndIngest(isMock);
+      const summary = await runPollAndIngest(isMock);
+      if (isJson) {
+        process.stdout.write(`${JSON.stringify(summary)}\n`);
+      }
     }
   } finally {
     releaseLock();

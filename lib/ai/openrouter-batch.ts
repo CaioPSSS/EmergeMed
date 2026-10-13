@@ -22,6 +22,14 @@ export const MONTHLY_HARD_CAP_USD = 0.90;
 
 export const MAX_BEDS_PER_CHAPTER = 6;
 export const MAX_MCQS_PER_CHAPTER = 20;
+export const PENDING_RESERVATION_PROMPT_TOKENS_PER_ITEM = 1200;
+export const PENDING_RESERVATION_COMPLETION_TOKENS_PER_ITEM = 1500;
+export const PENDING_RESERVATION_USD_PER_ITEM = Number(
+  calculateBatchCost(
+    PENDING_RESERVATION_PROMPT_TOKENS_PER_ITEM,
+    PENDING_RESERVATION_COMPLETION_TOKENS_PER_ITEM
+  ).toFixed(6)
+);
 
 export const OPENROUTER_BATCH_ENDPOINT = 'https://openrouter.ai/api/v1/batches';
 
@@ -47,6 +55,16 @@ export interface BatchLedgerRow {
   items_ingested: number;
   items_failed: number;
   status: BatchStatus;
+}
+
+export interface AccumulatedBudgetSnapshot {
+  dailyAccumulated: number;
+  monthlyAccumulated: number;
+  dailyPendingReserved: number;
+  monthlyPendingReserved: number;
+  dailyTotalWithPendingReserved: number;
+  monthlyTotalWithPendingReserved: number;
+  pendingSubmittedCount: number;
 }
 
 export interface BatchRequestItem {
@@ -142,6 +160,11 @@ export function evaluateBudgetCapBreach(
     return { canProceed: false, reason: 'monthly_cap' };
   }
   return { canProceed: true };
+}
+
+export function estimatePendingBatchReservationUsd(itemsRequested: number): number {
+  if (!Number.isFinite(itemsRequested) || itemsRequested <= 0) return 0;
+  return Number((itemsRequested * PENDING_RESERVATION_USD_PER_ITEM).toFixed(6));
 }
 
 // ============================================================================
@@ -381,32 +404,58 @@ export function writeLocalLedger(rows: BatchLedgerRow[]): void {
  */
 export async function fetchAccumulatedBudget(
   supabase?: SupabaseClient | null
-): Promise<{ dailyAccumulated: number; monthlyAccumulated: number }> {
+): Promise<AccumulatedBudgetSnapshot> {
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
   let dailyAccumulated = 0;
   let monthlyAccumulated = 0;
+  let dailyPendingReserved = 0;
+  let monthlyPendingReserved = 0;
+  let pendingSubmittedCount = 0;
 
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from('batch_generation_ledger')
-        .select('cost_usd, submission_timestamp')
+        .select('cost_usd, submission_timestamp, status, items_requested')
         .gte('submission_timestamp', startOfMonth);
 
       if (!error && Array.isArray(data)) {
         for (const row of data) {
           const cost = Number(row.cost_usd) || 0;
+          const status = String(row.status || '');
+          const pendingReservation = status === 'submitted'
+            ? estimatePendingBatchReservationUsd(Number(row.items_requested) || 0)
+            : 0;
+
           monthlyAccumulated += cost;
+          monthlyPendingReserved += pendingReservation;
+
           if (row.submission_timestamp >= startOfDay) {
             dailyAccumulated += cost;
+            dailyPendingReserved += pendingReservation;
+          }
+
+          if (status === 'submitted') {
+            pendingSubmittedCount += 1;
           }
         }
+
+        const normalizedDaily = Number(dailyAccumulated.toFixed(6));
+        const normalizedMonthly = Number(monthlyAccumulated.toFixed(6));
+        const normalizedDailyReserved = Number(dailyPendingReserved.toFixed(6));
+        const normalizedMonthlyReserved = Number(monthlyPendingReserved.toFixed(6));
+
         return {
-          dailyAccumulated: Number(dailyAccumulated.toFixed(6)),
-          monthlyAccumulated: Number(monthlyAccumulated.toFixed(6)),
+          dailyAccumulated: normalizedDaily,
+          monthlyAccumulated: normalizedMonthly,
+          dailyPendingReserved: normalizedDailyReserved,
+          monthlyPendingReserved: normalizedMonthlyReserved,
+          dailyTotalWithPendingReserved: Number((normalizedDaily + normalizedDailyReserved).toFixed(6)),
+          monthlyTotalWithPendingReserved: Number((normalizedMonthly + normalizedMonthlyReserved).toFixed(6)),
+          pendingSubmittedCount,
         };
       }
     } catch (err) {
@@ -418,17 +467,36 @@ export async function fetchAccumulatedBudget(
   const localRows = readLocalLedger();
   for (const row of localRows) {
     const cost = Number(row.cost_usd) || 0;
+    const pendingReservation = row.status === 'submitted'
+      ? estimatePendingBatchReservationUsd(Number(row.items_requested) || 0)
+      : 0;
+
     if (row.submission_timestamp >= startOfMonth) {
       monthlyAccumulated += cost;
+      monthlyPendingReserved += pendingReservation;
     }
     if (row.submission_timestamp >= startOfDay) {
       dailyAccumulated += cost;
+      dailyPendingReserved += pendingReservation;
+    }
+    if (row.status === 'submitted') {
+      pendingSubmittedCount += 1;
     }
   }
 
+  const normalizedDaily = Number(dailyAccumulated.toFixed(6));
+  const normalizedMonthly = Number(monthlyAccumulated.toFixed(6));
+  const normalizedDailyReserved = Number(dailyPendingReserved.toFixed(6));
+  const normalizedMonthlyReserved = Number(monthlyPendingReserved.toFixed(6));
+
   return {
-    dailyAccumulated: Number(dailyAccumulated.toFixed(6)),
-    monthlyAccumulated: Number(monthlyAccumulated.toFixed(6)),
+    dailyAccumulated: normalizedDaily,
+    monthlyAccumulated: normalizedMonthly,
+    dailyPendingReserved: normalizedDailyReserved,
+    monthlyPendingReserved: normalizedMonthlyReserved,
+    dailyTotalWithPendingReserved: Number((normalizedDaily + normalizedDailyReserved).toFixed(6)),
+    monthlyTotalWithPendingReserved: Number((normalizedMonthly + normalizedMonthlyReserved).toFixed(6)),
+    pendingSubmittedCount,
   };
 }
 

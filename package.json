@@ -15,6 +15,7 @@
     "batch:nightly": "tsx scripts/nightly-batch-pipeline.ts",
     "batch:submit": "tsx scripts/nightly-batch-pipeline.ts --submit",
     "batch:poll": "tsx scripts/nightly-batch-pipeline.ts --poll-and-ingest",
+    "batch:pending-status": "tsx scripts/nightly-batch-pipeline.ts --pending-status",
     "batch:status": "tsx scripts/nightly-batch-pipeline.ts --status",
     "batch:dry": "tsx scripts/nightly-batch-pipeline.ts --submit --mock"
   },
