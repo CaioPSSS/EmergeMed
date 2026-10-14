@@ -75,7 +75,7 @@ export default function SignupPage() {
             Criar Conta no EmergeMed
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Acesse todos os 122 capítulos e testes gerados por IA
+            Acesse todos os 150 capítulos e testes gerados por IA
           </p>
         </div>
 

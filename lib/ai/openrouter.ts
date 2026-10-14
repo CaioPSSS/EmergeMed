@@ -365,6 +365,11 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
       max_tokens: calculatedMaxTokens,
     } as any);
 
+    const finishReason = response.choices[0]?.finish_reason;
+    if (finishReason === 'length') {
+      throw new Error(`Geração de questões interrompida por limite de tokens (finish_reason=length) no modelo '${selectedModel}'.`);
+    }
+
     const content = response.choices[0]?.message?.content || '[]';
     const parsedRaw = parseJsonFromMarkdown<any>(content);
     let rawList: any[] = [];
@@ -528,6 +533,11 @@ Retorne ESTRITAMENTE uma array JSON com os 2 objetos de questão no formato espe
       temperature: 0.4,
       max_tokens: 5000,
     } as any);
+
+    const finishReason = response.choices[0]?.finish_reason;
+    if (finishReason === 'length') {
+      throw new Error(`Geração de leito interrompida por limite de tokens (finish_reason=length) no modelo '${selectedModel}'.`);
+    }
 
     const content = response.choices[0]?.message?.content || '[]';
     const parsedRaw = parseJsonFromMarkdown<any>(content);

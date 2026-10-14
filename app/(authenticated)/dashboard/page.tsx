@@ -588,7 +588,7 @@ export default function DashboardPage() {
             Central de Preparação Clínica
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            Livro Medicina de Emergência — 122 Capítulos de Prática Intensiva
+            Livro Medicina de Emergência 19ª Edição — {CHAPTERS_DATA.length} Capítulos de Prática Intensiva
           </p>
         </div>
 

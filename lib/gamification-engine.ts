@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { buildReadinessSnapshot } from './learning-engine';
+import { CHAPTERS_DATA } from './chapters-data';
 
 export interface LevelThreshold {
   level: number;
@@ -33,7 +34,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { key: 'first_read', title: 'Primeiro Capítulo', desc: 'Leu o 1° capítulo do livro', icon: '📖', category: 'reading' },
   { key: 'ten_chapters', title: 'Estudioso', desc: 'Leu 10 capítulos', icon: '📚', category: 'reading' },
   { key: 'fifty_chapters', title: 'Meio Caminho', desc: 'Leu 50 capítulos', icon: '🏔️', category: 'reading' },
-  { key: 'all_chapters', title: 'Enciclopédia Viva', desc: 'Leu todos os 122 capítulos', icon: '🏅', category: 'reading' },
+  { key: 'all_chapters', title: 'Enciclopédia Viva', desc: 'Leu todos os 150 capítulos', icon: '🏅', category: 'reading' },
   
   { key: 'first_plantao', title: 'Primeiro Plantão', desc: 'Completou o 1° plantão simulado', icon: '🌙', category: 'plantao' },
   { key: 'ten_plantoes', title: 'Plantonista', desc: '10 plantões completados', icon: '🏥', category: 'plantao' },
@@ -163,7 +164,7 @@ export async function checkAndAwardAchievements(
         isUnlocked = readCount >= 50;
         break;
       case 'all_chapters':
-        isUnlocked = readCount >= 122;
+        isUnlocked = readCount >= CHAPTERS_DATA.length;
         break;
 
       case 'first_plantao':

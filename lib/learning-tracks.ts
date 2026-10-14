@@ -22,7 +22,7 @@ export const LEARNING_TRACKS: LearningTrack[] = [
     description: 'Da dor torácica ao IAM, arritmias graves, insuficiência cardíaca e emergências hipertensivas',
     icon: '❤️',
     color: '#f43f5e',
-    chapters: [29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
+    chapters: [29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 120],
   },
   {
     id: 'pneumologia-emergencia',
@@ -46,14 +46,14 @@ export const LEARNING_TRACKS: LearningTrack[] = [
     description: 'Atendimento inicial ao politraumatizado, TCE, queimaduras e abdome agudo',
     icon: '🩹',
     color: '#f59e0b',
-    chapters: [62, 63, 64, 65, 66, 67, 68, 69],
+    chapters: [62, 63, 64, 65, 66, 67, 68, 69, 79],
   },
   {
     id: 'terapia-intensiva',
     name: 'Cuidados Intensivos na UPA',
-    description: 'Sedação e analgesia avançada, desmame ventilatório, DVA e distúrbios ácido-base complexos',
+    description: 'Sedação e analgesia avançada, desmame ventilatório, DVA, TEG e pós-PCR',
     icon: '🏥',
     color: '#a855f7',
-    chapters: [1, 3, 4, 5, 8, 10, 13, 78, 80],
+    chapters: [1, 3, 4, 5, 8, 10, 13, 78, 80, 99, 123],
   },
 ];

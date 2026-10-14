@@ -222,6 +222,7 @@ export default function CapitulosPage() {
 
   const totalChapters = allChapters.length;
   const customChapters = allChapters.filter((c) => c.isCustom);
+  const officialChapters = allChapters.filter((c) => !c.isCustom);
   const readCount = readChapterIds.length;
   const progressPercent = totalChapters > 0 ? Math.round((readCount / totalChapters) * 100) : 0;
 
@@ -314,7 +315,7 @@ export default function CapitulosPage() {
               borderBottom: filter === 'official' ? '2px solid #38bdf8' : 'none',
             }}
           >
-            Oficiais (122)
+            Oficiais ({officialChapters.length})
           </button>
 
           <button

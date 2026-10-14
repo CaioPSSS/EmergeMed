@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface MarkdownRendererProps {
   content: string;
@@ -12,6 +13,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   return (
     <div className={`markdown-content ${className}`}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
             <h1
@@ -119,6 +121,105 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
             >
               {children}
             </code>
+          ),
+          table: ({ children }) => (
+            <div
+              style={{
+                overflowX: 'auto',
+                margin: '18px 0',
+                borderRadius: '10px',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                background: 'rgba(15, 23, 42, 0.65)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
+              }}
+            >
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '0.88rem',
+                  textAlign: 'left',
+                }}
+              >
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead
+              style={{
+                background: 'rgba(30, 41, 59, 0.9)',
+                borderBottom: '2px solid rgba(56, 189, 248, 0.35)',
+              }}
+            >
+              {children}
+            </thead>
+          ),
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => (
+            <tr
+              style={{
+                borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                transition: 'background-color 0.15s ease',
+              }}
+            >
+              {children}
+            </tr>
+          ),
+          th: ({ children }) => (
+            <th
+              style={{
+                padding: '10px 14px',
+                color: '#38bdf8',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                letterSpacing: '0.02em',
+              }}
+            >
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td
+              style={{
+                padding: '9px 14px',
+                color: '#cbd5e1',
+                lineHeight: 1.55,
+                verticalAlign: 'top',
+              }}
+            >
+              {children}
+            </td>
+          ),
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: '#38bdf8',
+                textDecoration: 'underline',
+                textUnderlineOffset: '3px',
+                wordBreak: 'break-all',
+              }}
+            >
+              {children}
+            </a>
+          ),
+          img: ({ src, alt }) => (
+            <div style={{ margin: '16px 0', textAlign: 'center' }}>
+              <img
+                src={src}
+                alt={alt || ''}
+                style={{
+                  maxWidth: '100%',
+                  height: 'auto',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                }}
+              />
+              {alt && <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '6px' }}>{alt}</p>}
+            </div>
           ),
         }}
       >

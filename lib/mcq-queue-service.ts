@@ -564,14 +564,32 @@ export async function selectMCQsWithAntiRepetition(
         const fallbackModel = options.userSettings?.fallbackModel || 'deepseek/deepseek-v4.1-flash';
 
         let capMetadata: any = null;
+        let chapterText: string | undefined = undefined;
+        const numId = Number(chapterId) || 1;
+
         if (options.supabase) {
-          capMetadata = await getChapterMetadata(options.supabase, Number(chapterId) || 1, userId);
+          try {
+            const [meta, contentRes] = await Promise.all([
+              getChapterMetadata(options.supabase, numId, userId),
+              options.supabase
+                .from('chapter_contents')
+                .select('content')
+                .eq('chapter_id', numId)
+                .maybeSingle(),
+            ]);
+            capMetadata = meta;
+            if (contentRes?.data?.content) {
+              chapterText = contentRes.data.content;
+            }
+          } catch (e) {
+            console.warn('Erro ao carregar metadados ou conteúdo do capítulo para IA:', e);
+          }
         }
 
         const chaptersInfo = [
           {
-            id: Number(chapterId) || 1,
-            number: capMetadata?.number || Number(chapterId) || 1,
+            id: numId,
+            number: capMetadata?.number || numId,
             title: capMetadata?.title || `Capítulo ${chapterId}`,
             sectionTitle: capMetadata?.sectionTitle || 'Emergência Clínica',
           },
@@ -582,6 +600,7 @@ export async function selectMCQsWithAntiRepetition(
           model,
           fallbackModel,
           chaptersInfo,
+          chapterTexts: chapterText ? { [numId]: chapterText } : undefined,
           count: deficit.total,
           questionType: 'multiple_choice',
           difficultyMix: {

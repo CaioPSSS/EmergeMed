@@ -4,13 +4,14 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "test": "tsx scripts/test-learning-engine.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "index-pdf": "node scripts/index-pdf.mjs",
     "insert-chapter": "node scripts/insert-chapter-manual.mjs",
-    "upload-db": "node scripts/upload-to-supabase.mjs",
+    "upload-db": "tsx scripts/sync-chapters-supabase.ts",
     "preview-chapter-tails": "node scripts/preview-chapter-tails.mjs",
     "batch:nightly": "tsx scripts/nightly-batch-pipeline.ts",
     "batch:submit": "tsx scripts/nightly-batch-pipeline.ts --submit",
@@ -31,6 +32,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.0.1"
   },
   "devDependencies": {
