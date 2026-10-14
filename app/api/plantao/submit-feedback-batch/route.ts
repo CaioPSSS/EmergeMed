@@ -6,11 +6,8 @@ import {
   submitOpenRouterBatch,
   insertBatchLedgerRecord,
   fetchAccumulatedBudget,
-  evaluateBudgetCapBreach,
   calculateBatchCost,
   BATCH_MODEL,
-  DAILY_HARD_CAP_USD,
-  MONTHLY_HARD_CAP_USD,
   BatchRequestItem,
 } from '@/lib/ai/openrouter-batch';
 
@@ -156,29 +153,12 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
       },
     ];
 
-    // 4. Budget cap check ($0.15 daily / $0.90 monthly)
-    const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase);
+    // 4. Accounting estimate for ledger (NOTE: Plantão batch feedback corrections are EXEMPT from hard budget caps;
+    // the $0.15/day and $0.90/month limits apply exclusively to nightly asynchronous clinical case generation).
+    const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase, 'plantao_correction');
     const estPromptTokens = 3000;
     const estCompletionTokens = 2000;
     const estimatedCost = calculateBatchCost(estPromptTokens, estCompletionTokens);
-
-    const capBreach = evaluateBudgetCapBreach(dailyAccumulated, monthlyAccumulated, estimatedCost);
-    if (!capBreach.canProceed) {
-      const reasonDetail = capBreach.reason === 'daily_cap'
-        ? `Teto diário de US$ ${DAILY_HARD_CAP_USD.toFixed(2)} atingido (consumo hoje: US$ ${dailyAccumulated.toFixed(4)}).`
-        : `Teto mensal de US$ ${MONTHLY_HARD_CAP_USD.toFixed(2)} atingido (consumo no mês: US$ ${monthlyAccumulated.toFixed(4)}).`;
-
-      return NextResponse.json(
-        {
-          error: `Limite de orçamento em lote atingido: ${reasonDetail} Por favor, gere o relatório em tempo real ou aguarde a virada do ciclo orçamentário.`,
-          budgetBreach: true,
-          reason: capBreach.reason,
-          dailyAccumulated,
-          monthlyAccumulated,
-        },
-        { status: 429 }
-      );
-    }
 
     // 5. User settings & API Key
     const { data: settings } = await supabase
@@ -193,11 +173,12 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
     // 6. Submit batch
     const submission = await submitOpenRouterBatch(batchRequests, apiKey, isMock);
 
-    // 7. Insert ledger record
+    // 7. Insert ledger record tagged as 'plantao_correction'
     const nowIso = new Date().toISOString();
     await insertBatchLedgerRecord(
       {
         batch_id: submission.id,
+        batch_kind: 'plantao_correction',
         submission_timestamp: nowIso,
         model: BATCH_MODEL,
         prompt_tokens: estPromptTokens,

@@ -5,9 +5,6 @@ import {
   calculateBatchCost,
   fetchAccumulatedBudget,
   updateBatchLedgerRecord,
-  BATCH_MODEL,
-  DAILY_HARD_CAP_USD,
-  MONTHLY_HARD_CAP_USD,
   BatchStatusResponse,
 } from '@/lib/ai/openrouter-batch';
 import {
@@ -15,7 +12,6 @@ import {
   generateAdverseEvolutionQuestionWithAI,
   verifyDisputedBedEvaluations,
   hasDisputedItems,
-  MAX_DISPUTE_VERIFICATIONS_PER_RUN,
   QuestionItem,
 } from '@/lib/ai/openrouter';
 import { collectDeteriorationErrors } from '@/lib/ai/adverse-trigger';
@@ -374,11 +370,10 @@ export async function POST(request: Request) {
         // Verificação sob dúvida (busca web) das avaliações com disputedItems.
         // Roda de forma síncrona APÓS o lote, pois depende do resultado dele;
         // usa o server tool openrouter:web_search (não permitido dentro do Batch).
+        // Correções não possuem teto de custo: todos os leitos com disputa são verificados.
         // ==================================================================
         if (!isMock) {
-          let verificationsLeft = MAX_DISPUTE_VERIFICATIONS_PER_RUN;
           for (const bed of plantaoData.beds || []) {
-            if (verificationsLeft <= 0) break;
             const bedPrescQs = questions.filter(
               (q: any) => (bed.questionIds || []).includes(q.id) && q.type !== 'multiple_choice'
             );
@@ -417,9 +412,7 @@ export async function POST(request: Request) {
                 };
               }),
               chapterText: bedChapterText,
-              maxVerifications: verificationsLeft,
             });
-            verificationsLeft -= Math.min(disputedQs.length, verificationsLeft);
 
             for (const q of disputedQs) {
               const revised = verified[q.id];
@@ -527,12 +520,13 @@ export async function POST(request: Request) {
           })
           .eq('id', testRecord.id);
 
-        // Ingestion Budget Accounting in Ledger
-        const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase);
+        // Ingestion Accounting in Ledger (tagged as plantao_correction, isolated from nightly generation caps)
+        const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase, 'plantao_correction');
         await updateBatchLedgerRecord(
           batchJobId,
           {
             status: 'completed',
+            batch_kind: 'plantao_correction',
             completion_timestamp: batchStatus.completed_at || nowIso,
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,
@@ -651,12 +645,13 @@ export async function POST(request: Request) {
           })
           .eq('id', testRecord.id);
 
-        // Ingestion Budget Accounting in Ledger
-        const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase);
+        // Ingestion Accounting in Ledger (tagged as plantao_correction, isolated from nightly generation caps)
+        const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase, 'plantao_correction');
         await updateBatchLedgerRecord(
           batchJobId,
           {
             status: 'completed',
+            batch_kind: 'plantao_correction',
             completion_timestamp: batchStatus.completed_at || nowIso,
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,

@@ -1,7 +1,9 @@
 /**
  * OpenRouter Batch API Client & Budget Ledger Service
  * Supports model openai/gpt-6-luna:batch ($0.05/1M prompt, $0.25/1M completion)
- * Enforces Hard Budget Caps ($0.15/day, $0.90/month)
+ * Enforces Hard Budget Caps ($0.15/day, $0.90/month) ONLY on nightly asynchronous
+ * clinical case / MCQ generation ('nightly_generation').
+ * Plantão batch corrections ('plantao_correction') are exempt from budget caps.
  * Requirements R4 and R5
  */
 
@@ -38,10 +40,12 @@ export const OPENROUTER_BATCH_ENDPOINT = 'https://openrouter.ai/api/v1/batches';
 // ============================================================================
 
 export type BatchStatus = 'submitted' | 'completed' | 'failed' | 'capped' | 'interrupted';
+export type BatchKind = 'nightly_generation' | 'plantao_correction';
 
 export interface BatchLedgerRow {
   id?: string;
   batch_id: string;
+  batch_kind?: BatchKind;
   submission_timestamp: string;
   completion_timestamp?: string | null;
   model: string;
@@ -75,6 +79,7 @@ export interface BatchRequestItem {
     model: string;
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
     temperature?: number;
+    max_tokens?: number;
     response_format?: { type: 'json_object' };
   };
 }
@@ -144,6 +149,8 @@ export function calculateBatchCost(promptTokens: number, completionTokens: numbe
 
 /**
  * Evaluates whether candidate cost would breach daily ($0.15) or monthly ($0.90) hard cap.
+ * NOTE: Applied ONLY to nightly asynchronous case/question generation ('nightly_generation').
+ * Plantão batch corrections ('plantao_correction') are exempt from cost caps.
  */
 export function evaluateBudgetCapBreach(
   currentDaily: number,
@@ -268,21 +275,32 @@ export async function getOpenRouterBatchStatus(
       try {
         const customData = JSON.parse(req.custom_id);
         if (customData.type === 'bed_case') {
-          mockContent = JSON.stringify({
-            stage1: {
+          mockContent = JSON.stringify([
+            {
               type: 'prescription_immediate',
-              vignette: `Paciente de 64 anos, admitido na sala vermelha da UPA com rebaixamento e hipotensão. PA 80/50 mmHg, FC 116 bpm, FR 24 irpm, SpO2 92%, HGT 180 mg/dL.`,
-              patient_weight: 70,
-              vital_signs: { pa: '80/50', fc: 116, fr: 24, spo2: 92 },
-              conduct_prompt: 'Prescreva a conduta imediata para estabilização hemodinâmica.',
+              patientWeight: 70,
+              vignette: `Paciente de 64 anos, 70 kg, admitido na sala vermelha da UPA com rebaixamento do nível de consciência e hipotensão aguda. PA 80/50 mmHg, FC 116 bpm, FR 24 irpm, SpO2 92% em ar ambiente, Tax 38.4°C, HGT 180 mg/dL.`,
+              promptText: 'Interprete o quadro clínico agudo e prescreva a conduta imediata de resgate/estabilização para este paciente na Sala Vermelha:',
+              idealPrescription: 'SF 0,9% 1000mL IV rápido em acesso calibroso\nNoradrenalina em BIC se PAM < 65 mmHg\nColeta de lactato, culturas e início precoce de antimicrobiano IV',
+              evaluationCriteria: [
+                'Ressuscitação volêmica inicial com cristaloide',
+                'Suporte vasopressor precoce se hipotensão refratária',
+                'Manejo etiológico imediato na primeira hora',
+              ],
             },
-            stage2: {
+            {
               type: 'prescription_complete',
-              evolution: 'Após expansão com cristaloide e início de DVA, PAM atinge 68 mmHg. Gasometria com acidose metabólica.',
-              lab_results: { lactato: 3.4, creatinina: 1.4 },
-              conduct_prompt: 'Prescreva a manutenção e plano de internação na sala vermelha.',
+              patientWeight: 70,
+              vignette: 'Após expansão inicial com cristaloide e início de droga vasoativa em BIC, PAM atinge 68 mmHg, FC 98 bpm, SpO2 96% em cateter nasal de O2. Gasometria arterial mostra pH 7.29, HCO3 16 mEq/L, lactato 3.4 mmol/L, creatinina 1.4 mg/dL, K 4.3 mEq/L.',
+              promptText: 'Escreva a prescrição médica COMPLETA de internação/observação para a manutenção deste paciente na Sala Vermelha:',
+              idealPrescription: 'REPOUSO E CABECEIRA: Repouso absoluto no leito | Cabeceira elevada 30°\nDIETA: Dieta zero até estabilização hemodinâmica completa\nHIDRATAÇÃO E INFUSÕES: SF 0,9% de manutenção ajustado ao balanço hídrico\nMEDICAMENTOS FIXOS: Manter Noradrenalina em BIC titulada para PAM >= 65 mmHg + Antimicrobiano IV em dose plena\nSINTOMÁTICOS E PROTOCOLOS: Dipirona se dor/febre, Omeprazol 40mg IV 1x/dia, Enoxaparina 40mg SC 1x/dia, Insulina Regular SC conforme HGT',
+              evaluationCriteria: [
+                'Manutenção de droga vasoativa titulada para PAM >= 65 mmHg',
+                'Monitorização contínua e controle de diurese horária',
+                'Profilaxias de úlcera de estresse, TEV e controle glicêmico',
+              ],
             },
-          });
+          ]);
         } else if (customData.type === 'bed_evaluation') {
           const evals: Record<string, any> = {};
           const qIds = Array.isArray(customData.questionIds) && customData.questionIds.length > 0
@@ -320,24 +338,24 @@ Plantão de alta complexidade clínica conduzido com rigor técnico e foco na es
 2. Manter checagem sistemática de eletrólitos e gasometria.
 3. Priorizar reavaliação precoce após medidas de ressuscitação.`;
         } else {
-          mockContent = JSON.stringify({
-            questions: [
-              {
-                vignette: 'Paciente com queixa aguda de emergência necessitando de conduta imediata.',
-                options: [
-                  'Conduta prioritária de primeira linha',
-                  'Conduta secundária diferida',
-                  'Medida contraindicada no choque',
-                  'Exame de alta complexidade indisponível na UPA',
-                  'Aguardar evolução clínica espontânea',
-                ],
-                correct_option: 0,
-                explanation: 'A conduta imediata de estabilização é a intervenção prioritária.',
-                difficulty_tier: 'standard',
-                question_subformat: 'case_conduct',
-              },
-            ],
-          });
+          mockContent = JSON.stringify([
+            {
+              id: 1,
+              type: 'multiple_choice',
+              difficulty_tier: 'standard',
+              question_subformat: 'case_conduct',
+              vignette: 'Paciente de 62 anos, 72 kg, admitido na Sala Vermelha com queixa aguda de emergência necessitando de conduta imediata.',
+              options: [
+                'Conduta prioritária de primeira linha',
+                'Conduta secundária diferida',
+                'Medida contraindicada no choque',
+                'Exame de alta complexidade indisponível na UPA',
+                'Aguardar evolução clínica espontânea',
+              ],
+              correctOption: 0,
+              explanation: 'A conduta imediata de estabilização é a intervenção prioritária.',
+            },
+          ]);
         }
       } catch {
         mockContent = '{}';
@@ -440,12 +458,15 @@ export function writeLocalLedger(rows: BatchLedgerRow[]): void {
 }
 
 /**
- * Computes daily and monthly accumulated costs from batch_generation_ledger:
+ * Computes daily and monthly accumulated costs from batch_generation_ledger for the specified
+ * batchKind (defaults to 'nightly_generation' so Plantão corrections never count toward or
+ * get blocked by the nightly generation hard caps).
  * Daily: current calendar day (from 00:00:00 UTC/Local)
  * Monthly: current calendar month (from 1st of month 00:00:00 UTC/Local)
  */
 export async function fetchAccumulatedBudget(
-  supabase?: SupabaseClient | null
+  supabase?: SupabaseClient | null,
+  batchKind: BatchKind = 'nightly_generation'
 ): Promise<AccumulatedBudgetSnapshot> {
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
@@ -459,13 +480,27 @@ export async function fetchAccumulatedBudget(
 
   if (supabase) {
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('batch_generation_ledger')
-        .select('cost_usd, submission_timestamp, status, items_requested')
+        .select('cost_usd, submission_timestamp, status, items_requested, batch_kind')
         .gte('submission_timestamp', startOfMonth);
 
+      if (error) {
+        // Fallback if batch_kind column is not yet present in DB
+        const fallback = await supabase
+          .from('batch_generation_ledger')
+          .select('cost_usd, submission_timestamp, status, items_requested')
+          .gte('submission_timestamp', startOfMonth);
+        data = fallback.data as any;
+        error = fallback.error;
+      }
+
       if (!error && Array.isArray(data)) {
-        for (const row of data) {
+        for (const row of data as any[]) {
+          const rowKind: BatchKind =
+            row.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
+          if (rowKind !== batchKind) continue;
+
           const cost = Number(row.cost_usd) || 0;
           const status = String(row.status || '');
           const pendingReservation = status === 'submitted'
@@ -508,6 +543,10 @@ export async function fetchAccumulatedBudget(
   // Fallback to local ledger storage
   const localRows = readLocalLedger();
   for (const row of localRows) {
+    const rowKind: BatchKind =
+      row.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
+    if (rowKind !== batchKind) continue;
+
     const cost = Number(row.cost_usd) || 0;
     const pendingReservation = row.status === 'submitted'
       ? estimatePendingBatchReservationUsd(Number(row.items_requested) || 0)
@@ -549,8 +588,10 @@ export async function insertBatchLedgerRecord(
   record: Omit<BatchLedgerRow, 'id'>,
   supabase?: SupabaseClient | null
 ): Promise<BatchLedgerRow> {
+  const effectiveKind: BatchKind = record.batch_kind || 'nightly_generation';
   const row: BatchLedgerRow = {
     ...record,
+    batch_kind: effectiveKind,
     id: `ledg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
   };
 
@@ -565,32 +606,43 @@ export async function insertBatchLedgerRecord(
   writeLocalLedger(localRows);
 
   if (supabase) {
+    const baseDbPayload = {
+      batch_id: row.batch_id,
+      submission_timestamp: row.submission_timestamp,
+      completion_timestamp: row.completion_timestamp,
+      model: row.model,
+      prompt_tokens: row.prompt_tokens,
+      completion_tokens: row.completion_tokens,
+      cost_usd: row.cost_usd,
+      daily_accumulated_usd: row.daily_accumulated_usd,
+      monthly_accumulated_usd: row.monthly_accumulated_usd,
+      hard_cap_interrupted: row.hard_cap_interrupted,
+      items_requested: row.items_requested,
+      items_ingested: row.items_ingested,
+      items_failed: row.items_failed,
+      status: row.status,
+    };
+
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('batch_generation_ledger')
-        .insert([
-          {
-            batch_id: row.batch_id,
-            submission_timestamp: row.submission_timestamp,
-            completion_timestamp: row.completion_timestamp,
-            model: row.model,
-            prompt_tokens: row.prompt_tokens,
-            completion_tokens: row.completion_tokens,
-            cost_usd: row.cost_usd,
-            daily_accumulated_usd: row.daily_accumulated_usd,
-            monthly_accumulated_usd: row.monthly_accumulated_usd,
-            hard_cap_interrupted: row.hard_cap_interrupted,
-            items_requested: row.items_requested,
-            items_ingested: row.items_ingested,
-            items_failed: row.items_failed,
-            status: row.status,
-          },
-        ])
+        .insert([{ ...baseDbPayload, batch_kind: effectiveKind }])
         .select()
         .single();
 
+      if (error) {
+        // Fallback if batch_kind column is not migrated yet
+        const retry = await supabase
+          .from('batch_generation_ledger')
+          .insert([baseDbPayload])
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
       if (!error && data) {
-        return data as BatchLedgerRow;
+        return { ...(data as BatchLedgerRow), batch_kind: (data as any).batch_kind || effectiveKind };
       }
     } catch (err) {
       console.warn('[Ledger] Failed to insert to Supabase batch_generation_ledger:', err);
@@ -629,10 +681,11 @@ export async function updateBatchLedgerRecord(
 }
 
 /**
- * Retrieves the most recent batch ledger entry.
+ * Retrieves the most recent batch ledger entry for the given batchKind (defaults to 'nightly_generation').
  */
 export async function getLatestBatchLedger(
-  supabase?: SupabaseClient | null
+  supabase?: SupabaseClient | null,
+  batchKind: BatchKind = 'nightly_generation'
 ): Promise<BatchLedgerRow | null> {
   if (supabase) {
     try {
@@ -640,16 +693,24 @@ export async function getLatestBatchLedger(
         .from('batch_generation_ledger')
         .select('*')
         .order('submission_timestamp', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(20);
 
-      if (!error && data) {
-        return data as BatchLedgerRow;
+      if (!error && Array.isArray(data)) {
+        const matched = data.find((r: any) => {
+          const k: BatchKind = r.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
+          return k === batchKind;
+        });
+        if (matched) {
+          return matched as BatchLedgerRow;
+        }
       }
     } catch {}
   }
 
-  const localRows = readLocalLedger();
+  const localRows = readLocalLedger().filter((r) => {
+    const k: BatchKind = r.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
+    return k === batchKind;
+  });
   if (localRows.length > 0) {
     return localRows[localRows.length - 1];
   }
@@ -658,10 +719,12 @@ export async function getLatestBatchLedger(
 }
 
 /**
- * Lists all pending batch ledger entries awaiting completion.
+ * Lists all pending batch ledger entries awaiting completion for the given batchKind
+ * (defaults to 'nightly_generation' so the nightly pipeline never hijacks Plantão correction batches).
  */
 export async function listPendingBatchLedgers(
-  supabase?: SupabaseClient | null
+  supabase?: SupabaseClient | null,
+  batchKind: BatchKind = 'nightly_generation'
 ): Promise<BatchLedgerRow[]> {
   if (supabase) {
     try {
@@ -672,13 +735,19 @@ export async function listPendingBatchLedgers(
         .order('submission_timestamp', { ascending: true });
 
       if (!error && Array.isArray(data)) {
-        return data as BatchLedgerRow[];
+        return (data as BatchLedgerRow[]).filter((r: any) => {
+          const k: BatchKind = r.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
+          return k === batchKind;
+        });
       }
     } catch {}
   }
 
   const localRows = readLocalLedger();
-  return localRows.filter((r) => r.status === 'submitted');
+  return localRows.filter((r) => {
+    const k: BatchKind = r.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
+    return r.status === 'submitted' && k === batchKind;
+  });
 }
 
 /**
@@ -821,4 +890,3 @@ export function createFeedbackBatchItem({
     },
   };
 }
-

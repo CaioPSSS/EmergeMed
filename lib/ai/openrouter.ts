@@ -188,11 +188,20 @@ export function normalizeQuestionItem(q: any): QuestionItem {
 
   if (q.explanation) q.explanation = fixMojibake(String(q.explanation));
   if (q.promptText) q.promptText = fixMojibake(String(q.promptText));
-  if (q.idealPrescription) q.idealPrescription = fixMojibake(String(q.idealPrescription));
+  else if (q.conduct_prompt) q.promptText = fixMojibake(String(q.conduct_prompt));
+  else if (q.question && q.vignette && q.question !== q.vignette) {
+    q.promptText = fixMojibake(String(q.question));
+  }
 
-  // 2. Normalize legacy 'prescription' type to 'prescription_complete'
+  if (q.idealPrescription) q.idealPrescription = fixMojibake(String(q.idealPrescription));
+  else if (q.expectedAnswer) q.idealPrescription = fixMojibake(String(q.expectedAnswer));
+
+  // 2. Normalize legacy 'prescription' type to 'prescription_immediate' or 'prescription_complete'
   if ((q as any).type === 'prescription') {
-    (q as any).type = 'prescription_complete';
+    (q as any).type =
+      (q as any).prescriptionType === 'immediate'
+        ? 'prescription_immediate'
+        : 'prescription_complete';
   }
 
   // 3. Normalize options to string[]
@@ -217,7 +226,14 @@ export function normalizeQuestionItem(q: any): QuestionItem {
   }
 
   // 4. Normalize correctOption to 0-indexed number (0=A, 1=B, 2=C, 3=D, 4=E)
-  let rawCorrect = q.correctOption !== undefined ? q.correctOption : (q.correct_answer !== undefined ? q.correct_answer : q.correctAnswer);
+  let rawCorrect =
+    q.correctOption !== undefined
+      ? q.correctOption
+      : q.correct_option !== undefined
+      ? q.correct_option
+      : q.correct_answer !== undefined
+      ? q.correct_answer
+      : q.correctAnswer;
 
   if (typeof rawCorrect === 'string') {
     const trimmed = rawCorrect.trim().toUpperCase();
@@ -244,14 +260,14 @@ export function normalizeQuestionItem(q: any): QuestionItem {
   }
 
   // 6. Normalize difficulty_tier and question_subformat
-  const rawTier = String(q.difficulty_tier || q.difficulty || '').trim().toLowerCase();
+  const rawTier = String(q.difficulty_tier || q.difficultyTier || q.difficulty || '').trim().toLowerCase();
   if (rawTier === 'advanced') {
     q.difficulty_tier = 'advanced';
   } else {
     q.difficulty_tier = 'standard';
   }
 
-  const rawSubformat = String(q.question_subformat || q.subformat || '').trim().toLowerCase();
+  const rawSubformat = String(q.question_subformat || q.questionSubformat || q.subformat || '').trim().toLowerCase();
   if (rawSubformat === 'direct_content') {
     q.question_subformat = 'direct_content';
   } else if (rawSubformat === 'diagnostic_criteria') {
@@ -315,6 +331,118 @@ export function getOpenAIClient(userApiKey?: string) {
   });
 }
 
+// ============================================================================
+// SHARED PROMPT & PAYLOAD BUILDERS (100% IDENTICAL FOR SYNC & BATCH)
+// ============================================================================
+
+export interface BuildQuestionsGenerationParams {
+  chaptersInfo: { id: number; number: number; title: string; sectionTitle: string }[];
+  chapterTexts?: Record<number, string>;
+  count?: number;
+  questionType?: 'multiple_choice' | 'prescription' | 'ventilator' | 'mixed';
+  difficultyMix?: { standard: number; advanced: number };
+  isPostChapter?: boolean;
+}
+
+export interface BuiltGenerationRequest {
+  systemPrompt: string;
+  userPrompt: string;
+  messages: Array<{ role: 'system' | 'user'; content: string }>;
+  temperature: number;
+  max_tokens: number;
+}
+
+/**
+ * Constrói exatamente o mesmo comando (system + user prompt + parâmetros) para
+ * geração de questões (MCQs / mistas), usado tanto na geração síncrona na hora
+ * (`generateQuestionsWithAI`) quanto no lote assíncrono noturno (`nightly-batch-pipeline`).
+ */
+export function buildQuestionsGenerationRequest({
+  chaptersInfo,
+  chapterTexts,
+  count = 5,
+  questionType = 'mixed',
+  difficultyMix,
+  isPostChapter,
+}: BuildQuestionsGenerationParams): BuiltGenerationRequest {
+  const chaptersPrompt = chaptersInfo
+    .map((c) => `- Capítulo ${c.number}: ${c.title} (Seção: ${c.sectionTitle})`)
+    .join('\n');
+
+  let textContext = '';
+  if (chapterTexts && Object.keys(chapterTexts).length > 0) {
+    textContext =
+      '\n\nTEXTO COMPLETO DOS CAPÍTULOS DO LIVRO (FONTE PRIMÁRIA OBRIGATÓRIA):\n' +
+      Object.entries(chapterTexts)
+        .filter(([, text]) => Boolean(text && text.trim()))
+        .map(([id, text]) => {
+          const cleaned = fixMojibake(text || '');
+          return `--- TEXTO COMPLETO DO CAPÍTULO ${id} ---\n${cleaned}`;
+        })
+        .join('\n\n');
+  }
+
+  const typeDescriptions: Record<string, string> = {
+    mixed:
+      'mistas — inclua questões de múltipla escolha, prescrição completa (do dia), prescrição imediata (no momento) e configuração de ventilador mecânico (SOMENTE quando cabível para a patologia do caso)',
+    multiple_choice: 'apenas múltipla escolha (A-E) com 5 alternativas',
+    prescription:
+      'apenas prescrições — alterne entre prescrição completa (prescription_complete) e prescrição imediata (prescription_immediate)',
+    ventilator:
+      'apenas configuração de ventilador mecânico (somente se a patologia justificar ventilação mecânica invasiva)',
+  };
+
+  let mcqDistributionContext = '';
+  if (questionType === 'multiple_choice' && (difficultyMix || isPostChapter || count === 10)) {
+    const stdCount = difficultyMix?.standard ?? Math.round(count * 0.6);
+    const advCount = difficultyMix?.advanced ?? count - stdCount;
+    mcqDistributionContext = `\n\n${MCQ_DIFFICULTY_DISTRIBUTION_INSTRUCTIONS}\nMETAS RÍGIDAS DESTA GERAÇÃO:\n- Exatamente ${stdCount} questões com "difficulty_tier": "standard"\n- Exatamente ${advCount} questões com "difficulty_tier": "advanced"\n- Distribuição equilibrada entre subformatos ("case_conduct", "direct_content", "diagnostic_criteria").\n`;
+  }
+
+  const userPrompt = `Gere ${count} questões clínicas de medicina de emergência para UPA sobre os seguintes capítulos:
+${chaptersPrompt}
+${textContext}
+${mcqDistributionContext}
+INSTRUÇÕES FUNDAMENTAIS:
+1. O TEXTO COMPLETO DO CAPÍTULO FORNECIDO ACIMA É SUA FONTE PRIMÁRIA E OBRIGATÓRIA. Todas as questões devem ser derivadas de conceitos, dados, tabelas e protocolos presentes no capítulo.
+2. Tipo de questões desejadas: ${typeDescriptions[questionType] || typeDescriptions.mixed}.
+3. As questões devem ser DESAFIADORAS — nível de residência médica e prova de título.
+
+Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Responda APENAS o JSON válido sem marcações markdown de código.`;
+
+  // Scale max_tokens dynamically: ~1200 tokens per question, minimum 6000, maximum 24000
+  const calculatedMaxTokens = Math.min(24000, Math.max(6000, count * 1200));
+
+  return {
+    systemPrompt: SYSTEM_PROMPT_QUESTION_GENERATOR,
+    userPrompt,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT_QUESTION_GENERATOR },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.4,
+    max_tokens: calculatedMaxTokens,
+  };
+}
+
+/**
+ * Extrai e normaliza a lista de questões (QuestionItem[]) retornada pelo modelo
+ * tanto no fluxo síncrono quanto na ingestão do lote noturno.
+ */
+export function parseQuestionsGenerationResponse(content: string): QuestionItem[] {
+  const parsedRaw = parseJsonFromMarkdown<any>(content || '[]');
+  let rawList: any[] = [];
+  if (Array.isArray(parsedRaw)) {
+    rawList = parsedRaw;
+  } else if (parsedRaw && typeof parsedRaw === 'object') {
+    if (Array.isArray(parsedRaw.questions)) rawList = parsedRaw.questions;
+    else if (Array.isArray(parsedRaw.items)) rawList = parsedRaw.items;
+    else if (Array.isArray(parsedRaw.data)) rawList = parsedRaw.data;
+    else rawList = [parsedRaw];
+  }
+  return rawList.map((q) => normalizeQuestionItem(q));
+}
+
 export async function generateQuestionsWithAI({
   apiKey,
   model = 'openai/gpt-6-luna',
@@ -338,48 +466,14 @@ export async function generateQuestionsWithAI({
 }): Promise<QuestionItem[]> {
   const openai = getOpenAIClient(apiKey);
 
-  const chaptersPrompt = chaptersInfo
-    .map((c) => `- Capítulo ${c.number}: ${c.title} (Seção: ${c.sectionTitle})`)
-    .join('\n');
-
-  let textContext = '';
-  if (chapterTexts && Object.keys(chapterTexts).length > 0) {
-    textContext = '\n\nTEXTO COMPLETO DOS CAPÍTULOS DO LIVRO (FONTE PRIMÁRIA OBRIGATÓRIA):\n' +
-      Object.entries(chapterTexts)
-        .map(([id, text]) => {
-          const cleaned = fixMojibake(text || '');
-          return `--- TEXTO COMPLETO DO CAPÍTULO ${id} ---\n${cleaned}`;
-        })
-        .join('\n\n');
-  }
-
-  const typeDescriptions: Record<string, string> = {
-    mixed: 'mistas — inclua questões de múltipla escolha, prescrição completa (do dia), prescrição imediata (no momento) e configuração de ventilador mecânico (SOMENTE quando cabível para a patologia do caso)',
-    multiple_choice: 'apenas múltipla escolha (A-E) com 5 alternativas',
-    prescription: 'apenas prescrições — alterne entre prescrição completa (prescription_complete) e prescrição imediata (prescription_immediate)',
-    ventilator: 'apenas configuração de ventilador mecânico (somente se a patologia justificar ventilação mecânica invasiva)',
-  };
-
-  let mcqDistributionContext = '';
-  if (questionType === 'multiple_choice' && (difficultyMix || isPostChapter || count === 10)) {
-    const stdCount = difficultyMix?.standard ?? Math.round(count * 0.6);
-    const advCount = difficultyMix?.advanced ?? (count - stdCount);
-    mcqDistributionContext = `\n\n${MCQ_DIFFICULTY_DISTRIBUTION_INSTRUCTIONS}\nMETAS RÍGIDAS DESTA GERAÇÃO:\n- Exatamente ${stdCount} questões com "difficulty_tier": "standard"\n- Exatamente ${advCount} questões com "difficulty_tier": "advanced"\n- Distribuição equilibrada entre subformatos ("case_conduct", "direct_content", "diagnostic_criteria").\n`;
-  }
-
-  const userPrompt = `Gere ${count} questões clínicas de medicina de emergência para UPA sobre os seguintes capítulos:
-${chaptersPrompt}
-${textContext}
-${mcqDistributionContext}
-INSTRUÇÕES FUNDAMENTAIS:
-1. O TEXTO COMPLETO DO CAPÍTULO FORNECIDO ACIMA É SUA FONTE PRIMÁRIA E OBRIGATÓRIA. Todas as questões devem ser derivadas de conceitos, dados, tabelas e protocolos presentes no capítulo.
-2. Tipo de questões desejadas: ${typeDescriptions[questionType] || typeDescriptions.mixed}.
-3. As questões devem ser DESAFIADORAS — nível de residência médica e prova de título.
-
-Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Responda APENAS o JSON válido sem marcações markdown de código.`;
-
-  // Scale max_tokens dynamically: ~1200 tokens per question, minimum 6000, maximum 24000
-  const calculatedMaxTokens = Math.min(24000, Math.max(6000, count * 1200));
+  const built = buildQuestionsGenerationRequest({
+    chaptersInfo,
+    chapterTexts,
+    count,
+    questionType,
+    difficultyMix,
+    isPostChapter,
+  });
 
   const modelsCascade = Array.from(new Set([
     ...getModelCascade('CLINICAL_CORE', model),
@@ -389,12 +483,9 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT_QUESTION_GENERATOR },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.4,
-      max_tokens: calculatedMaxTokens,
+      messages: built.messages,
+      temperature: built.temperature,
+      max_tokens: built.max_tokens,
     } as any);
 
     const finishReason = response.choices[0]?.finish_reason;
@@ -403,18 +494,7 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
     }
 
     const content = response.choices[0]?.message?.content || '[]';
-    const parsedRaw = parseJsonFromMarkdown<any>(content);
-    let rawList: any[] = [];
-    if (Array.isArray(parsedRaw)) {
-      rawList = parsedRaw;
-    } else if (parsedRaw && typeof parsedRaw === 'object') {
-      if (Array.isArray(parsedRaw.questions)) rawList = parsedRaw.questions;
-      else if (Array.isArray(parsedRaw.items)) rawList = parsedRaw.items;
-      else if (Array.isArray(parsedRaw.data)) rawList = parsedRaw.data;
-    }
-    const parsed = rawList.map((q) => normalizeQuestionItem(q));
-
-    return parsed;
+    return parseQuestionsGenerationResponse(content);
   });
 }
 
@@ -428,8 +508,8 @@ export const WEB_SEARCH_SERVER_TOOL = {
   parameters: { engine: 'auto', max_results: 5, max_total_results: 15 },
 } as const;
 
-/** Limite de verificações com busca por leito/avaliação em lote (controle de custo e latência). */
-export const MAX_DISPUTE_VERIFICATIONS_PER_RUN = 6;
+/** Limite de verificações com busca por leito/avaliação em lote (sem teto artificial restritivo para correções). */
+export const MAX_DISPUTE_VERIFICATIONS_PER_RUN = 24;
 
 const MAX_CHAPTER_CHARS_FOR_VERIFIER = 40000;
 
@@ -714,24 +794,25 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
   });
 }
 
-export async function generatePlantaoBedQuestionsWithAI({
-  apiKey,
-  model = 'openai/gpt-6-luna',
-  fallbackModel = 'deepseek/deepseek-v4.1-flash',
-  bedNumber,
-  chapterInfo,
-  chapterText,
-  existingPhenotypes = [],
-}: {
-  apiKey?: string;
-  model?: string;
-  fallbackModel?: string;
+export interface BuildPlantaoBedGenerationParams {
   bedNumber: number;
   chapterInfo: { id: number; number: number; title: string; sectionTitle: string };
   chapterText?: string;
   existingPhenotypes?: string[];
-}): Promise<QuestionItem[]> {
-  const openai = getOpenAIClient(apiKey);
+}
+
+/**
+ * Constrói exatamente o mesmo comando (system + user prompt + parâmetros) para
+ * geração de casos clínicos de leito do Modo Plantão, usado tanto na geração
+ * síncrona na hora (`generatePlantaoBedQuestionsWithAI`) quanto no lote assíncrono
+ * noturno (`nightly-batch-pipeline`).
+ */
+export function buildPlantaoBedGenerationRequest({
+  bedNumber,
+  chapterInfo,
+  chapterText,
+  existingPhenotypes = [],
+}: BuildPlantaoBedGenerationParams): BuiltGenerationRequest {
   const cleanText = fixMojibake(chapterText || '');
 
   let phenotypeContext = '';
@@ -755,6 +836,72 @@ CAMPO OBRIGATÓRIO: "patientWeight" em kg (número inteiro) em ambos os objetos 
 
 Retorne ESTRITAMENTE uma array JSON com os 2 objetos de questão no formato especificado. Sem explicações ou markdown adicional.`;
 
+  return {
+    systemPrompt: SYSTEM_PROMPT_PLANTAO_GENERATOR,
+    userPrompt,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT_PLANTAO_GENERATOR },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.4,
+    max_tokens: 5000,
+  };
+}
+
+/**
+ * Extrai e normaliza as 2 etapas do caso clínico de leito (QuestionItem[]) retornadas
+ * pelo modelo tanto no fluxo síncrono quanto na ingestão do lote noturno.
+ */
+export function parsePlantaoBedGenerationResponse(
+  content: string,
+  chapterInfo: { id: number; title: string }
+): QuestionItem[] {
+  const parsedRaw = parseJsonFromMarkdown<any>(content || '[]');
+  let rawList: any[] = [];
+  if (Array.isArray(parsedRaw)) {
+    rawList = parsedRaw;
+  } else if (parsedRaw && typeof parsedRaw === 'object') {
+    if (Array.isArray(parsedRaw.questions)) rawList = parsedRaw.questions;
+    else if (Array.isArray(parsedRaw.items)) rawList = parsedRaw.items;
+    else if (Array.isArray(parsedRaw.beds)) {
+      const firstBed = parsedRaw.beds[0];
+      rawList = Array.isArray(firstBed?.questions) ? firstBed.questions : parsedRaw.beds;
+    } else if (Array.isArray(parsedRaw.data)) rawList = parsedRaw.data;
+  }
+
+  return rawList.map((q) => {
+    const norm = normalizeQuestionItem(q);
+    norm.chapterId = chapterInfo.id;
+    norm.chapterTitle = chapterInfo.title;
+    return norm;
+  });
+}
+
+export async function generatePlantaoBedQuestionsWithAI({
+  apiKey,
+  model = 'openai/gpt-6-luna',
+  fallbackModel = 'deepseek/deepseek-v4.1-flash',
+  bedNumber,
+  chapterInfo,
+  chapterText,
+  existingPhenotypes = [],
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  bedNumber: number;
+  chapterInfo: { id: number; number: number; title: string; sectionTitle: string };
+  chapterText?: string;
+  existingPhenotypes?: string[];
+}): Promise<QuestionItem[]> {
+  const openai = getOpenAIClient(apiKey);
+  const built = buildPlantaoBedGenerationRequest({
+    bedNumber,
+    chapterInfo,
+    chapterText,
+    existingPhenotypes,
+  });
+
   const modelsCascade = Array.from(new Set([
     ...getModelCascade('CLINICAL_CORE', model),
     fallbackModel,
@@ -763,12 +910,9 @@ Retorne ESTRITAMENTE uma array JSON com os 2 objetos de questão no formato espe
   return executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT_PLANTAO_GENERATOR },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.4,
-      max_tokens: 5000,
+      messages: built.messages,
+      temperature: built.temperature,
+      max_tokens: built.max_tokens,
     } as any);
 
     const finishReason = response.choices[0]?.finish_reason;
@@ -777,25 +921,7 @@ Retorne ESTRITAMENTE uma array JSON com os 2 objetos de questão no formato espe
     }
 
     const content = response.choices[0]?.message?.content || '[]';
-    const parsedRaw = parseJsonFromMarkdown<any>(content);
-    let rawList: any[] = [];
-    if (Array.isArray(parsedRaw)) {
-      rawList = parsedRaw;
-    } else if (parsedRaw && typeof parsedRaw === 'object') {
-      if (Array.isArray(parsedRaw.questions)) rawList = parsedRaw.questions;
-      else if (Array.isArray(parsedRaw.items)) rawList = parsedRaw.items;
-      else if (Array.isArray(parsedRaw.beds)) rawList = parsedRaw.beds;
-      else if (Array.isArray(parsedRaw.data)) rawList = parsedRaw.data;
-    }
-
-    const parsed = rawList.map((q) => {
-      const norm = normalizeQuestionItem(q);
-      norm.chapterId = chapterInfo.id;
-      norm.chapterTitle = chapterInfo.title;
-      return norm;
-    });
-
-    return parsed;
+    return parsePlantaoBedGenerationResponse(content, chapterInfo);
   });
 }
 
@@ -1272,4 +1398,3 @@ Estruture este texto no formato padrão de prontuário de emergência médica da
     return fixMojibake(rawText);
   }
 }
-
