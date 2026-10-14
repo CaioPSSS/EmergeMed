@@ -2,26 +2,25 @@ name: Nightly Batch Pipeline
 
 on:
   schedule:
-    # Every night at 03:00 UTC
-    - cron: '0 3 * * *'
+    - cron: '0 3 * * *' # Executa diariamente às 03:00 UTC
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: nightly-batch-pipeline
-  cancel-in-progress: false
+    inputs:
+      mock:
+        description: 'Executar em modo simulação (--mock) sem custos de API'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   nightly-batch:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      BATCH_TARGET_USER_ID: ${{ secrets.BATCH_TARGET_USER_ID }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,57 +28,22 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: '22'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Poll and ingest existing batches (bounded retries)
-        id: poll
+      - name: Run Nightly Batch Pipeline
         run: |
           set -euo pipefail
-
-          max_attempts=4
-          attempt=1
-          pending_count=0
-
-          while [ "$attempt" -le "$max_attempts" ]; do
-            echo "Polling attempt ${attempt}/${max_attempts}..."
-            npm run --silent batch:poll -- --json
-
-            status_json="$(npm run --silent batch:pending-status -- --json)"
-            pending_count="$(node -e "const payload = JSON.parse(process.argv[1]); process.stdout.write(String(payload.pendingSubmittedCount));" "$status_json")"
-            echo "Pending submitted batches after attempt ${attempt}: ${pending_count}"
-
-            if [ "$pending_count" -eq 0 ]; then
-              echo "No in-progress batches detected. Finishing polling step."
-              break
-            fi
-
-            if [ "$attempt" -lt "$max_attempts" ]; then
-              echo "Pending work still in progress. Waiting 5 minutes before next poll attempt..."
-              sleep 300
-            fi
-
-            attempt=$((attempt + 1))
-          done
-
-          echo "pending_count=${pending_count}" >> "$GITHUB_OUTPUT"
-
-          if [ "$attempt" -gt "$max_attempts" ]; then
-            echo "Reached maximum polling attempts for this run."
-            echo "Any pending in-progress batches will be retried in the next nightly run."
+          MOCK_FLAG=""
+          if [ "${{ github.event.inputs.mock }}" = "true" ]; then
+            MOCK_FLAG="--mock"
           fi
-
-      - name: Skip submit when pending batch remains
-        if: ${{ steps.poll.outputs.pending_count != '0' }}
-        run: |
-          echo "Submission skipped for this run because ${PENDING_COUNT} submitted batch(es) are still pending."
-          echo "This run completed successfully. The next scheduled run will retry polling/ingestion."
-        env:
-          PENDING_COUNT: ${{ steps.poll.outputs.pending_count }}
-
-      - name: Submit nightly batch
-        if: ${{ steps.poll.outputs.pending_count == '0' }}
-        run: npm run batch:submit
+          
+          for i in 1 2 3 4; do
+            echo "Polling attempt $i/4..."
+            npx tsx scripts/nightly-batch-pipeline.ts $MOCK_FLAG && break
+            sleep 15
+          done
