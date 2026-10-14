@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { parsePrescriptionDrugs, formatDrugFactsForPrompt, DrugCalculation } from '@/lib/ai/drug-math-validator';
-import { SYSTEM_PROMPT_BED_SEQUENCE_EVALUATOR } from '@/lib/ai/prompts';
+import { SYSTEM_PROMPT_BED_SEQUENCE_EVALUATOR, buildBedEvaluationJsonTemplate } from '@/lib/ai/prompts';
 import { fixMojibake } from '@/lib/text-sanitizer';
 import {
   submitOpenRouterBatch,
@@ -240,11 +240,7 @@ ${cleanChapterText ? `\n══════════════════�
 INSTRUÇÃO FINAL:
 Avalie CADA uma das ${prescriptions.length} prescrições acima levando em consideração o contexto cronológico do leito e os fatos matemáticos pré-calculados.
 Retorne ESTRITAMENTE o JSON no formato:
-{
-  "evaluations": {
-${prescriptions.map((p: any) => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", "strengths": [...], "improvements": [...], "detailedFeedback": "...", "idealPrescription": "...", "errorTags": [...] }`).join(',\n')}
-  }
-}`;
+${buildBedEvaluationJsonTemplate(prescriptions.map((p: any) => p.id))}`;
 
       batchRequests.push({
         custom_id: JSON.stringify({

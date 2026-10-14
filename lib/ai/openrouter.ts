@@ -10,9 +10,12 @@ import {
   SYSTEM_PROMPT_CUSTOM_CHAPTER_ANALYZER,
   SYSTEM_PROMPT_BED_SEQUENCE_EVALUATOR,
   SYSTEM_PROMPT_PRESCRIPTION_FORMATTER,
+  SYSTEM_PROMPT_DISPUTE_VERIFIER,
   MCQ_DIFFICULTY_DISTRIBUTION_INSTRUCTIONS,
+  buildBedEvaluationJsonTemplate,
 } from './prompts';
 import { AI_TASK_PROFILES, getModelCascade } from './model-router';
+import type { AdverseErrorContext } from './adverse-trigger';
 
 export interface CustomChapterAnalysisResult {
   title: string;
@@ -54,6 +57,29 @@ export interface QuestionItem {
   isFromBank?: boolean;
 }
 
+export interface DisputedItem {
+  item: string;
+  concern?: string;
+  proposedSeverity?: 'moderado' | 'critico';
+}
+
+export interface DeteriorationRisk {
+  triggered: boolean;
+  mechanism?: string;
+  justification?: string;
+}
+
+export interface DisputeVerification {
+  items: Array<{
+    item: string;
+    status: 'aceito_por_protocolo' | 'erro_confirmado' | 'inconclusivo';
+    rationale?: string;
+    sources?: string[];
+  }>;
+  model?: string;
+  verifiedAt?: string;
+}
+
 export interface PrescriptionEvaluation {
   score: number;
   verdict: string;
@@ -66,6 +92,12 @@ export interface PrescriptionEvaluation {
     severity: 'critico' | 'moderado' | 'leve';
     description: string;
   }>;
+  /** Itens que o avaliador pretendia punir como moderado/crítico, mas sem certeza — verificados com busca web. */
+  disputedItems?: DisputedItem[];
+  /** Único gatilho da evolução adversa (Q5). */
+  deteriorationRisk?: DeteriorationRisk;
+  /** Presente quando a avaliação passou pelo revisor com busca web. */
+  verification?: DisputeVerification;
 }
 
 export { fixMojibake };
@@ -386,6 +418,192 @@ Retorne ESTRITAMENTE uma array JSON com os objetos no formato especificado. Resp
   });
 }
 
+/**
+ * Server tool de busca web do OpenRouter (substitui o plugin `web`, descontinuado).
+ * Usado SOMENTE em chamadas síncronas de verificação de itens em disputa.
+ * Não incluir em itens de Batch: plugins/variantes `:online`/engines orquestradas são rejeitados (HTTP 422).
+ */
+export const WEB_SEARCH_SERVER_TOOL = {
+  type: 'openrouter:web_search',
+  parameters: { engine: 'auto', max_results: 5, max_total_results: 15 },
+} as const;
+
+/** Limite de verificações com busca por leito/avaliação em lote (controle de custo e latência). */
+export const MAX_DISPUTE_VERIFICATIONS_PER_RUN = 6;
+
+const MAX_CHAPTER_CHARS_FOR_VERIFIER = 40000;
+
+export function hasDisputedItems(evaluation?: Partial<PrescriptionEvaluation> | null): boolean {
+  return (
+    Array.isArray(evaluation?.disputedItems) &&
+    evaluation!.disputedItems!.some((d) => d && typeof d.item === 'string' && d.item.trim().length > 0)
+  );
+}
+
+function extractCitationUrls(message: any): string[] {
+  const annotations = Array.isArray(message?.annotations) ? message.annotations : [];
+  const urls = annotations
+    .map((a: any) => a?.url_citation?.url || a?.url)
+    .filter((u: any) => typeof u === 'string' && u.length > 0);
+  return Array.from(new Set(urls as string[]));
+}
+
+/**
+ * Revisa uma avaliação preliminar que contém `disputedItems`, usando busca web em diretrizes.
+ * Se não houver disputa, devolve a avaliação intacta (sem custo). Em caso de falha, devolve a
+ * avaliação preliminar (fail-open) para não bloquear o fluxo do aluno.
+ */
+export async function verifyDisputedEvaluationWithSearch({
+  apiKey,
+  model,
+  fallbackModel,
+  caseContext,
+  userPrescription,
+  chapterText,
+  evaluation,
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  caseContext: string;
+  userPrescription: string;
+  chapterText?: string;
+  evaluation: PrescriptionEvaluation;
+}): Promise<PrescriptionEvaluation> {
+  if (!hasDisputedItems(evaluation)) return evaluation;
+
+  const openai = getOpenAIClient(apiKey);
+  const chapter = fixMojibake(chapterText || '').slice(0, MAX_CHAPTER_CHARS_FOR_VERIFIER);
+  const { verification: _previousVerification, ...preliminary } = evaluation;
+  const disputed = (evaluation.disputedItems || []).filter((d) => d && d.item);
+
+  const userPrompt = `CASO CLÍNICO (contexto completo):
+${caseContext}
+
+CONDUTA / PRESCRIÇÃO DO MÉDICO AVALIADA:
+${userPrescription}
+
+AVALIAÇÃO PRELIMINAR (JSON):
+${JSON.stringify(preliminary, null, 2)}
+
+ITENS EM DISPUTA A VERIFICAR COM BUSCA:
+${disputed
+  .map(
+    (d, i) =>
+      `${i + 1}. ${d.item}${d.concern ? ` — dúvida: ${d.concern}` : ''}${d.proposedSeverity ? ` (gravidade proposta: ${d.proposedSeverity})` : ''}`
+  )
+  .join('\n')}
+${chapter ? `\nTEXTO DO LIVRO DE REFERÊNCIA (referência principal, mas não exaustiva):\n${chapter}\n` : ''}
+Pesquise cada item em disputa e retorne a avaliação revisada COMPLETA em JSON.`;
+
+  const modelsCascade = Array.from(
+    new Set([...getModelCascade('CLINICAL_EVALUATION', model), fallbackModel].filter(Boolean) as string[])
+  );
+
+  try {
+    return await executeWithModelCascade(modelsCascade, async (selectedModel) => {
+      const response = await openai.chat.completions.create({
+        model: selectedModel,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT_DISPUTE_VERIFIER },
+          { role: 'user', content: userPrompt },
+        ],
+        tools: [WEB_SEARCH_SERVER_TOOL],
+        temperature: 0.2,
+        max_tokens: 8000,
+      } as any);
+
+      const choice = response.choices[0];
+      if (choice?.finish_reason === 'length') {
+        throw new Error(`Verificação truncada por limite de tokens no modelo '${selectedModel}'.`);
+      }
+
+      const revised = parseJsonFromMarkdown<PrescriptionEvaluation>(choice?.message?.content || '{}');
+      if (typeof revised.score !== 'number' || Number.isNaN(revised.score)) {
+        throw new Error(`Verificação sem "score" numérico válido (modelo '${selectedModel}').`);
+      }
+
+      const items = Array.isArray(revised.verification?.items) ? revised.verification!.items : [];
+      const citations = extractCitationUrls(choice?.message);
+
+      return {
+        ...evaluation,
+        ...revised,
+        verdict: fixMojibake(revised.verdict || evaluation.verdict),
+        detailedFeedback: fixMojibake(revised.detailedFeedback || evaluation.detailedFeedback),
+        idealPrescription: fixMojibake(revised.idealPrescription || evaluation.idealPrescription),
+        disputedItems: [],
+        verification: {
+          items: items.map((it) => ({
+            ...it,
+            sources: Array.isArray(it.sources) && it.sources.length > 0 ? it.sources : citations,
+          })),
+          model: selectedModel,
+          verifiedAt: new Date().toISOString(),
+        },
+      } as PrescriptionEvaluation;
+    });
+  } catch (err: any) {
+    console.warn(`[DisputeVerifier] Verificação com busca falhou; mantendo avaliação preliminar: ${err?.message || err}`);
+    return evaluation;
+  }
+}
+
+/**
+ * Verifica (com busca) todas as avaliações de um leito que tenham itens em disputa.
+ */
+export async function verifyDisputedBedEvaluations({
+  apiKey,
+  model,
+  fallbackModel,
+  evaluations,
+  prescriptions,
+  chapterText,
+  maxVerifications = MAX_DISPUTE_VERIFICATIONS_PER_RUN,
+}: {
+  apiKey?: string;
+  model?: string;
+  fallbackModel?: string;
+  evaluations: Record<number, PrescriptionEvaluation>;
+  prescriptions: Array<{
+    id: number;
+    type?: string;
+    vignette: string;
+    userPrescription?: string;
+    ventilatorData?: Record<string, string>;
+  }>;
+  chapterText?: string;
+  maxVerifications?: number;
+}): Promise<Record<number, PrescriptionEvaluation>> {
+  const describe = (p: (typeof prescriptions)[number]) =>
+    p.type === 'ventilator' && p.ventilatorData
+      ? Object.entries(p.ventilatorData).map(([k, v]) => `${k}: ${v || '(não preenchido)'}`).join('; ')
+      : p.userPrescription || '(sem resposta)';
+
+  const caseContext = prescriptions
+    .map((p, idx) => `ETAPA ${idx + 1} (questão ${p.id}):\n${p.vignette}\nConduta do médico: ${describe(p)}`)
+    .join('\n\n');
+
+  const targets = prescriptions.filter((p) => hasDisputedItems(evaluations[p.id])).slice(0, maxVerifications);
+  if (targets.length === 0) return evaluations;
+
+  const result: Record<number, PrescriptionEvaluation> = { ...evaluations };
+  await Promise.all(
+    targets.map(async (p) => {
+      result[p.id] = await verifyDisputedEvaluationWithSearch({
+        apiKey,
+        model,
+        fallbackModel,
+        caseContext,
+        userPrescription: describe(p),
+        chapterText,
+        evaluation: evaluations[p.id],
+      });
+    })
+  );
+  return result;
+}
+
 export async function evaluatePrescriptionWithAI({
   apiKey,
   model = 'openai/gpt-6-luna',
@@ -397,6 +615,7 @@ export async function evaluatePrescriptionWithAI({
   chapterText,
   questionType,
   ventilatorData,
+  verifyDisputes = true,
 }: {
   apiKey?: string;
   model?: string;
@@ -408,6 +627,8 @@ export async function evaluatePrescriptionWithAI({
   chapterText?: string;
   questionType?: 'prescription_complete' | 'prescription_immediate' | 'ventilator';
   ventilatorData?: Record<string, string>;
+  /** Quando true (padrão), itens em disputa são revisados com busca web antes de devolver a avaliação. */
+  verifyDisputes?: boolean;
 }): Promise<PrescriptionEvaluation> {
   const openai = getOpenAIClient(apiKey);
 
@@ -442,7 +663,7 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
     fallbackModel,
   ])).filter(Boolean);
 
-  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
+  const preliminary = await executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
@@ -474,6 +695,22 @@ Retorne ESTRITAMENTE o JSON de avaliação conforme o formato exigido, sem markd
     if (result.idealPrescription) result.idealPrescription = fixMojibake(result.idealPrescription);
 
     return result;
+  });
+
+  if (!verifyDisputes || !hasDisputedItems(preliminary)) return preliminary;
+
+  const describedAnswer = questionType === 'ventilator' && ventilatorData
+    ? Object.entries(ventilatorData).map(([k, v]) => `${k}: ${v || '(não preenchido)'}`).join('; ')
+    : userPrescription;
+
+  return verifyDisputedEvaluationWithSearch({
+    apiKey,
+    model,
+    fallbackModel,
+    caseContext: vignette,
+    userPrescription: describedAnswer,
+    chapterText,
+    evaluation: preliminary,
   });
 }
 
@@ -573,6 +810,7 @@ export async function evaluateBedSequenceWithAI({
   mcqResults = [],
   prescriptions = [],
   mathFactsText = '',
+  verifyDisputes = true,
 }: {
   apiKey?: string;
   model?: string;
@@ -598,6 +836,8 @@ export async function evaluateBedSequenceWithAI({
     ventilatorData?: Record<string, string>;
   }>;
   mathFactsText?: string;
+  /** Quando true (padrão), itens em disputa são revisados com busca web antes de devolver as avaliações. */
+  verifyDisputes?: boolean;
 }): Promise<Record<number, PrescriptionEvaluation>> {
   const openai = getOpenAIClient(apiKey);
   const cleanChapterText = fixMojibake(chapterText || '');
@@ -652,18 +892,14 @@ ${cleanChapterText ? `\n══════════════════�
 INSTRUÇÃO FINAL:
 Avalie CADA uma das ${prescriptions.length} prescrições acima levando em consideração o contexto cronológico do leito e os fatos matemáticos pré-calculados.
 Retorne ESTRITAMENTE o JSON no formato:
-{
-  "evaluations": {
-${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", "strengths": [...], "improvements": [...], "detailedFeedback": "...", "idealPrescription": "...", "errorTags": [...] }`).join(',\n')}
-  }
-}`;
+${buildBedEvaluationJsonTemplate(prescriptions.map((p) => p.id))}`;
 
   const modelsCascade = Array.from(new Set([
     ...getModelCascade('CLINICAL_EVALUATION', model),
     fallbackModel,
   ])).filter(Boolean);
 
-  return executeWithModelCascade(modelsCascade, async (selectedModel) => {
+  const preliminary = await executeWithModelCascade(modelsCascade, async (selectedModel) => {
     const response = await openai.chat.completions.create({
       model: selectedModel,
       messages: [
@@ -714,6 +950,17 @@ ${prescriptions.map(p => `    "${p.id}": { "score": 8.5, "verdict": "Adequado", 
 
     return finalEvaluations;
   });
+
+  if (!verifyDisputes) return preliminary;
+
+  return verifyDisputedBedEvaluations({
+    apiKey,
+    model,
+    fallbackModel,
+    evaluations: preliminary,
+    prescriptions,
+    chapterText,
+  });
 }
 
 export async function generateAdverseEvolutionQuestionWithAI({
@@ -732,30 +979,38 @@ export async function generateAdverseEvolutionQuestionWithAI({
   bedNumber: number;
   chapterTitle: string;
   originalVignette: string;
-  errorsContext: { questionType: string; vignette: string; userText: string; idealText?: string }[];
+  errorsContext: AdverseErrorContext[];
   mathFactsText?: string;
-}): Promise<QuestionItem> {
+}): Promise<QuestionItem | null> {
   const openai = getOpenAIClient(apiKey);
 
   const errorsSummary = errorsContext
-    .map(
-      (err, i) =>
-        `Erro ${i + 1} (${err.questionType}): Resposta do médico: "${err.userText}" | Esperado: "${err.idealText || 'Conduta correta'}"`
-    )
-    .join('\n');
+    .map((err, i) => {
+      const lines = [
+        `Prescrição ${i + 1} (${err.questionType}):`,
+        `- Momento do caso: ${err.vignette}`,
+        `- Conduta do médico: "${err.userText}"`,
+        `- Referência esperada: "${err.idealText || 'Conduta correta'}"`,
+      ];
+      if (err.errors && err.errors.length > 0) lines.push(`- Erros classificados pelo avaliador: ${err.errors.join('; ')}`);
+      if (err.deteriorationMechanism) lines.push(`- Mecanismo de deterioração apontado: ${err.deteriorationMechanism}`);
+      if (err.deteriorationJustification) lines.push(`- Justificativa do avaliador: ${err.deteriorationJustification}`);
+      return lines.join('\n');
+    })
+    .join('\n\n');
 
-  const userPrompt = `Simule uma EVOLUÇÃO ADVERSA (Q5 BÔNUS DE COMPLICAÇÃO) para o LEITO ${bedNumber} (Tema: ${chapterTitle}).
+  const userPrompt = `Avalie se cabe e, se couber, simule uma EVOLUÇÃO ADVERSA (Q5 BÔNUS DE COMPLICAÇÃO) para o LEITO ${bedNumber} (Tema: ${chapterTitle}).
 
 CASO CLÍNICO ORIGINAL:
 ${originalVignette}
 
 ${mathFactsText ? `${mathFactsText}\nATENÇÃO RIGOROSA: Os valores acima são fatos matemáticos verificados. NUNCA invente uma complicação por "sobredose" ou "toxicidade" de uma droga se a dose calculada estiver DENTRO DA FAIXA terapêutica normal!\n` : ''}
-ERROS COMETIDOS PELO MÉDICO NO ATENDIMENTO INICIAL:
+ERROS COM RISCO DE DETERIORAÇÃO IDENTIFICADOS PELO AVALIADOR:
 ${errorsSummary}
 
-Gere UMA única questão bônus (tipo "prescription_immediate" ou "multiple_choice") onde o paciente descompensa devido aos erros cometidos e exige conduta de emergência salvadora.
+Se o mecanismo for plausível, gere UMA única questão bônus (tipo "prescription_immediate" ou "multiple_choice") em que o paciente descompensa devido a esses erros e exige conduta de emergência salvadora. Caso contrário, retorne {"noAdverseEvolution": true, "reason": "..."}.
 
-Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdown extra.`;
+Retorne ESTRITAMENTE JSON. Sem markdown extra.`;
 
   const modelsCascade = Array.from(new Set([
     ...getModelCascade('CLINICAL_CORE', model),
@@ -775,6 +1030,10 @@ Retorne ESTRITAMENTE o JSON de um único objeto QuestionItem válido. Sem markdo
 
     const content = response.choices[0]?.message?.content || '{}';
     const parsedRaw = parseJsonFromMarkdown<any>(content);
+    if (parsedRaw && typeof parsedRaw === 'object' && parsedRaw.noAdverseEvolution === true) {
+      console.info(`[AdverseEvolution] Leito ${bedNumber}: complicação recusada pelo freio de bom senso — ${parsedRaw.reason || 'sem motivo informado'}`);
+      return null;
+    }
     return normalizeQuestionItem(parsedRaw);
   });
 }
@@ -869,7 +1128,7 @@ Responda diretamente em Markdown sem blocos de código JSON.`;
     };
 
     if (enableWebSearch) {
-      payload.plugins = [{ id: 'web', max_results: 3 }];
+      payload.tools = [WEB_SEARCH_SERVER_TOOL];
     }
 
     const response = await openai.chat.completions.create(payload);

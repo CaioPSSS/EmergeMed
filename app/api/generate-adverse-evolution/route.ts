@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateAdverseEvolutionQuestionWithAI, QuestionItem } from '@/lib/ai/openrouter';
 import { parsePrescriptionDrugs, formatDrugFactsForPrompt } from '@/lib/ai/drug-math-validator';
+import type { AdverseErrorContext } from '@/lib/ai/adverse-trigger';
 
 export async function POST(request: Request) {
   try {
@@ -20,12 +21,17 @@ export async function POST(request: Request) {
         bedNumber: number;
         chapterTitle: string;
         originalVignette: string;
-        errorsContext: { questionType: string; vignette: string; userText: string; idealText?: string }[];
+        errorsContext: AdverseErrorContext[];
         mathFactsText?: string;
       };
 
     if (!testId || !bedNumber) {
       return NextResponse.json({ error: 'Parâmetros inválidos.' }, { status: 400 });
+    }
+
+    // Complicação só existe quando há erro com risco real de deterioração.
+    if (!Array.isArray(errorsContext) || errorsContext.length === 0) {
+      return NextResponse.json({ question: null, skipped: true });
     }
 
     // 1. Fetch current test from Supabase
@@ -90,6 +96,11 @@ export async function POST(request: Request) {
       errorsContext,
       mathFactsText: finalMathFactsText,
     });
+
+    // Freio de bom senso: o gerador concluiu que o mecanismo de deterioração não se sustenta.
+    if (!q5Question) {
+      return NextResponse.json({ question: null, skipped: true });
+    }
 
     const currentQuestions = (testRecord.questions as QuestionItem[]) || [];
     const maxId = Math.max(...currentQuestions.map((q) => q.id), 0);

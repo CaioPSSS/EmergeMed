@@ -14,7 +14,7 @@ O **EmergeMed** opera como um simulador e copiloto de alta fidelidade para trein
    - Raciocínio clínico e geração de casos JSON: precisão farmacológica inegociável (`openai/gpt-6-luna`).
    - Preceptoria e síntese de capítulos extensos: raciocínio denso com contexto longo (`deepseek/deepseek-v4.1-flash`).
    - Povoamento assíncrono noturno: modo lote com 50% de desconto (`openai/gpt-6-luna:batch`).
-3. **Imunidade a Alucinações por Remoção de Plugins Web:** As chamadas clínicas têm o conteúdo completo do capítulo injetado no prompt de sistema. O plugin de busca web foi desativado em rotinas clínicas para evitar latência excessiva (>15s) e contaminação por protocolos estrangeiros não-SUS.
+3. **Busca Web Apenas Sob Dúvida (revisado em out/2026):** As chamadas clínicas continuam com o capítulo injetado e SEM busca incondicional (evita latência >15s). A experiência mostrou, porém, que sem nenhuma busca o avaliador transformava divergências legítimas entre protocolos em "erros" (ex.: gluconato de cálcio 30 mL — dose do UKKA e do próprio capítulo de PCR do livro — punida como "tripla dose"). Agora o avaliador declara `disputedItems` e só esses itens são revisados por uma segunda chamada com o server tool `openrouter:web_search`.
 
 ---
 
@@ -94,6 +94,15 @@ export const AI_TASK_PROFILES = {
 ### 4.2. Eliminação de Plugins Web em Prompts de Livro
 * Modelos que recebiam `{ plugins: [{ id: 'web', max_results: 3 }] }` sofriam penalidade de 10 a 20 segundos de latência para buscar fontes na web, além de importar condutas de guidelines internacionais que divergiam do livro da UPA e do REMUME.
 * A remoção do plugin garantiu tempo de resposta 65% mais rápido e 100% de aderência ao texto didático.
+
+### 4.3. Retorno Controlado da Busca: "Verificação Sob Dúvida" (out/2026)
+* **Problema observado:** sem busca, os prompts ainda afirmavam "total autonomia para consultar UpToDate", e o modelo respondia de memória com falsa autoridade. Divergências legítimas (ex.: cálcio 10 mL vs 30 mL na hipercalemia — o próprio livro traz as duas doses em capítulos diferentes) viravam "erro", e o gerador de complicação transformava essa crítica em PCR iatrogênica.
+* **Solução:**
+  1. O avaliador recebe princípios de bom senso (`CLINICAL_JUDGMENT_PRINCIPLES`): pluralidade de protocolos, fidelidade aos dados do caso e honestidade sobre a dúvida.
+  2. Itens que ele pretende punir como moderado/crítico sem certeza vão para `disputedItems`.
+  3. Somente nesses casos, `verifyDisputedEvaluationWithSearch` faz uma chamada síncrona com `tools: [{ type: 'openrouter:web_search', parameters: { engine: 'auto' } }]` e reescreve a avaliação (`aceito_por_protocolo` / `erro_confirmado` / `inconclusivo`), registrando fontes em `verification`.
+  4. O plugin `web` está descontinuado no OpenRouter e é rejeitado (HTTP 422) no Batch, assim como `:online` e engines orquestradas (exa/firecrawl/parallel). Como a verificação depende do resultado do lote, ela roda de forma síncrona em `check-batch-status`, limitada por `MAX_DISPUTE_VERIFICATIONS_PER_RUN`.
+* **Custo/latência:** zero quando não há disputa (caso comum); uma chamada extra com busca por prescrição disputada.
 
 ---
 

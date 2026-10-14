@@ -13,8 +13,12 @@ import {
 import {
   parseJsonFromMarkdown,
   generateAdverseEvolutionQuestionWithAI,
+  verifyDisputedBedEvaluations,
+  hasDisputedItems,
+  MAX_DISPUTE_VERIFICATIONS_PER_RUN,
   QuestionItem,
 } from '@/lib/ai/openrouter';
+import { collectDeteriorationErrors } from '@/lib/ai/adverse-trigger';
 import { parsePrescriptionDrugs, formatDrugFactsForPrompt } from '@/lib/ai/drug-math-validator';
 import { fixMojibake } from '@/lib/text-sanitizer';
 import { calculateFSRSUpdate } from '@/lib/spaced-repetition';
@@ -78,7 +82,7 @@ export async function POST(request: Request) {
     // 2. Fetch AI settings once
     const { data: settings } = await supabase
       .from('user_settings')
-      .select('openrouter_api_key, question_model, fallback_model')
+      .select('openrouter_api_key, question_model, prescription_model, fallback_model')
       .eq('user_id', user.id)
       .maybeSingle();
 
@@ -271,6 +275,13 @@ export async function POST(request: Request) {
                     : 'A prescrição apresenta omissões críticas nas drogas de primeira linha.',
                   idealPrescription: p.idealPrescription || 'Conduta de referência conforme protocolo.',
                   errorTags: isAnswered ? [] : ['subdosagem', 'droga_ausente'],
+                  deteriorationRisk: isAnswered
+                    ? { triggered: false, mechanism: '', justification: 'Mock: conduta respondida.' }
+                    : {
+                        triggered: true,
+                        mechanism: 'Omissão das drogas de primeira linha no choque (mock).',
+                        justification: 'Mock: prescrição ausente/incompleta.',
+                      },
                 },
               };
             }
@@ -359,6 +370,70 @@ export async function POST(request: Request) {
           }
         }
 
+        // ==================================================================
+        // Verificação sob dúvida (busca web) das avaliações com disputedItems.
+        // Roda de forma síncrona APÓS o lote, pois depende do resultado dele;
+        // usa o server tool openrouter:web_search (não permitido dentro do Batch).
+        // ==================================================================
+        if (!isMock) {
+          let verificationsLeft = MAX_DISPUTE_VERIFICATIONS_PER_RUN;
+          for (const bed of plantaoData.beds || []) {
+            if (verificationsLeft <= 0) break;
+            const bedPrescQs = questions.filter(
+              (q: any) => (bed.questionIds || []).includes(q.id) && q.type !== 'multiple_choice'
+            );
+            const disputedQs = bedPrescQs.filter((q: any) => hasDisputedItems(evaluations[q.id]?.evaluation));
+            if (disputedQs.length === 0) continue;
+
+            let bedChapterText: string | undefined;
+            const bedChapterId = bed.chapterId || bedPrescQs[0]?.chapterId;
+            if (bedChapterId) {
+              const { data: chapterContent } = await supabase
+                .from('chapter_contents')
+                .select('content')
+                .eq('chapter_id', bedChapterId)
+                .single();
+              bedChapterText = chapterContent?.content;
+            }
+
+            const preliminaryEvals: Record<number, any> = {};
+            bedPrescQs.forEach((q: any) => {
+              if (evaluations[q.id]?.evaluation) preliminaryEvals[q.id] = evaluations[q.id].evaluation;
+            });
+
+            const verified = await verifyDisputedBedEvaluations({
+              apiKey,
+              model: settings?.prescription_model || 'openai/gpt-6-luna',
+              fallbackModel: settings?.fallback_model || 'deepseek/deepseek-v4.1-flash',
+              evaluations: preliminaryEvals,
+              prescriptions: bedPrescQs.map((q: any) => {
+                const ans = userAnswers[q.id];
+                return {
+                  id: q.id,
+                  type: q.type,
+                  vignette: q.vignette,
+                  userPrescription: typeof ans === 'string' ? ans : undefined,
+                  ventilatorData: ans && typeof ans === 'object' ? ans : undefined,
+                };
+              }),
+              chapterText: bedChapterText,
+              maxVerifications: verificationsLeft,
+            });
+            verificationsLeft -= Math.min(disputedQs.length, verificationsLeft);
+
+            for (const q of disputedQs) {
+              const revised = verified[q.id];
+              if (revised && revised !== preliminaryEvals[q.id]) {
+                evaluations[q.id] = {
+                  ...evaluations[q.id],
+                  evaluation: revised,
+                  score: typeof revised.score === 'number' ? revised.score : evaluations[q.id].score,
+                };
+              }
+            }
+          }
+        }
+
         // Evaluate Clinical Failure / Adverse Descompensation Criteria
         const beds = (plantaoData.beds || []).map((b: any) => ({ ...b }));
         const newlyGeneratedBonusQuestions: QuestionItem[] = [];
@@ -372,64 +447,11 @@ export async function POST(request: Request) {
             (bed.questionIds || []).includes(q.id)
           );
 
-          // 1. MCQ errors (wrong answer)
-          const mcqWrong = bedQs.filter(
-            (q: any) =>
-              q.type === 'multiple_choice' &&
-              userAnswers[q.id] !== undefined &&
-              userAnswers[q.id] !== q.correctOption
-          );
+          // Único gatilho: deteriorationRisk.triggered declarado pelo avaliador.
+          // Múltipla escolha, veredito "Requer Ajustes" e média do leito NÃO disparam complicação.
+          const errorsContext = collectDeteriorationErrors(bedQs, evaluations);
 
-          // 2. Prescription failure (< 6.0 or Inadequado / Requer Ajustes)
-          const prescFailures = bedQs.filter((q: any) => {
-            if (q.type === 'multiple_choice') return false;
-            const evalItem = evaluations[q.id];
-            const score = evalItem?.score;
-            const verdict = evalItem?.evaluation?.verdict;
-            return (
-              (typeof score === 'number' && score < 6.0) ||
-              verdict === 'Inadequado' ||
-              verdict === 'Requer Ajustes'
-            );
-          });
-
-          // 3. Bed average score < 6.0
-          let bedPoints = 0;
-          let bedCount = 0;
-          bedQs.forEach((q: any) => {
-            if (evaluations[q.id]?.score !== undefined) {
-              bedPoints += evaluations[q.id].score;
-              bedCount++;
-            }
-          });
-          const bedAvg = bedCount > 0 ? bedPoints / bedCount : 0;
-
-          const isFailing = mcqWrong.length >= 2 || prescFailures.length > 0 || bedAvg < 6.0;
-
-          if (isFailing) {
-            // Build error context for AI
-            const errorsContext: any[] = [];
-
-            mcqWrong.forEach((q: any) => {
-              errorsContext.push({
-                questionType: q.type,
-                vignette: q.vignette,
-                userText: q.options?.[userAnswers[q.id]] || 'Opção incorreta selecionada',
-                idealText: q.options?.[q.correctOption ?? 0] || 'Opção correta',
-              });
-            });
-
-            prescFailures.forEach((q: any) => {
-              const evalObj = evaluations[q.id];
-              errorsContext.push({
-                questionType: q.type,
-                vignette: q.vignette,
-                userText: `${evalObj?.userPrescription || 'Prescrição enviada'} (Veredito: ${evalObj?.evaluation?.verdict || 'Inadequado'} - ${evalObj?.evaluation?.improvements?.join('; ') || ''})`,
-                idealText:
-                  evalObj?.evaluation?.idealPrescription || q.idealPrescription || 'Conduta de referência',
-              });
-            });
-
+          if (errorsContext.length > 0) {
             // Math facts pre-calculation
             const weightMatch = (bedQs[0]?.vignette || '').match(/(\d{2,3})\s*kg\b/i);
             const patientWeight =
@@ -448,7 +470,7 @@ export async function POST(request: Request) {
             const maxId = Math.max(...updatedQuestions.map((q: any) => q.id), 0);
             const newId = maxId + 1;
 
-            let q5Question: QuestionItem;
+            let q5Question: QuestionItem | null;
             if (isMock) {
               q5Question = {
                 id: newId,
@@ -470,6 +492,8 @@ export async function POST(request: Request) {
                 errorsContext,
                 mathFactsText,
               });
+              // Freio de bom senso do gerador: mecanismo não plausível → sem complicação.
+              if (!q5Question) continue;
               q5Question.id = newId;
               q5Question.chapterTitle = `${bed.chapterTitle || 'Leito ' + bed.bedNumber} — COMPLICAÇÃO (EVOLUÇÃO ADVERSA)`;
             }

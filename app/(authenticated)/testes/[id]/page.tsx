@@ -4,6 +4,7 @@ import { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { QuestionItem } from '@/lib/ai/openrouter';
+import { collectDeteriorationErrors } from '@/lib/ai/adverse-trigger';
 import { calculateSM2Update, calculateFSRSUpdate, determineBedOutcome } from '@/lib/spaced-repetition';
 import { recordActivityAndAwardXP } from '@/lib/gamification-engine';
 import { useAutoSave } from '@/lib/hooks/useAutoSave';
@@ -772,44 +773,13 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       (q) => (bed.questionIds || []).includes(q.id)
     );
 
-    // Count wrong multiple choice questions
-    const mcqWrong = bedQuestions.filter(
-      (q) => q.type === 'multiple_choice' && userAnswers[q.id] !== undefined && userAnswers[q.id] !== q.correctOption
-    );
+    // Único gatilho: deteriorationRisk.triggered declarado pelo avaliador.
+    // Múltipla escolha e veredito "Requer Ajustes" NÃO disparam complicação.
+    const errorsContext = collectDeteriorationErrors(bedQuestions as any[], evals);
 
-    // Check evaluated prescription failures in this bed if any exist
-    const prescFailures = bedQuestions.filter(
-      (q) => q.type !== 'multiple_choice' && evals[q.id] && (
-        evals[q.id]?.score < 6.0 ||
-        evals[q.id]?.evaluation?.verdict === 'Inadequado' ||
-        evals[q.id]?.evaluation?.verdict === 'Requer Ajustes'
-      )
-    );
-
-    if (mcqWrong.length >= 2 || prescFailures.length > 0) {
+    if (errorsContext.length > 0) {
       setGeneratingAdverse(true);
       try {
-        const errorsContext: any[] = [];
-
-        mcqWrong.forEach((q) => {
-          errorsContext.push({
-            questionType: q.type,
-            vignette: q.vignette,
-            userText: q.options?.[userAnswers[q.id]] || 'Opção incorreta',
-            idealText: q.options?.[q.correctOption || 0] || 'Opção correta',
-          });
-        });
-
-        prescFailures.forEach((q) => {
-          const evalObj = evals[q.id];
-          errorsContext.push({
-            questionType: q.type,
-            vignette: q.vignette,
-            userText: `${evalObj?.userPrescription || 'Prescrição com erro'} (Veredito: ${evalObj?.evaluation?.verdict || 'Inadequado'} - ${evalObj?.evaluation?.improvements?.join('; ') || ''})`,
-            idealText: evalObj?.evaluation?.idealPrescription || q.idealPrescription || 'Conduta correta',
-          });
-        });
-
         const res = await fetch('/api/generate-adverse-evolution', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1602,46 +1572,11 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
           const bedQs = questions.filter((q) => (bed.questionIds || []).includes(q.id));
 
-          // 1. MCQ wrong answers
-          const mcqWrong = bedQs.filter(
-            (q) => q.type === 'multiple_choice' && userAnswers[q.id] !== undefined && userAnswers[q.id] !== q.correctOption
-          );
+          // Único gatilho: deteriorationRisk.triggered declarado pelo avaliador.
+          // Múltipla escolha, veredito "Requer Ajustes" e média do leito NÃO disparam complicação.
+          const errorsContext = collectDeteriorationErrors(bedQs as any[], evaluations);
 
-          // 2. Prescription / Ventilator errors (verdict Inadequado or Requer Ajustes or score < 6.0)
-          const prescFailures = bedQs.filter(
-            (q) => q.type !== 'multiple_choice' && (
-              evaluations[q.id]?.score < 6.0 ||
-              evaluations[q.id]?.evaluation?.verdict === 'Inadequado' ||
-              evaluations[q.id]?.evaluation?.verdict === 'Requer Ajustes'
-            )
-          );
-
-          // 3. Bed average score < 6.0
-          let bedPts = 0;
-          bedQs.forEach((q) => { bedPts += evaluations[q.id]?.score || 0; });
-          const bedAvg = bedQs.length > 0 ? bedPts / bedQs.length : 0;
-
-          if (mcqWrong.length >= 2 || prescFailures.length > 0 || bedAvg < 6.0) {
-            const errorsContext: any[] = [];
-
-            mcqWrong.forEach((q) => {
-              errorsContext.push({
-                questionType: q.type,
-                vignette: q.vignette,
-                userText: q.options?.[userAnswers[q.id]] || 'Opção incorreta selecionada',
-                idealText: q.options?.[q.correctOption || 0] || 'Opção correta',
-              });
-            });
-
-            prescFailures.forEach((q) => {
-              const evalObj = evaluations[q.id];
-              errorsContext.push({
-                questionType: q.type,
-                vignette: q.vignette,
-                userText: `${evalObj?.userPrescription || 'Prescrição enviada'} (Veredito: ${evalObj?.evaluation?.verdict || 'Inadequado'} - ${evalObj?.evaluation?.improvements?.join('; ') || ''})`,
-                idealText: evalObj?.evaluation?.idealPrescription || q.idealPrescription || 'Conduta de referência',
-              });
-            });
+          if (errorsContext.length > 0) {
 
             try {
               const res = await fetch('/api/generate-adverse-evolution', {
