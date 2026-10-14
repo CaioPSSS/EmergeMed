@@ -196,6 +196,56 @@ export function sanitizeApiKey(apiKey?: string, isMock: boolean = false): string
 const MOCK_BATCH_CACHE = new Map<string, BatchRequestItem[]>();
 
 /**
+ * Slug de modelo aceito pelo POST /v1/batches. A OpenRouter escolhe sozinha o endpoint
+ * `:batch` do modelo, então o slug é enviado SEM o sufixo (BATCH_MODEL segue com o
+ * sufixo só como rótulo no ledger).
+ */
+export function toBatchApiModelSlug(model: string): string {
+  return model.replace(/:batch$/, '');
+}
+
+/**
+ * Monta o corpo do POST https://openrouter.ai/api/v1/batches.
+ *
+ * Regras da API:
+ *  - `endpoint` e `model` são obrigatórios, no nível do lote, e DEVEM ser serializados
+ *    ANTES de `requests` (a API lê o JSON em stream e responde 400 se `requests` vier
+ *    primeiro). A ordem das chaves abaixo é intencional: não reordenar.
+ *  - Cada item de `requests` é somente `{ custom_id, body }` (sem `method`/`url`).
+ *  - `body.model` é opcional; se vier, tem que ser igual ao do lote, então é removido.
+ *  - Todos os itens de um lote usam o mesmo endpoint.
+ */
+export function buildBatchSubmitPayload(requests: BatchRequestItem[]): {
+  endpoint: string;
+  model: string;
+  requests: Array<{ custom_id: string; body: Omit<BatchRequestItem['body'], 'model'> }>;
+} {
+  const endpoints = new Set(requests.map((r) => r.url || '/v1/chat/completions'));
+  if (endpoints.size !== 1) {
+    throw new Error(
+      `All requests in a batch must share the same endpoint (found: ${Array.from(endpoints).join(', ')})`
+    );
+  }
+  const [endpoint] = Array.from(endpoints);
+
+  const batchModel = toBatchApiModelSlug(BATCH_MODEL);
+
+  return {
+    endpoint,
+    model: batchModel,
+    requests: requests.map(({ custom_id, body }) => {
+      const { model, ...rest } = body;
+      if (model && toBatchApiModelSlug(model) !== batchModel) {
+        throw new Error(
+          `Request ${custom_id} uses model "${model}" which differs from the batch model "${batchModel}"`
+        );
+      }
+      return { custom_id, body: rest };
+    }),
+  };
+}
+
+/**
  * Submits an array of requests to OpenRouter Batch API endpoint.
  * POST https://openrouter.ai/api/v1/batches
  */
@@ -222,6 +272,8 @@ export async function submitOpenRouterBatch(
 
   const cleanKey = sanitizeApiKey(apiKey, isMock);
 
+  const payload = buildBatchSubmitPayload(requests);
+
   const response = await fetch(OPENROUTER_BATCH_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -230,7 +282,7 @@ export async function submitOpenRouterBatch(
       'HTTP-Referer': 'https://emergemed.upa',
       'X-Title': 'EmergeMed Batch Pipeline',
     },
-    body: JSON.stringify({ requests }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
