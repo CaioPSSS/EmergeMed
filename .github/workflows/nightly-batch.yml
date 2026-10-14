@@ -2,7 +2,7 @@ name: Nightly Batch Pipeline
 
 on:
   schedule:
-    - cron: '0 3 * * *' # Executa diariamente às 03:00 UTC
+    - cron: '0 3 * * *' # Executa diariamente às 03:00 UTC (00:00 BRT)
   workflow_dispatch:
     inputs:
       mock:
@@ -41,9 +41,29 @@ jobs:
           if [ "${{ github.event.inputs.mock }}" = "true" ]; then
             MOCK_FLAG="--mock"
           fi
-          
+
+          echo "--- 1. Processando lotes pendentes anteriores (se houver) ---"
+          npx tsx scripts/nightly-batch-pipeline.ts --poll-and-ingest $MOCK_FLAG
+
+          echo "--- 2. Submetendo novo lote noturno ---"
+          npx tsx scripts/nightly-batch-pipeline.ts --submit $MOCK_FLAG
+
+          echo "--- 3. Polling de ingestão ---"
           for i in 1 2 3 4; do
             echo "Polling attempt $i/4..."
-            npx tsx scripts/nightly-batch-pipeline.ts $MOCK_FLAG && break
-            sleep 15
+            npx tsx scripts/nightly-batch-pipeline.ts --poll-and-ingest $MOCK_FLAG
+            
+            PENDING=$(npx tsx scripts/nightly-batch-pipeline.ts --pending-status --json | jq -r '.hasPendingSubmitted')
+            if [ "$PENDING" = "false" ]; then
+              echo "✓ Todos os lotes foram processados e ingeridos!"
+              break
+            fi
+            
+            if [ "$i" -lt 4 ]; then
+              echo "Lote ainda em processamento. Aguardando 30s..."
+              sleep 30
+            fi
           done
+
+          echo "--- 4. Status Final do Ledger ---"
+          npx tsx scripts/nightly-batch-pipeline.ts --status
