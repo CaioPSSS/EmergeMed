@@ -1,5 +1,6 @@
 import { CHAPTERS_DATA, Chapter } from './chapters-data';
 import { DEFAULT_CHAPTER_WEIGHTS, getChapterWeight, ChapterWeight } from './chapter-weights-data';
+import { PlantaoTestStatus } from '@/types/plantao';
 
 export const ALGORITHM_VERSION = 'v2.0-fsrs';
 export const DESIRED_RETENTION = 0.90; // Target retention at review time
@@ -33,6 +34,7 @@ export interface TestRecordItem {
   score?: number | null;
   completed?: boolean | null;
   completed_at?: string | null;
+  status?: PlantaoTestStatus | null;
   results?: Record<string, any> | null;
   plantao_data?: {
     beds?: Array<{
@@ -41,6 +43,9 @@ export interface TestRecordItem {
       questionIds?: number[];
       bonusQuestionId?: number;
     }>;
+    batch_bed_eval_id?: string;
+    batch_feedback_id?: string;
+    [key: string]: any;
   } | null;
 }
 

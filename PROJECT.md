@@ -49,6 +49,14 @@
 | 21 | F6.1 Mobile & Tablet Responsiveness | Drawer sidebar at ≤1024px, horizontal bed tabs, touch-first action bar | M5 | User Request |
 | 22 | F7.1 Voice Dictation & Fast Formatting | Web Speech API streaming + 1.8s Xiaomi MiMo V2.6 Flash phonetic normalizer | M6 | User Request |
 | 23 | F7.2 Unassisted Free Prescription | Complete removal of intrusive quick conduct chips, pure clinical reasoning | M6 | User Request |
+| 24 | F8.1 Modernized Settings Page | Removal of PDF upload, AI_TASK_PROFILES alignment, acervo stats, financial batch bars | M7 | User Request |
+| 25 | F8.2 5-State Plantão DB Machine | Migration `20261016000002_plantao_batch_status.sql` with 5 states & index | M7 | User Request |
+| 26 | F8.3 Async Plantão Batch API | `/api/plantao/submit-batch`, `submit-feedback-batch`, `check-batch-status` | M7 | User Request |
+| 27 | F8.4 Dual Choice Evaluation UI | Option A (Realtime) vs Option B (Batch -50% OFF) on bed end & post-adverse feedback | M8 | User Request |
+| 28 | F8.5 State Re-entry & Q5 Focus | Re-entry for 5 states, input locks on evaluated beds, direct focus to rescue Q5 | M8 | User Request |
+| 29 | F8.6 Active Plantão Dashboard Banner | `ActivePlantaoBanner.tsx` between Header and Stats with dynamic state copy | M9 | User Request |
+| 30 | F8.7 Plantão Badges & Background Poll | 5 colored badges on `/plantoes`, non-blocking silent check on mount | M9 | User Request |
+| 31 | F8.8 Master E2E & Victory Audit | Hardened microtask `useRef` lock, in-modal alerts, 251/251 E2E tests, Victory Audit | M10 | User Request |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
@@ -60,6 +68,10 @@
 | M4 | Final Integration, E2E Pass & Hardening | Pass 100% E2E tests, Tier 5 adversarial tests, auditor verify, build exit 0 | M0, M1, M2, M3 | DONE |
 | M5 | Mobile & Tablet Responsiveness | Breakpoint 1024px, drawer sidebar, horizontal bed tabs, bottom action bar | none | DONE |
 | M6 | Voice Dictation & Fast AI Formatting | Web Speech API, Xiaomi MiMo V2.6 (~1.8s), phonetic dictionary, zero dose changes | none | DONE |
+| M7 | Modern Settings & Batch State Machine | Settings page overhaul, 5-state DB migration, batch submit & check endpoints | M3, M4 | DONE |
+| M8 | UI Dual Choice & Plantão Execution Flow | Dual Choice modals (Batch vs Realtime), waiting screens, auto-poll, re-entry | M7 | DONE |
+| M9 | Dashboard & Plantoes Active Signaling | `ActivePlantaoBanner.tsx`, `/plantoes` colored badges, non-blocking silent checks | M7, M8 | DONE |
+| M10 | Master E2E Verification & Forensic Victory | Double-click lock, modal alert, 251/251 assertions, Victory Auditor CLEAN | M7, M8, M9 | DONE |
 
 
 ## Interface Contracts
@@ -116,16 +128,24 @@
 - Cost formula for `openai/gpt-6-luna:batch`:
   - `cost = (prompt_tokens / 1_000_000) * 0.05 + (completion_tokens / 1_000_000) * 0.25`
 
+- Schema `public.tests` (Extended for Plantão Batch):
+  - `status`: TEXT ('in_progress' | 'awaiting_batch_bed_evaluation' | 'ready_for_adverse' | 'awaiting_batch_feedback' | 'completed') DEFAULT 'in_progress'
+  - `plantao_data`: JSONB (contains `batch_job_id`, `batch_submitted_at`, `batch_completed_at`, `evaluations`, `bed_evaluations`, `descompensacao`, `feedback_batch_job_id`)
+  - Index: `idx_tests_user_status` ON `tests(user_id, status)`
+
 ## Code Layout
 - `supabase/migrations/`: Database migrations
   - `20261015000000_bed_case_bank.sql` (Bed case repository for plantão reuse)
   - `20261016000000_mcq_anti_repetition_queue.sql` (User question history and anti-repetition queue)
   - `20261016000001_batch_generation_ledger.sql` (Ledger for OpenRouter Batch API budget tracking)
+  - `20261016000002_plantao_batch_status.sql` (Plantão 5-state machine, status column, and indexing)
+- `types/`: Type definitions
+  - `types/plantao.ts` (PlantaoTestStatus, PLANTAO_STATUSES, helpers, BatchPayloads)
 - `lib/`: Domain business logic and services
   - `lib/ai/model-router.ts` (Model profiles: CLINICAL_CORE, CLINICAL_EVALUATION, CLINICAL_FEEDBACK, PRESCRIPTION_FAST_FORMAT)
   - `lib/ai/prompts.ts` (Plantão 2-stage prompts, 60/40 MCQ difficulty prompts, phonetic medical STT dictionary)
   - `lib/ai/openrouter.ts` (Cascade executor, generation & evaluation functions, formatPrescriptionWithAI)
-  - `lib/ai/openrouter-batch.ts` (Batch API client for openai/gpt-6-luna:batch)
+  - `lib/ai/openrouter-batch.ts` (Batch API client for openai/gpt-6-luna:batch, budget evaluation, cost calculations)
   - `lib/mcq-queue-service.ts` (Anti-repetition queue service: Unseen > Wrong > Correct)
   - `lib/spaced-repetition.ts` (PlantaoBed sequence definition & FSRS calculations)
 - `app/api/`: Next.js Route handlers
@@ -133,14 +153,33 @@
   - `app/api/generate-plantao/route.ts` (2-stage bed + 2 MCQs, hybrid bed_case_bank reuse)
   - `app/api/generate-questions/route.ts` (10-MCQ post-chapter test with 60/40 difficulty mix)
   - `app/api/evaluate-bed/route.ts` (Evaluation of 2-stage continuous beds)
+  - `app/api/plantao/submit-batch/route.ts` (Async batch bed evaluation submission with ledger cap check)
+  - `app/api/plantao/submit-feedback-batch/route.ts` (Async batch preceptorship feedback submission with cap check)
+  - `app/api/plantao/check-batch-status/route.ts` (Batch polling, idempotent result ingestion, Q5 unlock, score computation)
 - `app/(authenticated)/`: UI pages
-  - `app/(authenticated)/testes/[id]/page.tsx` (Test execution, voice dictation, anti-spoiler, mobile tabs, auto-save)
+  - `app/(authenticated)/dashboard/page.tsx` (Dashboard with ActivePlantaoBanner and silent batch status check)
+  - `app/(authenticated)/plantoes/page.tsx` (Plantões history and active list with 5 colored badges and action buttons)
+  - `app/(authenticated)/testes/[id]/page.tsx` (Dual choice modals, 20s auto-polling, rescue Q5 direct focus, useRef lock)
   - `app/(authenticated)/testes/[id]/resultado/page.tsx` (Result cards, step-by-step scoring, feedback)
+  - `app/(authenticated)/configuracoes/page.tsx` (Modern settings: AI_TASK_PROFILES, acervo metrics, live batch budget bars)
 - `components/`: UI components
+  - `components/dashboard/ActivePlantaoBanner.tsx` (Dynamic active plantão banner with verbatim copy and manual refresh)
   - `components/layout/Sidebar.tsx` (Responsive 1024px drawer sidebar)
   - `components/chapter/ChapterReaderModal.tsx` (10-MCQ post-reading trigger)
   - `components/dashboard/StudyQueueWidget.tsx` (10-MCQ post-rereading trigger)
 - `scripts/`: CLI pipelines and test runners
   - `scripts/nightly-batch-pipeline.ts` (Nightly batch script with mock & live support)
   - `scripts/run-e2e-tests.ts` (Opaque-box E2E test runner for Tiers 1-4)
+- `tests/`: Forensic Challenger & Verification Suites
+  - `tests/challenger-m7-backend.ts` (31 tests: DB state machine & batch endpoints)
+  - `tests/challenger-m7-stress.ts` (28 tests: empirical stress & budget caps)
+  - `tests/challenger-m7-adverse-flow.ts` (15 tests: adverse flow & state transitions)
+  - `tests/challenger-m8-ui-flow.ts` (19 tests: dual choice UI & state transitions)
+  - `tests/challenger-m8-adverse-polling.ts` (20 tests: re-entry & auto-polling)
+  - `tests/challenger-m8-empirical.ts` (21 tests: empirical modals & edge cases)
+  - `tests/challenger-m8-empirical-verdict.ts` (23 tests: empirical edge cases & hardening)
+  - `tests/challenger-m9-ui-signaling.ts` (27 tests: dashboard banner & badges)
+  - `tests/challenger-m9-empirical-lifecycle.ts` (25 tests: background check & lifecycle)
+  - `tests/challenger-m9-adversarial-stress.ts` (28 tests: adversarial stress & state flapping)
+  - `tests/e2e-plantao-batch-suite.ts` (Master E2E runner: 11 suites, 251 assertions, 100% pass)
 

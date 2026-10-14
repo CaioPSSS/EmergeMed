@@ -1,0 +1,1502 @@
+[
+  {
+    "index": 1,
+    "chapterNumber": 1,
+    "title": "Abordagem inicial do paciente grave na sala de emergência",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 78,
+    "endPage": 88,
+    "pageCount": 11
+  },
+  {
+    "index": 2,
+    "chapterNumber": 2,
+    "title": "Manejo da via aérea na emergência",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 89,
+    "endPage": 108,
+    "pageCount": 20
+  },
+  {
+    "index": 3,
+    "chapterNumber": 3,
+    "title": "Suporte Básico de Vida (BLS)",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 109,
+    "endPage": 121,
+    "pageCount": 13
+  },
+  {
+    "index": 4,
+    "chapterNumber": 4,
+    "title": "Suporte Avançado de Vida",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 122,
+    "endPage": 138,
+    "pageCount": 17
+  },
+  {
+    "index": 5,
+    "chapterNumber": 5,
+    "title": "Parada cardiorrespiratória na criança",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 139,
+    "endPage": 150,
+    "pageCount": 12
+  },
+  {
+    "index": 6,
+    "chapterNumber": 6,
+    "title": "Insuficiência respiratória aguda",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 151,
+    "endPage": 167,
+    "pageCount": 17
+  },
+  {
+    "index": 7,
+    "chapterNumber": 7,
+    "title": "Ventilação mecânica na emergência",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 168,
+    "endPage": 186,
+    "pageCount": 19
+  },
+  {
+    "index": 8,
+    "chapterNumber": 8,
+    "title": "Choque",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 187,
+    "endPage": 206,
+    "pageCount": 20
+  },
+  {
+    "index": 9,
+    "chapterNumber": 9,
+    "title": "Sepse",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 207,
+    "endPage": 220,
+    "pageCount": 14
+  },
+  {
+    "index": 10,
+    "chapterNumber": 10,
+    "title": "Coma e alteração do nível de consciência",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 221,
+    "endPage": 241,
+    "pageCount": 21
+  },
+  {
+    "index": 11,
+    "chapterNumber": 11,
+    "title": "Medicina Aeroespacial – história, fisiologia e doenças relacionadas à altitude",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 242,
+    "endPage": 249,
+    "pageCount": 8
+  },
+  {
+    "index": 12,
+    "chapterNumber": 12,
+    "title": "Anafilaxia e outras alergias",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 250,
+    "endPage": 263,
+    "pageCount": 14
+  },
+  {
+    "index": 13,
+    "chapterNumber": 13,
+    "title": "Delirium",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 264,
+    "endPage": 271,
+    "pageCount": 8
+  },
+  {
+    "index": 14,
+    "chapterNumber": 14,
+    "title": "Sedação e analgesia em procedimentos não eletivos",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 272,
+    "endPage": 282,
+    "pageCount": 11
+  },
+  {
+    "index": 15,
+    "chapterNumber": 15,
+    "title": "Dor e anestesia regional",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 283,
+    "endPage": 300,
+    "pageCount": 18
+  },
+  {
+    "index": 16,
+    "chapterNumber": 16,
+    "title": "Agitação psicomotora",
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "isComplementary": false,
+    "startPage": 301,
+    "endPage": 306,
+    "pageCount": 6
+  },
+  {
+    "index": 17,
+    "chapterNumber": 17,
+    "title": "Febre e síndromes hipertérmicas no paciente adulto",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 307,
+    "endPage": 316,
+    "pageCount": 10
+  },
+  {
+    "index": 18,
+    "chapterNumber": 18,
+    "title": "Hipotermia acidental",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 317,
+    "endPage": 327,
+    "pageCount": 11
+  },
+  {
+    "index": 19,
+    "chapterNumber": 19,
+    "title": "Abordagem inicial do paciente com dispneia",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 328,
+    "endPage": 334,
+    "pageCount": 7
+  },
+  {
+    "index": 20,
+    "chapterNumber": 20,
+    "title": "Dor torácica",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 335,
+    "endPage": 355,
+    "pageCount": 21
+  },
+  {
+    "index": 21,
+    "chapterNumber": 21,
+    "title": "Perda transitória da consciência",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 356,
+    "endPage": 368,
+    "pageCount": 13
+  },
+  {
+    "index": 22,
+    "chapterNumber": 22,
+    "title": "Náuseas e vômitos",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 369,
+    "endPage": 378,
+    "pageCount": 10
+  },
+  {
+    "index": 23,
+    "chapterNumber": 23,
+    "title": "Hemoptise",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 379,
+    "endPage": 389,
+    "pageCount": 11
+  },
+  {
+    "index": 24,
+    "chapterNumber": 24,
+    "title": "Diarreia aguda",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 390,
+    "endPage": 397,
+    "pageCount": 8
+  },
+  {
+    "index": 25,
+    "chapterNumber": 25,
+    "title": "Icterícia",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 398,
+    "endPage": 408,
+    "pageCount": 11
+  },
+  {
+    "index": 26,
+    "chapterNumber": 26,
+    "title": "Dor abdominal",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 409,
+    "endPage": 427,
+    "pageCount": 19
+  },
+  {
+    "index": 27,
+    "chapterNumber": 27,
+    "title": "Cefaleia",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 428,
+    "endPage": 437,
+    "pageCount": 10
+  },
+  {
+    "index": 28,
+    "chapterNumber": 28,
+    "title": "Ascite",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 438,
+    "endPage": 447,
+    "pageCount": 10
+  },
+  {
+    "index": 29,
+    "chapterNumber": 29,
+    "title": "Lombalgia",
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 448,
+    "endPage": 459,
+    "pageCount": 12
+  },
+  {
+    "index": 30,
+    "chapterNumber": 30,
+    "title": "Síndrome coronariana aguda sem supradesnivelamento do segmento ST",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 460,
+    "endPage": 473,
+    "pageCount": 14
+  },
+  {
+    "index": 31,
+    "chapterNumber": 31,
+    "title": "Infarto agudo do miocárdio com supradesnivelamento do segmento ST",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 474,
+    "endPage": 490,
+    "pageCount": 17
+  },
+  {
+    "index": 32,
+    "chapterNumber": 32,
+    "title": "Fibrilação atrial",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 491,
+    "endPage": 507,
+    "pageCount": 17
+  },
+  {
+    "index": 33,
+    "chapterNumber": 33,
+    "title": "Taquiarritmias",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 508,
+    "endPage": 532,
+    "pageCount": 25
+  },
+  {
+    "index": 34,
+    "chapterNumber": 34,
+    "title": "Bradicardias",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 533,
+    "endPage": 541,
+    "pageCount": 9
+  },
+  {
+    "index": 35,
+    "chapterNumber": 35,
+    "title": "Insuficiência cardíaca aguda",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 542,
+    "endPage": 558,
+    "pageCount": 17
+  },
+  {
+    "index": 36,
+    "chapterNumber": 36,
+    "title": "Emergências hipertensivas",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 559,
+    "endPage": 572,
+    "pageCount": 14
+  },
+  {
+    "index": 37,
+    "chapterNumber": 37,
+    "title": "Síndromes aórticas agudas",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 573,
+    "endPage": 582,
+    "pageCount": 10
+  },
+  {
+    "index": 38,
+    "chapterNumber": 38,
+    "title": "Pericardite aguda, derrame pericárdico e tamponamento cardíaco",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 583,
+    "endPage": 600,
+    "pageCount": 18
+  },
+  {
+    "index": 39,
+    "chapterNumber": 39,
+    "title": "Endocardite infecciosa",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 601,
+    "endPage": 615,
+    "pageCount": 15
+  },
+  {
+    "index": 40,
+    "chapterNumber": 40,
+    "title": "Trombose venosa profunda",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 616,
+    "endPage": 627,
+    "pageCount": 12
+  },
+  {
+    "index": 41,
+    "chapterNumber": 41,
+    "title": "Oclusão arterial aguda",
+    "section": "Seção III – Emergências cardiovasculares",
+    "isComplementary": false,
+    "startPage": 628,
+    "endPage": 638,
+    "pageCount": 11
+  },
+  {
+    "index": 42,
+    "chapterNumber": 42,
+    "title": "Asma",
+    "section": "Seção IV – Emergências respiratórias",
+    "isComplementary": false,
+    "startPage": 639,
+    "endPage": 649,
+    "pageCount": 11
+  },
+  {
+    "index": 43,
+    "chapterNumber": 43,
+    "title": "Doença pulmonar obstrutiva crônica",
+    "section": "Seção IV – Emergências respiratórias",
+    "isComplementary": false,
+    "startPage": 650,
+    "endPage": 661,
+    "pageCount": 12
+  },
+  {
+    "index": 44,
+    "chapterNumber": 44,
+    "title": "Pneumonia adquirida na comunidade (PAC)",
+    "section": "Seção IV – Emergências respiratórias",
+    "isComplementary": false,
+    "startPage": 662,
+    "endPage": 679,
+    "pageCount": 18
+  },
+  {
+    "index": 45,
+    "chapterNumber": 45,
+    "title": "Derrame pleural",
+    "section": "Seção IV – Emergências respiratórias",
+    "isComplementary": false,
+    "startPage": 680,
+    "endPage": 694,
+    "pageCount": 15
+  },
+  {
+    "index": 46,
+    "chapterNumber": 46,
+    "title": "Tromboembolismo pulmonar",
+    "section": "Seção IV – Emergências respiratórias",
+    "isComplementary": false,
+    "startPage": 695,
+    "endPage": 721,
+    "pageCount": 27
+  },
+  {
+    "index": 47,
+    "chapterNumber": 47,
+    "title": "Pneumotórax não traumático",
+    "section": "Seção IV – Emergências respiratórias",
+    "isComplementary": false,
+    "startPage": 722,
+    "endPage": 729,
+    "pageCount": 8
+  },
+  {
+    "index": 48,
+    "chapterNumber": 48,
+    "title": "Infecções de vias aéreas superiores",
+    "section": "Seção V – Emergências infecciosas",
+    "isComplementary": false,
+    "startPage": 730,
+    "endPage": 741,
+    "pageCount": 12
+  },
+  {
+    "index": 49,
+    "chapterNumber": 49,
+    "title": "Infecção pelo HIV e AIDS",
+    "section": "Seção V – Emergências infecciosas",
+    "isComplementary": false,
+    "startPage": 742,
+    "endPage": 761,
+    "pageCount": 20
+  },
+  {
+    "index": 50,
+    "chapterNumber": 50,
+    "title": "Infecção do trato urinário",
+    "section": "Seção V – Emergências infecciosas",
+    "isComplementary": false,
+    "startPage": 762,
+    "endPage": 771,
+    "pageCount": 10
+  },
+  {
+    "index": 51,
+    "chapterNumber": 51,
+    "title": "Dengue",
+    "section": "Seção V – Emergências infecciosas",
+    "isComplementary": false,
+    "startPage": 772,
+    "endPage": 784,
+    "pageCount": 13
+  },
+  {
+    "index": 52,
+    "chapterNumber": 52,
+    "title": "Leptospirose",
+    "section": "Seção V – Emergências infecciosas",
+    "isComplementary": false,
+    "startPage": 785,
+    "endPage": 794,
+    "pageCount": 10
+  },
+  {
+    "index": 53,
+    "chapterNumber": 53,
+    "title": "Infecções cutâneas",
+    "section": "Seção V – Emergências infecciosas",
+    "isComplementary": false,
+    "startPage": 795,
+    "endPage": 806,
+    "pageCount": 12
+  },
+  {
+    "index": 54,
+    "chapterNumber": 54,
+    "title": "Abordagem do paciente com acidente vascular cerebral isquêmico agudo",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 807,
+    "endPage": 832,
+    "pageCount": 26
+  },
+  {
+    "index": 55,
+    "chapterNumber": 55,
+    "title": "Hemorragia subaracnóidea",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 833,
+    "endPage": 842,
+    "pageCount": 10
+  },
+  {
+    "index": 56,
+    "chapterNumber": 56,
+    "title": "Hemorragias intracranianas parenquimatosas",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 843,
+    "endPage": 854,
+    "pageCount": 12
+  },
+  {
+    "index": 57,
+    "chapterNumber": 57,
+    "title": "Infecções do sistema nervoso central",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 855,
+    "endPage": 868,
+    "pageCount": 14
+  },
+  {
+    "index": 58,
+    "chapterNumber": 58,
+    "title": "Paralisias flácidas agudas",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 869,
+    "endPage": 876,
+    "pageCount": 8
+  },
+  {
+    "index": 59,
+    "chapterNumber": 59,
+    "title": "Abordagem da primeira crise epiléptica",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 877,
+    "endPage": 887,
+    "pageCount": 11
+  },
+  {
+    "index": 60,
+    "chapterNumber": 60,
+    "title": "Síndromes vertiginosas agudas",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 888,
+    "endPage": 897,
+    "pageCount": 10
+  },
+  {
+    "index": 61,
+    "chapterNumber": 61,
+    "title": "Emergências neuropsiquiátricas",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 898,
+    "endPage": 910,
+    "pageCount": 13
+  },
+  {
+    "index": 62,
+    "chapterNumber": 62,
+    "title": "Hipertensão intracraniana",
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "isComplementary": false,
+    "startPage": 911,
+    "endPage": 923,
+    "pageCount": 13
+  },
+  {
+    "index": 63,
+    "chapterNumber": 63,
+    "title": "Atendimento inicial ao paciente politraumatizado",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 924,
+    "endPage": 934,
+    "pageCount": 11
+  },
+  {
+    "index": 64,
+    "chapterNumber": 64,
+    "title": "Traumatismo cranioencefálico",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 935,
+    "endPage": 945,
+    "pageCount": 11
+  },
+  {
+    "index": 65,
+    "chapterNumber": 65,
+    "title": "Trauma cervical",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 946,
+    "endPage": 962,
+    "pageCount": 17
+  },
+  {
+    "index": 66,
+    "chapterNumber": 66,
+    "title": "Trauma torácico",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 963,
+    "endPage": 970,
+    "pageCount": 8
+  },
+  {
+    "index": 67,
+    "chapterNumber": 67,
+    "title": "Trauma abdominal",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 971,
+    "endPage": 981,
+    "pageCount": 11
+  },
+  {
+    "index": 68,
+    "chapterNumber": 68,
+    "title": "Choque hemorrágico associado ao trauma",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 982,
+    "endPage": 991,
+    "pageCount": 10
+  },
+  {
+    "index": 69,
+    "chapterNumber": 69,
+    "title": "Fratura exposta: abordagem na emergência",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 992,
+    "endPage": 999,
+    "pageCount": 8
+  },
+  {
+    "index": 70,
+    "chapterNumber": 70,
+    "title": "Queimaduras térmicas",
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "isComplementary": false,
+    "startPage": 1000,
+    "endPage": 1014,
+    "pageCount": 15
+  },
+  {
+    "index": 71,
+    "chapterNumber": 71,
+    "title": "Encefalopatia hepática",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1015,
+    "endPage": 1023,
+    "pageCount": 9
+  },
+  {
+    "index": 72,
+    "chapterNumber": 72,
+    "title": "Peritonite bacteriana espontânea",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1024,
+    "endPage": 1031,
+    "pageCount": 8
+  },
+  {
+    "index": 73,
+    "chapterNumber": 73,
+    "title": "Síndrome hepatorrenal",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1032,
+    "endPage": 1038,
+    "pageCount": 7
+  },
+  {
+    "index": 74,
+    "chapterNumber": 74,
+    "title": "Hepatites graves e insuficiência hepática aguda",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1039,
+    "endPage": 1052,
+    "pageCount": 14
+  },
+  {
+    "index": 75,
+    "chapterNumber": 75,
+    "title": "Hemorragia digestiva alta",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1053,
+    "endPage": 1064,
+    "pageCount": 12
+  },
+  {
+    "index": 76,
+    "chapterNumber": 76,
+    "title": "Doença diverticular aguda",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1065,
+    "endPage": 1075,
+    "pageCount": 11
+  },
+  {
+    "index": 77,
+    "chapterNumber": 77,
+    "title": "Pancreatite aguda",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1076,
+    "endPage": 1086,
+    "pageCount": 11
+  },
+  {
+    "index": 78,
+    "chapterNumber": 78,
+    "title": "Emergências biliares",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1087,
+    "endPage": 1099,
+    "pageCount": 13
+  },
+  {
+    "index": 79,
+    "chapterNumber": 79,
+    "title": "Apendicite aguda",
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "isComplementary": false,
+    "startPage": 1100,
+    "endPage": 1105,
+    "pageCount": 6
+  },
+  {
+    "index": 80,
+    "chapterNumber": 80,
+    "title": "Lesão renal aguda",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1106,
+    "endPage": 1122,
+    "pageCount": 17
+  },
+  {
+    "index": 81,
+    "chapterNumber": 81,
+    "title": "Diálise na emergência",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1123,
+    "endPage": 1131,
+    "pageCount": 9
+  },
+  {
+    "index": 82,
+    "chapterNumber": 82,
+    "title": "Distúrbios acidobásicos",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1132,
+    "endPage": 1150,
+    "pageCount": 19
+  },
+  {
+    "index": 83,
+    "chapterNumber": 83,
+    "title": "Hiponatremia",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1151,
+    "endPage": 1160,
+    "pageCount": 10
+  },
+  {
+    "index": 84,
+    "chapterNumber": 84,
+    "title": "Hipernatremia",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1161,
+    "endPage": 1167,
+    "pageCount": 7
+  },
+  {
+    "index": 85,
+    "chapterNumber": 85,
+    "title": "Hipocalemia",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1168,
+    "endPage": 1177,
+    "pageCount": 10
+  },
+  {
+    "index": 86,
+    "chapterNumber": 86,
+    "title": "Hipercalemia",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1178,
+    "endPage": 1190,
+    "pageCount": 13
+  },
+  {
+    "index": 87,
+    "chapterNumber": 87,
+    "title": "Hipocalcemia",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1191,
+    "endPage": 1199,
+    "pageCount": 9
+  },
+  {
+    "index": 88,
+    "chapterNumber": 88,
+    "title": "Hipercalcemia",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1200,
+    "endPage": 1209,
+    "pageCount": 10
+  },
+  {
+    "index": 89,
+    "chapterNumber": 89,
+    "title": "Cólica nefrética",
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "isComplementary": false,
+    "startPage": 1210,
+    "endPage": 1218,
+    "pageCount": 9
+  },
+  {
+    "index": 90,
+    "chapterNumber": 90,
+    "title": "Hipoglicemia",
+    "section": "Seção X – Emergências metabólicas",
+    "isComplementary": false,
+    "startPage": 1219,
+    "endPage": 1224,
+    "pageCount": 6
+  },
+  {
+    "index": 91,
+    "chapterNumber": 91,
+    "title": "Hiperglicemias e emergências hipoinsulinêmicas",
+    "section": "Seção X – Emergências metabólicas",
+    "isComplementary": false,
+    "startPage": 1225,
+    "endPage": 1234,
+    "pageCount": 10
+  },
+  {
+    "index": 92,
+    "chapterNumber": 92,
+    "title": "Crise tireotóxica",
+    "section": "Seção X – Emergências metabólicas",
+    "isComplementary": false,
+    "startPage": 1235,
+    "endPage": 1242,
+    "pageCount": 8
+  },
+  {
+    "index": 93,
+    "chapterNumber": 93,
+    "title": "Insuficiência adrenal",
+    "section": "Seção X – Emergências metabólicas",
+    "isComplementary": false,
+    "startPage": 1243,
+    "endPage": 1251,
+    "pageCount": 9
+  },
+  {
+    "index": 94,
+    "chapterNumber": 94,
+    "title": "Avaliação dos distúrbios de hemostasia no departamento de emergência",
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "isComplementary": false,
+    "startPage": 1252,
+    "endPage": 1264,
+    "pageCount": 13
+  },
+  {
+    "index": 95,
+    "chapterNumber": 95,
+    "title": "Anemia falciforme",
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "isComplementary": false,
+    "startPage": 1265,
+    "endPage": 1275,
+    "pageCount": 11
+  },
+  {
+    "index": 96,
+    "chapterNumber": 96,
+    "title": "Neutropenia febril",
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "isComplementary": false,
+    "startPage": 1276,
+    "endPage": 1290,
+    "pageCount": 15
+  },
+  {
+    "index": 97,
+    "chapterNumber": 97,
+    "title": "Transfusão de hemocomponentes e reações transfusionais agudas",
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "isComplementary": false,
+    "startPage": 1291,
+    "endPage": 1304,
+    "pageCount": 14
+  },
+  {
+    "index": 98,
+    "chapterNumber": 98,
+    "title": "Plaquetopenias",
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "isComplementary": false,
+    "startPage": 1305,
+    "endPage": 1313,
+    "pageCount": 9
+  },
+  {
+    "index": 99,
+    "chapterNumber": 99,
+    "title": "Tromboelastografia na avaliação do paciente com sangramento",
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "isComplementary": false,
+    "startPage": 1314,
+    "endPage": 1321,
+    "pageCount": 8
+  },
+  {
+    "index": 100,
+    "chapterNumber": 100,
+    "title": "Emergências oncológicas",
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "isComplementary": false,
+    "startPage": 1322,
+    "endPage": 1338,
+    "pageCount": 17
+  },
+  {
+    "index": 101,
+    "chapterNumber": 101,
+    "title": "Monoartrite aguda",
+    "section": "Seção XII – Emergências reumatológicas",
+    "isComplementary": false,
+    "startPage": 1339,
+    "endPage": 1351,
+    "pageCount": 13
+  },
+  {
+    "index": 102,
+    "chapterNumber": 102,
+    "title": "Manejo inicial das intoxicações exógenas",
+    "section": "Seção XIII – Causas externas",
+    "isComplementary": false,
+    "startPage": 1352,
+    "endPage": 1366,
+    "pageCount": 15
+  },
+  {
+    "index": 103,
+    "chapterNumber": 103,
+    "title": "Intoxicações por álcoois e drogas de abuso",
+    "section": "Seção XIII – Causas externas",
+    "isComplementary": false,
+    "startPage": 1367,
+    "endPage": 1377,
+    "pageCount": 11
+  },
+  {
+    "index": 104,
+    "chapterNumber": 104,
+    "title": "Abordagem específica das intoxicações por fármacos",
+    "section": "Seção XIII – Causas externas",
+    "isComplementary": false,
+    "startPage": 1378,
+    "endPage": 1401,
+    "pageCount": 24
+  },
+  {
+    "index": 105,
+    "chapterNumber": 105,
+    "title": "Intoxicações ambientais",
+    "section": "Seção XIII – Causas externas",
+    "isComplementary": false,
+    "startPage": 1402,
+    "endPage": 1422,
+    "pageCount": 21
+  },
+  {
+    "index": 106,
+    "chapterNumber": 106,
+    "title": "Afogamento",
+    "section": "Seção XIII – Causas externas",
+    "isComplementary": false,
+    "startPage": 1423,
+    "endPage": 1430,
+    "pageCount": 8
+  },
+  {
+    "index": 107,
+    "chapterNumber": 107,
+    "title": "Acidentes relacionados a animais peçonhentos",
+    "section": "Seção XIII – Causas externas",
+    "isComplementary": false,
+    "startPage": 1431,
+    "endPage": 1445,
+    "pageCount": 15
+  },
+  {
+    "index": 108,
+    "chapterNumber": 108,
+    "title": "Síndrome de abstinência alcoólica",
+    "section": "Seção XIII – Causas externas",
+    "isComplementary": false,
+    "startPage": 1446,
+    "endPage": 1454,
+    "pageCount": 9
+  },
+  {
+    "index": 109,
+    "chapterNumber": 109,
+    "title": "Dermatoses agudas",
+    "section": "Seção XIV – Emergências dermatológicas",
+    "isComplementary": false,
+    "startPage": 1455,
+    "endPage": 1463,
+    "pageCount": 9
+  },
+  {
+    "index": 110,
+    "chapterNumber": 110,
+    "title": "Farmacodermias",
+    "section": "Seção XIV – Emergências dermatológicas",
+    "isComplementary": false,
+    "startPage": 1464,
+    "endPage": 1474,
+    "pageCount": 11
+  },
+  {
+    "index": 111,
+    "chapterNumber": 111,
+    "title": "Emergências oftalmológicas",
+    "section": "Seção XV – Emergências oftalmológicas e otorrinolaringológicas",
+    "isComplementary": false,
+    "startPage": 1475,
+    "endPage": 1527,
+    "pageCount": 53
+  },
+  {
+    "index": 112,
+    "chapterNumber": 112,
+    "title": "Emergências otorrinolaringológicas",
+    "section": "Seção XV – Emergências oftalmológicas e otorrinolaringológicas",
+    "isComplementary": false,
+    "startPage": 1528,
+    "endPage": 1546,
+    "pageCount": 19
+  },
+  {
+    "index": 113,
+    "chapterNumber": 113,
+    "title": "Saúde LGBTQIA+ no departamento de emergência",
+    "section": "Seção XVI – Emergências em LGBTQIA+",
+    "isComplementary": false,
+    "startPage": 1547,
+    "endPage": 1560,
+    "pageCount": 14
+  },
+  {
+    "index": 114,
+    "chapterNumber": 114,
+    "title": "Emergências ginecológicas",
+    "section": "Seção XVII – Emergências ginecológicas e obstétricas",
+    "isComplementary": false,
+    "startPage": 1561,
+    "endPage": 1572,
+    "pageCount": 12
+  },
+  {
+    "index": 115,
+    "chapterNumber": 115,
+    "title": "Emergências obstétricas",
+    "section": "Seção XVII – Emergências ginecológicas e obstétricas",
+    "isComplementary": false,
+    "startPage": 1573,
+    "endPage": 1589,
+    "pageCount": 17
+  },
+  {
+    "index": 116,
+    "chapterNumber": 116,
+    "title": "Cuidado paliativo na emergência",
+    "section": "Seção XVIII – Cuidados paliativos no departamento de emergência",
+    "isComplementary": false,
+    "startPage": 1590,
+    "endPage": 1601,
+    "pageCount": 12
+  },
+  {
+    "index": 117,
+    "chapterNumber": 117,
+    "title": "Acesso venoso guiado por ultrassonografia",
+    "section": "Seção XIX – Ultrassonografia à beira do leito",
+    "isComplementary": false,
+    "startPage": 1602,
+    "endPage": 1617,
+    "pageCount": 16
+  },
+  {
+    "index": 118,
+    "chapterNumber": 118,
+    "title": "Avaliação torácica por ultrassom",
+    "section": "Seção XIX – Ultrassonografia à beira do leito",
+    "isComplementary": false,
+    "startPage": 1618,
+    "endPage": 1629,
+    "pageCount": 12
+  },
+  {
+    "index": 119,
+    "chapterNumber": 119,
+    "title": "Ultrassonografia cardíaca focada",
+    "section": "Seção XIX – Ultrassonografia à beira do leito",
+    "isComplementary": false,
+    "startPage": 1630,
+    "endPage": 1656,
+    "pageCount": 27
+  },
+  {
+    "index": 120,
+    "chapterNumber": 120,
+    "title": "Marca-passo e dispositivos implantáveis no departamento de emergência",
+    "section": "Seção XX – Procedimentos",
+    "isComplementary": false,
+    "startPage": 1657,
+    "endPage": 1666,
+    "pageCount": 10
+  },
+  {
+    "index": 121,
+    "chapterNumber": 121,
+    "title": "Acessos vasculares",
+    "section": "Seção XX – Procedimentos",
+    "isComplementary": false,
+    "startPage": 1667,
+    "endPage": 1683,
+    "pageCount": 17
+  },
+  {
+    "index": 122,
+    "chapterNumber": 122,
+    "title": "Toracocentese e drenagem pleural",
+    "section": "Seção XX – Procedimentos",
+    "isComplementary": false,
+    "startPage": 1684,
+    "endPage": 1694,
+    "pageCount": 11
+  },
+  {
+    "index": 123,
+    "chapterNumber": 1,
+    "title": "Cuidados pós-parada cardiorrespiratória",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1695,
+    "endPage": 1707,
+    "pageCount": 13
+  },
+  {
+    "index": 124,
+    "chapterNumber": 2,
+    "title": "Comunicação no departamento de emergência",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1708,
+    "endPage": 1713,
+    "pageCount": 6
+  },
+  {
+    "index": 125,
+    "chapterNumber": 3,
+    "title": "Manejo inicial do paciente idoso no departamento de emergência",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1714,
+    "endPage": 1721,
+    "pageCount": 8
+  },
+  {
+    "index": 126,
+    "chapterNumber": 4,
+    "title": "A telemedicina e a medicina de emergência",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1722,
+    "endPage": 1727,
+    "pageCount": 6
+  },
+  {
+    "index": 127,
+    "chapterNumber": 5,
+    "title": "Miocardite aguda",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1728,
+    "endPage": 1738,
+    "pageCount": 11
+  },
+  {
+    "index": 128,
+    "chapterNumber": 6,
+    "title": "Emergências em cardiopatias congênitas no adulto",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1739,
+    "endPage": 1755,
+    "pageCount": 17
+  },
+  {
+    "index": 129,
+    "chapterNumber": 7,
+    "title": "Pneumonites e pneumonias por aspiração e abscesso pulmonar",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1756,
+    "endPage": 1765,
+    "pageCount": 10
+  },
+  {
+    "index": 130,
+    "chapterNumber": 8,
+    "title": "Hemorragia alveolar difusa",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1766,
+    "endPage": 1772,
+    "pageCount": 7
+  },
+  {
+    "index": 131,
+    "chapterNumber": 9,
+    "title": "Infecção pelo vírus Influenza",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1773,
+    "endPage": 1780,
+    "pageCount": 8
+  },
+  {
+    "index": 132,
+    "chapterNumber": 10,
+    "title": "Infecção pelo SARS-CoV-2 (COVID-19)",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1781,
+    "endPage": 1811,
+    "pageCount": 31
+  },
+  {
+    "index": 133,
+    "chapterNumber": 11,
+    "title": "Chikungunya",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1812,
+    "endPage": 1817,
+    "pageCount": 6
+  },
+  {
+    "index": 134,
+    "chapterNumber": 12,
+    "title": "Zika vírus",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1818,
+    "endPage": 1822,
+    "pageCount": 5
+  },
+  {
+    "index": 135,
+    "chapterNumber": 13,
+    "title": "Febre amarela",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1823,
+    "endPage": 1830,
+    "pageCount": 8
+  },
+  {
+    "index": 136,
+    "chapterNumber": 14,
+    "title": "Ebola",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1831,
+    "endPage": 1836,
+    "pageCount": 6
+  },
+  {
+    "index": 137,
+    "chapterNumber": 15,
+    "title": "Sarampo",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1837,
+    "endPage": 1845,
+    "pageCount": 9
+  },
+  {
+    "index": 138,
+    "chapterNumber": 16,
+    "title": "Tétano acidental",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1846,
+    "endPage": 1853,
+    "pageCount": 8
+  },
+  {
+    "index": 139,
+    "chapterNumber": 17,
+    "title": "Atendimento aos pacientes transplantados no departamento de emergência",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1854,
+    "endPage": 1862,
+    "pageCount": 9
+  },
+  {
+    "index": 140,
+    "chapterNumber": 18,
+    "title": "Abordagem ao estado de mal epiléptico",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1863,
+    "endPage": 1874,
+    "pageCount": 12
+  },
+  {
+    "index": 141,
+    "chapterNumber": 19,
+    "title": "Diagnóstico de morte encefálica no departamento de emergência",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1875,
+    "endPage": 1881,
+    "pageCount": 7
+  },
+  {
+    "index": 142,
+    "chapterNumber": 20,
+    "title": "Triagem de múltiplas vítimas no atendimento pré-hospitalar",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1882,
+    "endPage": 1889,
+    "pageCount": 8
+  },
+  {
+    "index": 143,
+    "chapterNumber": 21,
+    "title": "Hemorragia digestiva baixa",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1890,
+    "endPage": 1899,
+    "pageCount": 10
+  },
+  {
+    "index": 144,
+    "chapterNumber": 22,
+    "title": "Rabdomiólise",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1900,
+    "endPage": 1908,
+    "pageCount": 9
+  },
+  {
+    "index": 145,
+    "chapterNumber": 23,
+    "title": "Estado mixedematoso",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1909,
+    "endPage": 1915,
+    "pageCount": 7
+  },
+  {
+    "index": 146,
+    "chapterNumber": 24,
+    "title": "Emergências reumatológicas e vasculites sistêmicas",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1916,
+    "endPage": 1924,
+    "pageCount": 9
+  },
+  {
+    "index": 147,
+    "chapterNumber": 25,
+    "title": "Intoxicação por plantas",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1925,
+    "endPage": 1945,
+    "pageCount": 21
+  },
+  {
+    "index": 148,
+    "chapterNumber": 26,
+    "title": "Atendimento a vítimas de violência sexual",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1946,
+    "endPage": 1955,
+    "pageCount": 10
+  },
+  {
+    "index": 149,
+    "chapterNumber": 27,
+    "title": "Lesões associadas a eletricidade",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1956,
+    "endPage": 1964,
+    "pageCount": 9
+  },
+  {
+    "index": 150,
+    "chapterNumber": 28,
+    "title": "Nutrição enteral no departamento de emergência e síndrome de realimentação",
+    "section": "Conteúdo complementar",
+    "isComplementary": true,
+    "startPage": 1965,
+    "endPage": 1973,
+    "pageCount": 9
+  }
+]

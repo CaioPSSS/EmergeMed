@@ -28,7 +28,16 @@ import {
   MicOff,
   Wand2,
   Plus,
+  Sparkles,
+  Clock,
+  RefreshCw,
+  ArrowRight,
+  Coins,
+  ShieldAlert,
+  Inbox,
+  CheckCircle,
 } from 'lucide-react';
+import { PlantaoTestStatus, isPendingBatchStatus } from '@/types/plantao';
 
 const VENTILATOR_FIELD_LABELS: Record<string, { label: string; unit: string; placeholder: string }> = {
   modo: { label: 'Modo Ventilatório', unit: '', placeholder: 'VCV, PCV ou PSV' },
@@ -57,6 +66,306 @@ function getTypeBadge(type: string) {
   }
 }
 
+function BatchWaitingPanel({
+  status,
+  batchId,
+  submittedAt,
+  bedCount,
+  isChecking,
+  onCheckStatus,
+  feedbackMessage,
+  onNavigateHome,
+}: {
+  status: 'awaiting_batch_bed_evaluation' | 'awaiting_batch_feedback';
+  batchId?: string;
+  submittedAt?: string;
+  bedCount?: number;
+  isChecking: boolean;
+  onCheckStatus: () => void;
+  feedbackMessage: string | null;
+  onNavigateHome: () => void;
+}) {
+  const isBedEval = status === 'awaiting_batch_bed_evaluation';
+  const title = isBedEval
+    ? 'Passagem de Plantão Assíncrona em Processamento'
+    : 'Passagem de Plantão em Auditoria Assíncrona';
+
+  const subtitle = isBedEval
+    ? 'Suas condutas clínicas e prescrições de todos os leitos foram enviadas com sucesso para a fila de avaliação em lote do OpenRouter (openai/gpt-6-luna:batch com 50% de economia).'
+    : 'Seu relatório de preceptoria foi encaminhado para a fila do OpenRouter Batch com 50% de desconto. A IA está consolidando o desempenho dos leitos em segundo plano.';
+
+  const formattedDate = submittedAt
+    ? new Date(submittedAt).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : 'Registrado recentemente';
+
+  return (
+    <div
+      className="glass-panel"
+      style={{
+        padding: 'clamp(24px, 5vw, 44px)',
+        borderRadius: '24px',
+        border: '1px solid rgba(16, 185, 129, 0.4)',
+        background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%)',
+        textAlign: 'center',
+        maxWidth: '760px',
+        margin: '20px auto',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '24px',
+        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(16, 185, 129, 0.1)',
+        width: '100%',
+      }}
+    >
+      <div
+        style={{
+          width: '76px',
+          height: '76px',
+          borderRadius: '50%',
+          background: 'rgba(16, 185, 129, 0.15)',
+          border: '2px solid rgba(52, 211, 153, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+        }}
+      >
+        <Cloud size={38} color="#34d399" />
+        <span
+          className="pulse-dot"
+          style={{
+            position: 'absolute',
+            top: '4px',
+            right: '4px',
+            width: '12px',
+            height: '12px',
+            background: '#10b981',
+          }}
+        />
+      </div>
+
+      <div>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 12px',
+            borderRadius: '9999px',
+            background: 'rgba(16, 185, 129, 0.18)',
+            border: '1px solid rgba(16, 185, 129, 0.4)',
+            color: '#34d399',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            marginBottom: '12px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          <Loader2 size={13} className="spin" style={{ animation: 'spin 2s linear infinite' }} />
+          <span>OpenRouter Batch • openai/gpt-6-luna:batch (-50% OFF)</span>
+        </div>
+        <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#f8fafc', marginBottom: '8px' }}>
+          {title}
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', lineHeight: '1.6', maxWidth: '620px', margin: '0 auto' }}>
+          {subtitle}
+        </p>
+      </div>
+
+      <div
+        style={{
+          width: '100%',
+          background: 'rgba(15, 23, 42, 0.6)',
+          borderRadius: '16px',
+          padding: '16px 20px',
+          border: '1px solid var(--border-subtle)',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '16px',
+          textAlign: 'left',
+        }}
+      >
+        <div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+            📅 Horário do Envio
+          </span>
+          <div style={{ color: '#e2e8f0', fontSize: '0.9rem', fontWeight: 700, marginTop: '2px' }}>
+            {formattedDate}
+          </div>
+        </div>
+
+        <div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+            🆔 Identificador do Lote (Batch ID)
+          </span>
+          <div
+            style={{
+              color: '#38bdf8',
+              fontFamily: 'monospace',
+              fontSize: '0.84rem',
+              fontWeight: 600,
+              marginTop: '2px',
+              wordBreak: 'break-all',
+            }}
+          >
+            {batchId || 'batch-job-pending'}
+          </div>
+        </div>
+
+        {bedCount && bedCount > 0 ? (
+          <div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+              🛏️ Leitos Submetidos
+            </span>
+            <div style={{ color: '#34d399', fontSize: '0.9rem', fontWeight: 700, marginTop: '2px' }}>
+              {bedCount} leitos
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Loader2 size={14} className="spin" style={{ animation: 'spin 1.5s linear infinite' }} />
+        <span>Verificação automática a cada 20 segundos. Você pode aguardar aqui ou acompanhar no Dashboard.</span>
+      </div>
+
+      {feedbackMessage && (
+        <div
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            background: 'rgba(56, 189, 248, 0.12)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            color: '#38bdf8',
+            fontSize: '0.85rem',
+            textAlign: 'center',
+          }}
+        >
+          {feedbackMessage}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button
+          type="button"
+          onClick={onCheckStatus}
+          disabled={isChecking}
+          className="btn-primary"
+          style={{
+            padding: '12px 24px',
+            fontSize: '0.92rem',
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+            cursor: isChecking ? 'not-allowed' : 'pointer',
+            opacity: isChecking ? 0.7 : 1,
+          }}
+        >
+          {isChecking ? (
+            <>
+              <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+              <span>Verificando Status...</span>
+            </>
+          ) : (
+            <>
+              <RefreshCw size={18} />
+              <span>🔄 Atualizar Status do Lote</span>
+            </>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={onNavigateHome}
+          className="btn-secondary"
+          style={{ padding: '12px 20px', fontSize: '0.92rem' }}
+        >
+          Voltar ao Dashboard
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EvaluatedAnswerReview({ evaluation }: { evaluation: any }) {
+  if (!evaluation) return null;
+  const score = typeof evaluation.score === 'number' ? evaluation.score : 0;
+  const isPass = score >= 6.0;
+
+  return (
+    <div
+      style={{
+        marginTop: '16px',
+        padding: '16px 20px',
+        borderRadius: '14px',
+        background: 'rgba(15, 23, 42, 0.75)',
+        border: `1px solid ${isPass ? 'rgba(16, 185, 129, 0.4)' : 'rgba(244, 63, 94, 0.4)'}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        boxShadow: isPass
+          ? '0 4px 16px rgba(16, 185, 129, 0.1)'
+          : '0 4px 16px rgba(244, 63, 94, 0.1)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+        <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          📊 Avaliação do Lote (OpenRouter Batch):
+        </span>
+        <span
+          style={{
+            fontSize: '0.84rem',
+            fontWeight: 800,
+            padding: '3px 10px',
+            borderRadius: '9999px',
+            background: isPass ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+            color: isPass ? '#34d399' : '#fda4af',
+            border: `1px solid ${isPass ? 'rgba(16, 185, 129, 0.4)' : 'rgba(244, 63, 94, 0.4)'}`,
+          }}
+        >
+          Nota: {score} / 10.0 {evaluation.evaluation?.verdict ? `(${evaluation.evaluation.verdict})` : ''}
+        </span>
+      </div>
+
+      {evaluation.evaluation?.detailedFeedback && (
+        <p style={{ fontSize: '0.86rem', color: '#cbd5e1', lineHeight: '1.5', margin: 0 }}>
+          {evaluation.evaluation.detailedFeedback}
+        </p>
+      )}
+
+      {evaluation.explanation && !evaluation.evaluation?.detailedFeedback && (
+        <p style={{ fontSize: '0.86rem', color: '#cbd5e1', lineHeight: '1.5', margin: 0 }}>
+          {evaluation.explanation}
+        </p>
+      )}
+
+      {evaluation.evaluation?.strengths && (Array.isArray(evaluation.evaluation.strengths) ? evaluation.evaluation.strengths.length > 0 : Boolean(evaluation.evaluation.strengths)) && (
+        <div style={{ fontSize: '0.8rem', color: '#a7f3d0' }}>
+          <strong>Pontos Fortes:</strong> {Array.isArray(evaluation.evaluation.strengths) ? evaluation.evaluation.strengths.join(', ') : evaluation.evaluation.strengths}
+        </div>
+      )}
+
+      {evaluation.evaluation?.improvements && (Array.isArray(evaluation.evaluation.improvements) ? evaluation.evaluation.improvements.length > 0 : Boolean(evaluation.evaluation.improvements)) && (
+        <div style={{ fontSize: '0.8rem', color: '#fda4af' }}>
+          <strong>Ajustes Necessários:</strong> {Array.isArray(evaluation.evaluation.improvements) ? evaluation.evaluation.improvements.join(', ') : evaluation.evaluation.improvements}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TakeTestPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const testId = resolvedParams.id;
@@ -76,20 +385,60 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
   const [cachedEvaluations, setCachedEvaluations] = useState<Record<number, any>>({});
 
+  // Milestone M8: Dual Choice & Plantão State Machine Hooks
+  const [currentPlantaoStatus, setCurrentPlantaoStatus] = useState<PlantaoTestStatus>('in_progress');
+  const [showDualChoiceModal, setShowDualChoiceModal] = useState<boolean>(false);
+  const [showFeedbackDualChoiceModal, setShowFeedbackDualChoiceModal] = useState<boolean>(false);
+  const [submittingBatch, setSubmittingBatch] = useState<boolean>(false);
+  const [submittingRealtimeFeedback, setSubmittingRealtimeFeedback] = useState<boolean>(false);
+  const [submittingFeedbackBatch, setSubmittingFeedbackBatch] = useState<boolean>(false);
+  const [checkingBatchStatus, setCheckingBatchStatus] = useState<boolean>(false);
+  const [batchBudgetBreach, setBatchBudgetBreach] = useState<{
+    error: string;
+    reason?: string;
+    dailyAccumulated?: number;
+    monthlyAccumulated?: number;
+  } | null>(null);
+  const [batchFeedbackBudgetBreach, setBatchFeedbackBudgetBreach] = useState<{
+    error: string;
+    reason?: string;
+    dailyAccumulated?: number;
+    monthlyAccumulated?: number;
+  } | null>(null);
+  const [batchSubmitError, setBatchSubmitError] = useState<string | null>(null);
+  const isSubmittingBatchRef = useRef<boolean>(false);
+  const isSubmittingFeedbackBatchRef = useRef<boolean>(false);
+  const [batchCheckMessage, setBatchCheckMessage] = useState<string | null>(null);
+  const [pendingFinalScore, setPendingFinalScore] = useState<number | null>(null);
+  const [pendingEvaluationsSummary, setPendingEvaluationsSummary] = useState<any[] | null>(null);
+
+  // Plantão specific state
+  const isPlantao = testRecord?.mode === 'plantao';
+  const plantaoData = testRecord?.plantao_data || null;
+  const beds = plantaoData?.beds || [];
+
+  const activePlantaoStatus: PlantaoTestStatus =
+    currentPlantaoStatus ||
+    testRecord?.status ||
+    testRecord?.plantao_data?.status ||
+    (testRecord?.completed ? 'completed' : 'in_progress');
+
   // Auto-Save hook: persistent dual-layer saving (Supabase + localStorage mirror)
   const { saveStatus, lastSavedAt, forceSave, clearDraft, getLocalBackup } = useAutoSave({
     testId,
     supabase,
     userAnswers,
     currentIndex,
-    enabled: !testRecord?.completed && !submitting && !loading,
+    enabled:
+      !testRecord?.completed &&
+      !submitting &&
+      !loading &&
+      !submittingBatch &&
+      !submittingFeedbackBatch &&
+      !submittingRealtimeFeedback &&
+      (activePlantaoStatus === 'in_progress' || activePlantaoStatus === 'ready_for_adverse'),
     debounceMs: 2500,
   });
-
-  // Plantão specific state
-  const isPlantao = testRecord?.mode === 'plantao';
-  const plantaoData = testRecord?.plantao_data || null;
-  const beds = plantaoData?.beds || [];
 
   useEffect(() => {
     async function loadTest() {
@@ -102,44 +451,91 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
 
       if (error || !data) {
         setError('Simulado ou Plantão não encontrado.');
-      } else {
-        setTestRecord(data);
-        const qs = (data.questions || []) as QuestionItem[];
-        setQuestions(qs);
+        setLoading(false);
+        return;
+      }
 
-        let restoredAnswers = data.answers || null;
-        let restoredIndex = typeof data.draft_index === 'number' ? data.draft_index : 0;
+      const initialStatus = (data.status || data.plantao_data?.status || (data.completed ? 'completed' : 'in_progress')) as PlantaoTestStatus;
+      setCurrentPlantaoStatus(initialStatus);
 
-        // Fallback: If Supabase has no answers, check local mirror
-        if (!restoredAnswers || Object.keys(restoredAnswers).length === 0) {
-          const localBackup = getLocalBackup();
-          if (localBackup && localBackup.answers && Object.keys(localBackup.answers).length > 0) {
-            restoredAnswers = localBackup.answers;
-            if (typeof localBackup.currentIndex === 'number') {
-              restoredIndex = localBackup.currentIndex;
-            }
+      // 1. COMPLETED: Redirect immediately to results
+      if (initialStatus === 'completed' || data.completed) {
+        router.replace(`/testes/${testId}/resultado`);
+        return;
+      }
+
+      setTestRecord(data);
+      const qs = (data.questions || []) as QuestionItem[];
+      setQuestions(qs);
+
+      if (data.results) {
+        setCachedEvaluations(data.results);
+      }
+
+      // 2. READY_FOR_ADVERSE: Focus immediately on the descompensated bed & Q5
+      if (initialStatus === 'ready_for_adverse') {
+        if (data.answers) setUserAnswers(data.answers);
+
+        const currentBeds = data.plantao_data?.beds || [];
+        const descompensated = currentBeds.find((b: any) => b.bonusQuestionId || b.hasAdverseEvolution);
+        let q5Index = -1;
+
+        if (descompensated?.bonusQuestionId) {
+          q5Index = qs.findIndex((q) => q.id === descompensated.bonusQuestionId);
+        }
+        if (q5Index === -1) {
+          q5Index = qs.findIndex((q) =>
+            q.chapterTitle?.includes('COMPLICAÇÃO') || q.chapterTitle?.includes('EVOLUÇÃO ADVERSA')
+          );
+        }
+
+        if (q5Index !== -1) {
+          setCurrentIndex(q5Index);
+        } else if (typeof data.draft_index === 'number' && data.draft_index < qs.length) {
+          setCurrentIndex(data.draft_index);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // 3. AWAITING_BATCH_*: Lock questions, answers restored, waiting panel will be shown
+      if (
+        initialStatus === 'awaiting_batch_bed_evaluation' ||
+        initialStatus === 'awaiting_batch_feedback'
+      ) {
+        if (data.answers) setUserAnswers(data.answers);
+        setLoading(false);
+        return;
+      }
+
+      // 4. IN_PROGRESS: Standard exam behavior with draft restoration
+      let restoredAnswers = data.answers || null;
+      let restoredIndex = typeof data.draft_index === 'number' ? data.draft_index : 0;
+
+      // Fallback: If Supabase has no answers, check local mirror
+      if (!restoredAnswers || Object.keys(restoredAnswers).length === 0) {
+        const localBackup = getLocalBackup();
+        if (localBackup && localBackup.answers && Object.keys(localBackup.answers).length > 0) {
+          restoredAnswers = localBackup.answers;
+          if (typeof localBackup.currentIndex === 'number') {
+            restoredIndex = localBackup.currentIndex;
           }
-        }
-
-        if (restoredAnswers && Object.keys(restoredAnswers).length > 0) {
-          setUserAnswers(restoredAnswers);
-          if (!data.completed) {
-            const answeredCount = Object.keys(restoredAnswers).length;
-            setRestoredDraftInfo({
-              count: answeredCount,
-              index: restoredIndex < qs.length ? restoredIndex : 0,
-            });
-          }
-        }
-
-        if (!data.completed && restoredIndex > 0 && restoredIndex < qs.length) {
-          setCurrentIndex(restoredIndex);
-        }
-
-        if (data.results) {
-          setCachedEvaluations(data.results);
         }
       }
+
+      if (restoredAnswers && Object.keys(restoredAnswers).length > 0) {
+        setUserAnswers(restoredAnswers);
+        const answeredCount = Object.keys(restoredAnswers).length;
+        setRestoredDraftInfo({
+          count: answeredCount,
+          index: restoredIndex < qs.length ? restoredIndex : 0,
+        });
+      }
+
+      if (restoredIndex > 0 && restoredIndex < qs.length) {
+        setCurrentIndex(restoredIndex);
+      }
+
       setLoading(false);
     }
 
@@ -147,7 +543,30 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testId]);
 
+  // Question Locking Selector
+  const isQuestionLocked = (questionId: number) => {
+    if (activePlantaoStatus === 'completed') return true;
+    if (
+      activePlantaoStatus === 'awaiting_batch_bed_evaluation' ||
+      activePlantaoStatus === 'awaiting_batch_feedback'
+    ) {
+      return true;
+    }
+    if (activePlantaoStatus === 'ready_for_adverse') {
+      // Only the emergency rescue question Q5 is editable!
+      const bedWithBonus = beds.find((b: any) => b.bonusQuestionId === questionId);
+      if (bedWithBonus) return false;
+      const q = questions.find((item) => item.id === questionId);
+      if (q?.chapterTitle?.includes('COMPLICAÇÃO') || q?.chapterTitle?.includes('EVOLUÇÃO ADVERSA')) {
+        return false;
+      }
+      return true;
+    }
+    return false;
+  };
+
   const handleSelectOption = (questionId: number, optionIndex: number) => {
+    if (isQuestionLocked(questionId)) return;
     setUserAnswers((prev) => ({
       ...prev,
       [questionId]: optionIndex,
@@ -155,6 +574,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   };
 
   const handlePrescriptionTextChange = (questionId: number, text: string) => {
+    if (isQuestionLocked(questionId)) return;
     latestDictationRef.current = text;
     setUserAnswers((prev) => ({
       ...prev,
@@ -163,6 +583,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   };
 
   const handleVentilatorFieldChange = (questionId: number, field: string, value: string) => {
+    if (isQuestionLocked(questionId)) return;
     setUserAnswers((prev) => {
       const current = (prev[questionId] as Record<string, string>) || {};
       return {
@@ -428,6 +849,482 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
   const handlePrev = async () => {
     await forceSave();
     setCurrentIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  // Auto-polling interval for pending batch jobs (every 20s)
+  useEffect(() => {
+    if (!isPlantao || !isPendingBatchStatus(activePlantaoStatus)) return;
+
+    // Immediate non-blocking check on mount
+    handleCheckBatchStatus(false);
+
+    // Periodic polling every 20s
+    const intervalId = setInterval(() => {
+      handleCheckBatchStatus(false);
+    }, 20000);
+
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlantao, activePlantaoStatus, testId]);
+
+  // Manual & Polling Batch Status Handler
+  const handleCheckBatchStatus = async (isManual = false) => {
+    if (checkingBatchStatus) return;
+    if (isManual) {
+      setCheckingBatchStatus(true);
+      setBatchCheckMessage(null);
+    }
+
+    try {
+      const res = await fetch('/api/plantao/check-batch-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (isManual) {
+          setBatchCheckMessage(`⚠️ ${data.error || 'Erro ao consultar lote no OpenRouter.'}`);
+          setTimeout(() => setBatchCheckMessage(null), 5000);
+        }
+        return;
+      }
+
+      if (data.updated) {
+        if (data.status === 'completed') {
+          setCurrentPlantaoStatus('completed');
+          router.replace(`/testes/${testId}/resultado`);
+          return;
+        }
+
+        if (data.status === 'ready_for_adverse') {
+          setCurrentPlantaoStatus('ready_for_adverse');
+          const { data: refreshedTest } = await supabase
+            .from('tests')
+            .select('*')
+            .eq('id', testId)
+            .single();
+
+          if (refreshedTest) {
+            setTestRecord(refreshedTest);
+            const updatedQs = (refreshedTest.questions || []) as QuestionItem[];
+            setQuestions(updatedQs);
+            if (refreshedTest.answers) setUserAnswers(refreshedTest.answers);
+            if (refreshedTest.results) setCachedEvaluations(refreshedTest.results);
+
+            const bedsList = refreshedTest.plantao_data?.beds || [];
+            const descompensated = bedsList.find((b: any) => b.bonusQuestionId || b.hasAdverseEvolution);
+            if (descompensated?.bonusQuestionId) {
+              const q5Idx = updatedQs.findIndex((q) => q.id === descompensated.bonusQuestionId);
+              if (q5Idx !== -1) setCurrentIndex(q5Idx);
+            }
+          } else {
+            if (data.questions) setQuestions(data.questions);
+            if (data.results) setCachedEvaluations(data.results);
+            setTestRecord((prev: any) => ({
+              ...prev,
+              status: 'ready_for_adverse',
+              questions: data.questions || prev?.questions,
+              results: data.results || prev?.results,
+            }));
+          }
+
+          if (data.hasAdverseEvolution) {
+            if (isManual) {
+              alert(
+                '⚠️ INTERCORRÊNCIA CLÍNICA DETECTADA!\n\nO paciente descompensou após a conduta inicial. Uma questão de emergência salvadora (Q5 Bônus) foi gerada para você conduzir imediatamente!'
+              );
+            }
+          }
+
+          if (isManual) {
+            setBatchCheckMessage('✅ Avaliação do lote concluída com sucesso!');
+            setTimeout(() => setBatchCheckMessage(null), 4000);
+          }
+        }
+      } else {
+        if (isManual) {
+          setBatchCheckMessage('⏳ O lote continua na fila de execução do OpenRouter Batch. Tentando novamente...');
+          setTimeout(() => setBatchCheckMessage(null), 4000);
+        }
+      }
+    } catch (err: any) {
+      console.error('Check batch status error:', err);
+      if (isManual) {
+        setBatchCheckMessage(`❌ ${err.message || 'Erro ao checar status.'}`);
+        setTimeout(() => setBatchCheckMessage(null), 4000);
+      }
+    } finally {
+      if (isManual) setCheckingBatchStatus(false);
+    }
+  };
+
+  const buildBedsPayload = () => {
+    return beds.map((bed: any) => {
+      const bedQs = questions.filter(
+        (q) => (bed.questionIds || []).includes(q.id) || bed.bonusQuestionId === q.id
+      );
+
+      const patientWeight =
+        bedQs.find((q) => q.patientWeight)?.patientWeight ||
+        (bedQs[0]?.vignette?.match(/(\d{2,3})\s*kg\b/i)
+          ? parseInt(bedQs[0].vignette.match(/(\d{2,3})\s*kg\b/i)![1], 10)
+          : 70);
+
+      const mcqResults = bedQs
+        .filter((q) => q.type === 'multiple_choice')
+        .map((q) => ({
+          id: q.id,
+          vignette: q.vignette,
+          userAnswer: typeof userAnswers[q.id] === 'number' && q.options ? q.options[userAnswers[q.id]] : 'Não respondida',
+          isCorrect: userAnswers[q.id] === q.correctOption,
+          explanation: q.explanation,
+        }));
+
+      const prescriptionsPayload = bedQs
+        .filter((q) => q.type !== 'multiple_choice')
+        .map((q) => {
+          if (q.type === 'ventilator') {
+            const ventilatorData = (userAnswers[q.id] as Record<string, string>) || {};
+            const userPrescription = Object.entries(ventilatorData)
+              .map(([k, v]) => `${k}: ${v || '(vazio)'}`)
+              .join('\n');
+            return {
+              id: q.id,
+              type: q.type,
+              vignette: q.vignette,
+              userPrescription,
+              idealPrescription: q.idealVentilator
+                ? Object.entries(q.idealVentilator).map(([k, v]) => `${k}: ${v}`).join('\n')
+                : undefined,
+              evaluationCriteria: q.evaluationCriteria,
+              ventilatorData,
+            };
+          } else {
+            const userPrescription = userAnswers[q.id] || 'Sem resposta enviada';
+            return {
+              id: q.id,
+              type: q.type,
+              vignette: q.vignette,
+              userPrescription,
+              idealPrescription: q.idealPrescription,
+              evaluationCriteria: q.evaluationCriteria,
+            };
+          }
+        });
+
+      return {
+        bedNumber: bed.bedNumber,
+        patientWeight,
+        chapterId: bed.chapterId || bedQs[0]?.chapterId,
+        chapterTitle: bed.chapterTitle || `Leito ${bed.bedNumber}`,
+        mcqResults,
+        prescriptionsPayload,
+      };
+    });
+  };
+
+  const handleInitiateCompletion = async () => {
+    await forceSave();
+
+    if (!isPlantao) {
+      // Standard quiz proceeds to original submission
+      handleSubmitTest();
+      return;
+    }
+
+    if (activePlantaoStatus === 'ready_for_adverse') {
+      const unansweredCount = questions.filter((q) => {
+        const answer = userAnswers[q.id];
+        if (answer === undefined || answer === null) return true;
+        if (typeof answer === 'string' && answer.trim() === '') return true;
+        if (q.type === 'ventilator' && typeof answer === 'object') {
+          return Object.values(answer).every((v) => !v || (v as string).trim() === '');
+        }
+        return false;
+      }).length;
+
+      if (unansweredCount > 0) {
+        const confirmProceed = window.confirm(
+          `Você possui ${unansweredCount} conduta(s)/questão(ões) sem resposta. Deseja prosseguir para o encerramento do plantão mesmo assim?`
+        );
+        if (!confirmProceed) return;
+      }
+
+      await handleSubmitTest();
+      return;
+    }
+
+    const unansweredCount = questions.filter((q) => {
+      const answer = userAnswers[q.id];
+      if (answer === undefined || answer === null) return true;
+      if (typeof answer === 'string' && answer.trim() === '') return true;
+      if (q.type === 'ventilator' && typeof answer === 'object') {
+        return Object.values(answer).every((v) => !v || (v as string).trim() === '');
+      }
+      return false;
+    }).length;
+
+    if (unansweredCount > 0) {
+      const confirmProceed = window.confirm(
+        `Você possui ${unansweredCount} conduta(s)/questão(ões) sem resposta. Deseja prosseguir para a escolha de avaliação dos leitos mesmo assim?`
+      );
+      if (!confirmProceed) return;
+    }
+
+    setBatchBudgetBreach(null);
+    setBatchSubmitError(null);
+    setShowDualChoiceModal(true);
+  };
+
+  // Option A for Bed Completion: ⚡ Correção em Tempo Real
+  const handleSelectOptionA_Realtime = async () => {
+    setShowDualChoiceModal(false);
+    setBatchBudgetBreach(null);
+    setBatchSubmitError(null);
+    await handleSubmitTest();
+  };
+
+  // Option B for Bed Completion: Passagem de Plantão Assíncrona (Batch)
+  const handleSelectOptionB_Batch = async () => {
+    if (isSubmittingBatchRef.current) return;
+    isSubmittingBatchRef.current = true;
+
+    setSubmittingBatch(true);
+    setBatchBudgetBreach(null);
+    setBatchSubmitError(null);
+
+    try {
+      const bedsDataPayload = buildBedsPayload();
+
+      const res = await fetch('/api/plantao/submit-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testId,
+          bedsData: bedsDataPayload,
+          userAnswers,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 429 || data.budgetBreach) {
+        setBatchBudgetBreach({
+          error: data.error || 'Limite diário de $0.15 ou mensal de $0.90 atingido.',
+          reason: data.reason,
+          dailyAccumulated: data.dailyAccumulated,
+          monthlyAccumulated: data.monthlyAccumulated,
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao submeter lote de leitos.');
+      }
+
+      setCurrentPlantaoStatus('awaiting_batch_bed_evaluation');
+      setTestRecord((prev: any) => ({
+        ...prev,
+        status: 'awaiting_batch_bed_evaluation',
+        plantao_data: {
+          ...(prev?.plantao_data || {}),
+          batch_job_id: data.batchId,
+          batch_submitted_at: data.submittedAt || new Date().toISOString(),
+          status: 'awaiting_batch_bed_evaluation',
+          evaluationMode: 'batch',
+        },
+      }));
+
+      setShowDualChoiceModal(false);
+      clearDraft();
+    } catch (err: any) {
+      console.error('Batch submission error:', err);
+      setBatchSubmitError(err.message || 'Falha ao conectar com o serviço de lotes.');
+    } finally {
+      setSubmittingBatch(false);
+      isSubmittingBatchRef.current = false;
+    }
+  };
+
+  // Option A for Preceptorship Feedback: ⚡ Correção em Tempo Real
+  const handleSelectFeedbackOptionA_Realtime = async () => {
+    setSubmittingRealtimeFeedback(true);
+    setBatchFeedbackBudgetBreach(null);
+
+    try {
+      const finalScore = pendingFinalScore ?? 0;
+      const summary = pendingEvaluationsSummary ?? [];
+      const currentEvaluations = { ...cachedEvaluations, ...(testRecord?.results || {}) };
+
+      const fbRes = await fetch('/api/generate-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testId,
+          overallScore: finalScore,
+          evaluationsSummary: summary,
+        }),
+      });
+
+      const fbData = await fbRes.json();
+      if (!fbRes.ok) {
+        throw new Error(fbData.error || 'Erro ao gerar feedback em tempo real.');
+      }
+
+      const nowIso = new Date().toISOString();
+      const updatedResults = {
+        ...currentEvaluations,
+        generalFeedback: fbData.generalFeedback,
+      };
+
+      const updatedPlantaoData = {
+        ...(testRecord?.plantao_data || {}),
+        status: 'completed',
+        feedbackEvaluationMode: 'realtime',
+        feedbackCompletedAt: nowIso,
+      };
+
+      await supabase
+        .from('tests')
+        .update({
+          status: 'completed',
+          completed: true,
+          completed_at: nowIso,
+          score: finalScore,
+          answers: userAnswers,
+          results: updatedResults,
+          plantao_data: updatedPlantaoData,
+        })
+        .eq('id', testId);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        if (beds.length > 0) {
+          for (const bed of beds) {
+            const bedQs = questions.filter(
+              (q) => (bed.questionIds || []).includes(q.id) || bed.bonusQuestionId === q.id
+            );
+            let bedPoints = 0;
+            bedQs.forEach((q) => {
+              bedPoints += currentEvaluations[q.id]?.score || 0;
+            });
+            const bedAvgScore = bedQs.length > 0 ? bedPoints / bedQs.length : 0;
+
+            try {
+              const { data: stat } = await supabase
+                .from('chapter_review_stats')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('chapter_id', bed.chapterId)
+                .maybeSingle();
+
+              const update = calculateFSRSUpdate(stat, bedAvgScore);
+              await supabase.from('chapter_review_stats').upsert({
+                user_id: user.id,
+                chapter_id: bed.chapterId,
+                ...update,
+              });
+            } catch (fsrsErr) {
+              console.warn('Erro ao atualizar FSRS no plantão:', fsrsErr);
+            }
+          }
+        }
+
+        await recordActivityAndAwardXP(supabase, user.id, {
+          type: 'plantao_complete',
+          plantaoScore: finalScore,
+        }).catch(() => {});
+      }
+
+      clearDraft();
+      setShowFeedbackDualChoiceModal(false);
+      setCurrentPlantaoStatus('completed');
+      router.push(`/testes/${testId}/resultado`);
+    } catch (err: any) {
+      console.error('Erro ao gerar feedback em tempo real:', err);
+      alert(err.message || 'Falha ao processar correção em tempo real.');
+    } finally {
+      setSubmittingRealtimeFeedback(false);
+    }
+  };
+
+  // Option B for Preceptorship Feedback: Passagem de Plantão Assíncrona (Batch)
+  const handleSelectFeedbackOptionB_Batch = async () => {
+    if (isSubmittingFeedbackBatchRef.current) return;
+    isSubmittingFeedbackBatchRef.current = true;
+
+    setSubmittingFeedbackBatch(true);
+    setBatchFeedbackBudgetBreach(null);
+
+    try {
+      const finalScore = pendingFinalScore ?? 0;
+      const summary = pendingEvaluationsSummary ?? [];
+      const currentEvaluations = { ...cachedEvaluations, ...(testRecord?.results || {}) };
+
+      await supabase
+        .from('tests')
+        .update({
+          answers: userAnswers,
+          results: currentEvaluations,
+          score: finalScore,
+        })
+        .eq('id', testId);
+
+      const res = await fetch('/api/plantao/submit-feedback-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testId,
+          overallScore: finalScore,
+          evaluationsSummary: summary,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 429 || data.budgetBreach) {
+        setBatchFeedbackBudgetBreach({
+          error: data.error || 'Limite diário de $0.15 ou mensal de $0.90 atingido.',
+          reason: data.reason,
+          dailyAccumulated: data.dailyAccumulated,
+          monthlyAccumulated: data.monthlyAccumulated,
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao submeter lote de feedback.');
+      }
+
+      const nowIso = data.submittedAt || new Date().toISOString();
+      setCurrentPlantaoStatus('awaiting_batch_feedback');
+      setTestRecord((prev: any) => ({
+        ...prev,
+        status: 'awaiting_batch_feedback',
+        plantao_data: {
+          ...(prev?.plantao_data || {}),
+          feedbackBatchId: data.batchId,
+          feedback_batch_submitted_at: nowIso,
+          feedbackEvaluationMode: 'batch',
+          status: 'awaiting_batch_feedback',
+        },
+      }));
+
+      clearDraft();
+      setShowFeedbackDualChoiceModal(false);
+    } catch (err: any) {
+      console.error('Erro ao submeter feedback em lote:', err);
+      alert(err.message || 'Falha na comunicação com a API de lote.');
+    } finally {
+      setSubmittingFeedbackBatch(false);
+      isSubmittingFeedbackBatchRef.current = false;
+    }
   };
 
   const handleSubmitTest = async () => {
@@ -784,11 +1681,15 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
             ...plantaoData,
             beds: updatedBeds,
             adverseEvolutions: (plantaoData?.adverseEvolutions || 0) + newlyGeneratedBonusQuestions.length,
+            hasAdverseEvolution: true,
+            status: 'ready_for_adverse',
           };
 
           setQuestions(updatedQuestions);
+          setCurrentPlantaoStatus('ready_for_adverse');
           setTestRecord((prev: any) => ({
             ...prev,
+            status: 'ready_for_adverse',
             questions: updatedQuestions,
             plantao_data: updatedPlantaoData,
             results: evaluations,
@@ -798,6 +1699,7 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           await supabase
             .from('tests')
             .update({
+              status: 'ready_for_adverse',
               questions: updatedQuestions,
               plantao_data: updatedPlantaoData,
               answers: userAnswers,
@@ -825,8 +1727,54 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       questions.forEach((q) => {
         totalPoints += evaluations[q.id]?.score || 0;
       });
-      const maxPoints = questions.length * 10;
+      const maxPoints = Math.max(1, questions.length * 10);
       const finalScore = Math.round((totalPoints / maxPoints) * 100) / 10; // 0.0 to 10.0
+
+      // Build evaluationsSummary for preceptor report
+      const evaluationsSummary = questions.map((q) => {
+        const evalObj = evaluations[q.id];
+        let answerStr = '';
+        if (q.type === 'multiple_choice') {
+          const userOptionIdx = userAnswers[q.id];
+          answerStr = typeof userOptionIdx === 'number' && q.options ? q.options[userOptionIdx] : 'Sem resposta';
+        } else if (q.type === 'ventilator') {
+          const vData = userAnswers[q.id] || {};
+          answerStr = Object.entries(vData).map(([k, v]) => `${k}: ${v}`).join(', ');
+        } else {
+          answerStr = userAnswers[q.id] || 'Sem resposta';
+        }
+
+        return {
+          questionTitle: q.chapterTitle || `Questão ${q.id}`,
+          vignette: q.vignette || '',
+          userAnswer: answerStr,
+          score: evalObj?.score || 0,
+          verdict: evalObj?.evaluation?.verdict,
+          strengths: evalObj?.evaluation?.strengths,
+          idealAnswer: q.idealPrescription || q.explanation,
+        };
+      });
+
+      // ======================================================================
+      // M8 INTERCEPTION: DUAL CHOICE FOR PLANTAO PRECEPTORSHIP FEEDBACK
+      // ======================================================================
+      if (isPlantao) {
+        await supabase
+          .from('tests')
+          .update({
+            answers: userAnswers,
+            results: evaluations,
+            score: finalScore,
+          })
+          .eq('id', testId);
+
+        setPendingFinalScore(finalScore);
+        setPendingEvaluationsSummary(evaluationsSummary);
+        setCachedEvaluations(evaluations);
+        setSubmitting(false);
+        setShowFeedbackDualChoiceModal(true);
+        return; // Halt direct submission, physician chooses Option A or Option B in modal!
+      }
 
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -1043,30 +1991,6 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       }
 
       // Generate AI preceptor general feedback
-      const evaluationsSummary = questions.map((q) => {
-        const evalObj = evaluations[q.id];
-        let answerStr = '';
-        if (q.type === 'multiple_choice') {
-          const userOptionIdx = userAnswers[q.id];
-          answerStr = typeof userOptionIdx === 'number' && q.options ? q.options[userOptionIdx] : 'Sem resposta';
-        } else if (q.type === 'ventilator') {
-          const vData = userAnswers[q.id] || {};
-          answerStr = Object.entries(vData).map(([k, v]) => `${k}: ${v}`).join(', ');
-        } else {
-          answerStr = userAnswers[q.id] || 'Sem resposta';
-        }
-
-        return {
-          questionTitle: q.chapterTitle || `Questão ${q.id}`,
-          vignette: q.vignette || '',
-          userAnswer: answerStr,
-          score: evalObj?.score || 0,
-          verdict: evalObj?.evaluation?.verdict,
-          strengths: evalObj?.evaluation?.strengths,
-          idealAnswer: q.idealPrescription || q.explanation,
-        };
-      });
-
       try {
         await fetch('/api/generate-feedback', {
           method: 'POST',
@@ -1084,7 +2008,8 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
       clearDraft();
       router.push(`/testes/${testId}/resultado`);
     } catch (err: any) {
-      setError(err.message || 'Erro ao submeter e avaliar o teste.');
+      console.error('Erro ao submeter e avaliar o teste:', err);
+      alert(err.message || 'Erro ao submeter e avaliar o teste.');
       setSubmitting(false);
     }
   };
@@ -1478,8 +2403,88 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           </div>
         )}
 
-        {/* Question Card */}
-        <div
+        {/* Emergency Adverse Evolution Banner */}
+        {isPlantao && activePlantaoStatus === 'ready_for_adverse' && (() => {
+          const descompensated = beds.find((b: any) => b.bonusQuestionId || b.hasAdverseEvolution);
+          if (!descompensated) return null;
+
+          return (
+            <div
+              onClick={() => {
+                if (descompensated.bonusQuestionId) {
+                  const qIdx = questions.findIndex((q) => q.id === descompensated.bonusQuestionId);
+                  if (qIdx !== -1) setCurrentIndex(qIdx);
+                }
+              }}
+              style={{
+                padding: '16px 20px',
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, rgba(244, 63, 94, 0.22) 0%, rgba(225, 29, 72, 0.3) 100%)',
+                border: '2px solid #f43f5e',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                cursor: 'pointer',
+                boxShadow: '0 8px 24px rgba(244, 63, 94, 0.25)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <span style={{ fontSize: '1.8rem', flexShrink: 0 }}>🔔</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '0.98rem', letterSpacing: '-0.01em', color: '#fff' }}>
+                    Intercorrência Clínica! O leito descompensou após a conduta inicial. Clique para atender a evolução adversa.
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#fda4af', marginTop: '2px' }}>
+                    Leito {descompensated.bedNumber} — Paciente com instabilidade grave. Realize a prescrição de resgate imediato (Q5) antes de finalizar.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{
+                  background: '#f43f5e',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  padding: '8px 18px',
+                  borderRadius: '9999px',
+                  flexShrink: 0,
+                  border: 'none',
+                  boxShadow: '0 2px 10px rgba(244, 63, 94, 0.4)',
+                }}
+              >
+                Atender Agora →
+              </button>
+            </div>
+          );
+        })()}
+
+        {isPlantao && isPendingBatchStatus(activePlantaoStatus) ? (
+          <BatchWaitingPanel
+            status={activePlantaoStatus as 'awaiting_batch_bed_evaluation' | 'awaiting_batch_feedback'}
+            batchId={
+              activePlantaoStatus === 'awaiting_batch_feedback'
+                ? testRecord?.plantao_data?.feedbackBatchId || testRecord?.plantao_data?.feedback_batch_id
+                : testRecord?.plantao_data?.batch_job_id || testRecord?.plantao_data?.batch_bed_eval_id
+            }
+            submittedAt={
+              activePlantaoStatus === 'awaiting_batch_feedback'
+                ? testRecord?.plantao_data?.feedback_batch_submitted_at
+                : testRecord?.plantao_data?.batch_submitted_at || testRecord?.plantao_data?.batch_bed_eval_submitted_at
+            }
+            bedCount={beds.length}
+            isChecking={checkingBatchStatus}
+            onCheckStatus={() => handleCheckBatchStatus(true)}
+            feedbackMessage={batchCheckMessage}
+            onNavigateHome={() => router.push('/dashboard')}
+          />
+        ) : (
+          <>
+            {/* Question Card */}
+            <div
           className="glass-panel"
           style={{
             padding: '32px',
@@ -1620,13 +2625,17 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                 return (
                   <div
                     key={optIdx}
-                    onClick={() => handleSelectOption(currentQ.id, optIdx)}
+                    onClick={() => {
+                      if (!isQuestionLocked(currentQ.id)) {
+                        handleSelectOption(currentQ.id, optIdx);
+                      }
+                    }}
                     style={{
                       padding: '16px 20px',
                       borderRadius: '12px',
                       background: isSelected ? 'rgba(14, 165, 233, 0.15)' : 'rgba(15, 23, 42, 0.4)',
                       border: isSelected ? '1px solid #38bdf8' : '1px solid var(--border-subtle)',
-                      cursor: 'pointer',
+                      cursor: isQuestionLocked(currentQ.id) ? 'default' : 'pointer',
                       fontSize: '0.95rem',
                       color: isSelected ? '#38bdf8' : '#e2e8f0',
                       fontWeight: isSelected ? 600 : 400,
@@ -1658,6 +2667,9 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                   </div>
                 );
               })}
+              {isQuestionLocked(currentQ.id) && cachedEvaluations[currentQ.id] && (
+                <EvaluatedAnswerReview evaluation={cachedEvaluations[currentQ.id]} />
+              )}
             </div>
           )}
 
@@ -1671,86 +2683,88 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
                   {currentQ.promptText || 'Escreva sua prescrição COMPLETA de internação para este caso:'}
                 </label>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {isListening ? (
-                    <button
-                      type="button"
-                      onClick={() => handleStopAndFormat(currentQ.id)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        borderRadius: '9999px',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        background: 'rgba(244, 63, 94, 0.25)',
-                        color: '#fda4af',
-                        border: '1px solid #f43f5e',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span className="pulse-dot" style={{ width: '8px', height: '8px' }} />
-                      <span>Gravando... Concluir & Organizar com IA</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => startListening(currentQ.id)}
-                      disabled={isFormattingAI}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        borderRadius: '9999px',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        background: 'rgba(14, 165, 233, 0.15)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.4)',
-                        cursor: 'pointer',
-                      }}
-                      title="Dite sua conduta por voz"
-                    >
-                      <Mic size={14} />
-                      <span>🎙️ Ditar Conduta</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => formatPrescriptionText(currentQ.id)}
-                    disabled={isFormattingAI || !userAnswers[currentQ.id]}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 12px',
-                      borderRadius: '9999px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      background: 'rgba(16, 185, 129, 0.15)',
-                      color: '#34d399',
-                      border: '1px solid rgba(16, 185, 129, 0.4)',
-                      cursor: isFormattingAI || !userAnswers[currentQ.id] ? 'not-allowed' : 'pointer',
-                      opacity: isFormattingAI || !userAnswers[currentQ.id] ? 0.6 : 1,
-                    }}
-                    title="Formatar prescrição no padrão da UPA sem alterar doses"
-                  >
-                    {isFormattingAI ? (
-                      <>
-                        <Loader2 size={13} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-                        <span>Formatando IA...</span>
-                      </>
+                {!isQuestionLocked(currentQ.id) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {isListening ? (
+                      <button
+                        type="button"
+                        onClick={() => handleStopAndFormat(currentQ.id)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '9999px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          background: 'rgba(244, 63, 94, 0.25)',
+                          color: '#fda4af',
+                          border: '1px solid #f43f5e',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span className="pulse-dot" style={{ width: '8px', height: '8px' }} />
+                        <span>Gravando... Concluir & Organizar com IA</span>
+                      </button>
                     ) : (
-                      <>
-                        <Wand2 size={13} />
-                        <span>✨ Organizar Padrão</span>
-                      </>
+                      <button
+                        type="button"
+                        onClick={() => startListening(currentQ.id)}
+                        disabled={isFormattingAI}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '9999px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          background: 'rgba(14, 165, 233, 0.15)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.4)',
+                          cursor: 'pointer',
+                        }}
+                        title="Dite sua conduta por voz"
+                      >
+                        <Mic size={14} />
+                        <span>🎙️ Ditar Conduta</span>
+                      </button>
                     )}
-                  </button>
-                </div>
+
+                    <button
+                      type="button"
+                      onClick={() => formatPrescriptionText(currentQ.id)}
+                      disabled={isFormattingAI || !userAnswers[currentQ.id]}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                        cursor: isFormattingAI || !userAnswers[currentQ.id] ? 'not-allowed' : 'pointer',
+                        opacity: isFormattingAI || !userAnswers[currentQ.id] ? 0.6 : 1,
+                      }}
+                      title="Formatar prescrição no padrão da UPA sem alterar doses"
+                    >
+                      {isFormattingAI ? (
+                        <>
+                          <Loader2 size={13} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                          <span>Formatando IA...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 size={13} />
+                          <span>✨ Organizar Padrão</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {speechError && (
@@ -1768,12 +2782,15 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
               <textarea
                 className="input-field"
                 rows={14}
+                readOnly={isQuestionLocked(currentQ.id)}
                 style={{
                   fontFamily: 'monospace',
                   fontSize: '0.92rem',
                   lineHeight: '1.5',
                   padding: '16px',
                   resize: 'vertical',
+                  cursor: isQuestionLocked(currentQ.id) ? 'default' : 'text',
+                  opacity: isQuestionLocked(currentQ.id) ? 0.85 : 1,
                 }}
                 placeholder={`Estrutura sugerida:
 REPOUSO E CABECEIRA: ...
@@ -1790,6 +2807,9 @@ SINTOMÁTICOS E PROTOCOLOS:
                 value={currentAnswer || ''}
                 onChange={(e) => handlePrescriptionTextChange(currentQ.id, e.target.value)}
               />
+              {isQuestionLocked(currentQ.id) && cachedEvaluations[currentQ.id] && (
+                <EvaluatedAnswerReview evaluation={cachedEvaluations[currentQ.id]} />
+              )}
             </div>
           )}
 
@@ -1803,86 +2823,88 @@ SINTOMÁTICOS E PROTOCOLOS:
                   {currentQ.promptText || 'Prescreva a MEDICAÇÃO/CONDUTA IMEDIATA para este momento:'}
                 </label>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {isListening ? (
-                    <button
-                      type="button"
-                      onClick={() => handleStopAndFormat(currentQ.id)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        borderRadius: '9999px',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        background: 'rgba(244, 63, 94, 0.25)',
-                        color: '#fda4af',
-                        border: '1px solid #f43f5e',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span className="pulse-dot" style={{ width: '8px', height: '8px' }} />
-                      <span>Gravando... Concluir & Organizar com IA</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => startListening(currentQ.id)}
-                      disabled={isFormattingAI}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        borderRadius: '9999px',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        background: 'rgba(14, 165, 233, 0.15)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.4)',
-                        cursor: 'pointer',
-                      }}
-                      title="Dite sua conduta por voz"
-                    >
-                      <Mic size={14} />
-                      <span>🎙️ Ditar Conduta</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => formatPrescriptionText(currentQ.id)}
-                    disabled={isFormattingAI || !userAnswers[currentQ.id]}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 12px',
-                      borderRadius: '9999px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      background: 'rgba(16, 185, 129, 0.15)',
-                      color: '#34d399',
-                      border: '1px solid rgba(16, 185, 129, 0.4)',
-                      cursor: isFormattingAI || !userAnswers[currentQ.id] ? 'not-allowed' : 'pointer',
-                      opacity: isFormattingAI || !userAnswers[currentQ.id] ? 0.6 : 1,
-                    }}
-                    title="Formatar prescrição no padrão da UPA sem alterar doses"
-                  >
-                    {isFormattingAI ? (
-                      <>
-                        <Loader2 size={13} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-                        <span>Formatando IA...</span>
-                      </>
+                {!isQuestionLocked(currentQ.id) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {isListening ? (
+                      <button
+                        type="button"
+                        onClick={() => handleStopAndFormat(currentQ.id)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '9999px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          background: 'rgba(244, 63, 94, 0.25)',
+                          color: '#fda4af',
+                          border: '1px solid #f43f5e',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span className="pulse-dot" style={{ width: '8px', height: '8px' }} />
+                        <span>Gravando... Concluir & Organizar com IA</span>
+                      </button>
                     ) : (
-                      <>
-                        <Wand2 size={13} />
-                        <span>✨ Organizar Padrão</span>
-                      </>
+                      <button
+                        type="button"
+                        onClick={() => startListening(currentQ.id)}
+                        disabled={isFormattingAI}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '9999px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          background: 'rgba(14, 165, 233, 0.15)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.4)',
+                          cursor: 'pointer',
+                        }}
+                        title="Dite sua conduta por voz"
+                      >
+                        <Mic size={14} />
+                        <span>🎙️ Ditar Conduta</span>
+                      </button>
                     )}
-                  </button>
-                </div>
+
+                    <button
+                      type="button"
+                      onClick={() => formatPrescriptionText(currentQ.id)}
+                      disabled={isFormattingAI || !userAnswers[currentQ.id]}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                        cursor: isFormattingAI || !userAnswers[currentQ.id] ? 'not-allowed' : 'pointer',
+                        opacity: isFormattingAI || !userAnswers[currentQ.id] ? 0.6 : 1,
+                      }}
+                      title="Formatar prescrição no padrão da UPA sem alterar doses"
+                    >
+                      {isFormattingAI ? (
+                        <>
+                          <Loader2 size={13} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                          <span>Formatando IA...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 size={13} />
+                          <span>✨ Organizar Padrão</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {speechError && (
@@ -1900,12 +2922,15 @@ SINTOMÁTICOS E PROTOCOLOS:
               <textarea
                 className="input-field"
                 rows={5}
+                readOnly={isQuestionLocked(currentQ.id)}
                 style={{
                   fontFamily: 'monospace',
                   fontSize: '0.92rem',
                   lineHeight: '1.5',
                   padding: '16px',
                   resize: 'vertical',
+                  cursor: isQuestionLocked(currentQ.id) ? 'default' : 'text',
+                  opacity: isQuestionLocked(currentQ.id) ? 0.85 : 1,
                 }}
                 placeholder={`Exemplo:
 Diazepam 10mg (2mL) IV em flush AGORA
@@ -1913,6 +2938,9 @@ Se sem acesso: Midazolam 10mg IM`}
                 value={currentAnswer || ''}
                 onChange={(e) => handlePrescriptionTextChange(currentQ.id, e.target.value)}
               />
+              {isQuestionLocked(currentQ.id) && cachedEvaluations[currentQ.id] && (
+                <EvaluatedAnswerReview evaluation={cachedEvaluations[currentQ.id]} />
+              )}
             </div>
           )}
 
@@ -1986,16 +3014,22 @@ Se sem acesso: Midazolam 10mg IM`}
                       { key: 'PSV', name: 'PSV', desc: 'Pressão de Suporte', badge: 'Espontâneo' },
                     ].map((m) => {
                       const isSelected = selectedMode === m.key;
+                      const locked = isQuestionLocked(currentQ.id);
                       return (
                         <div
                           key={m.key}
-                          onClick={() => handleVentilatorFieldChange(currentQ.id, 'modo', m.key)}
+                          onClick={() => {
+                            if (!locked) {
+                              handleVentilatorFieldChange(currentQ.id, 'modo', m.key);
+                            }
+                          }}
                           style={{
                             padding: '16px',
                             borderRadius: '14px',
                             background: isSelected ? 'rgba(139, 92, 246, 0.2)' : 'rgba(15, 23, 42, 0.6)',
                             border: isSelected ? '2px solid #a78bfa' : '1px solid var(--border-subtle)',
-                            cursor: 'pointer',
+                            cursor: locked ? 'not-allowed' : 'pointer',
+                            opacity: locked ? 0.75 : 1,
                             transition: 'all 0.2s ease',
                             display: 'flex',
                             flexDirection: 'column',
@@ -2038,7 +3072,16 @@ Se sem acesso: Midazolam 10mg IM`}
                             <textarea
                               className="input-field"
                               rows={2}
-                              style={{ fontSize: '0.88rem', padding: '8px 12px', resize: 'vertical' }}
+                              readOnly={isQuestionLocked(currentQ.id)}
+                              disabled={isQuestionLocked(currentQ.id)}
+                              style={{
+                                fontSize: '0.88rem',
+                                padding: '8px 12px',
+                                resize: 'vertical',
+                                background: isQuestionLocked(currentQ.id) ? 'rgba(15, 23, 42, 0.4)' : undefined,
+                                opacity: isQuestionLocked(currentQ.id) ? 0.8 : 1,
+                                cursor: isQuestionLocked(currentQ.id) ? 'not-allowed' : 'text',
+                              }}
                               placeholder={field.placeholder}
                               value={currentVentData[field.key] || ''}
                               onChange={(e) => handleVentilatorFieldChange(currentQ.id, field.key, e.target.value)}
@@ -2047,7 +3090,15 @@ Se sem acesso: Midazolam 10mg IM`}
                             <input
                               type="text"
                               className="input-field"
-                              style={{ fontSize: '0.88rem', padding: '8px 12px' }}
+                              readOnly={isQuestionLocked(currentQ.id)}
+                              disabled={isQuestionLocked(currentQ.id)}
+                              style={{
+                                fontSize: '0.88rem',
+                                padding: '8px 12px',
+                                background: isQuestionLocked(currentQ.id) ? 'rgba(15, 23, 42, 0.4)' : undefined,
+                                opacity: isQuestionLocked(currentQ.id) ? 0.8 : 1,
+                                cursor: isQuestionLocked(currentQ.id) ? 'not-allowed' : 'text',
+                              }}
                               placeholder={field.placeholder}
                               value={currentVentData[field.key] || ''}
                               onChange={(e) => handleVentilatorFieldChange(currentQ.id, field.key, e.target.value)}
@@ -2058,6 +3109,10 @@ Se sem acesso: Midazolam 10mg IM`}
                     </div>
                   </div>
                 ) : null}
+
+                {isQuestionLocked(currentQ.id) && cachedEvaluations[currentQ.id] && (
+                  <EvaluatedAnswerReview evaluation={cachedEvaluations[currentQ.id]} />
+                )}
               </div>
             );
           })()}
@@ -2079,7 +3134,7 @@ Se sem acesso: Midazolam 10mg IM`}
               </button>
             ) : (
               <button
-                onClick={handleSubmitTest}
+                onClick={handleInitiateCompletion}
                 disabled={submitting}
                 className="btn-primary"
                 style={{
@@ -2095,7 +3150,12 @@ Se sem acesso: Midazolam 10mg IM`}
                   </>
                 ) : (
                   <>
-                    {isPlantao ? 'Finalizar Plantão & Ver Relatório IA' : 'Finalizar & Ver Resultado IA'} <Send size={18} />
+                    {isPlantao
+                      ? activePlantaoStatus === 'ready_for_adverse'
+                        ? 'Finalizar Plantão & Ver Relatório IA'
+                        : 'Concluir Leitos & Passar Plantão'
+                      : 'Finalizar & Ver Resultado IA'}{' '}
+                    <Send size={18} />
                   </>
                 )}
               </button>
@@ -2124,7 +3184,7 @@ Se sem acesso: Midazolam 10mg IM`}
             </button>
           ) : (
             <button
-              onClick={handleSubmitTest}
+              onClick={handleInitiateCompletion}
               disabled={submitting}
               className="btn-primary"
               style={{
@@ -2135,11 +3195,556 @@ Se sem acesso: Midazolam 10mg IM`}
                   : 'linear-gradient(135deg, #0284c7 0%, #0d9488 100%)',
               }}
             >
-              {submitting ? 'Avaliando...' : 'Finalizar'} <Send size={14} />
+              {submitting
+                ? 'Avaliando...'
+                : isPlantao
+                ? activePlantaoStatus === 'ready_for_adverse'
+                  ? 'Finalizar Plantão'
+                  : 'Concluir Leitos'
+                : 'Finalizar'}{' '}
+              <Send size={14} />
             </button>
           )}
         </div>
+      </>
+    )}
+  </div>
+
+  {/* ================================================================= */}
+  {/* MODAL 1: DUAL CHOICE - BED COMPLETION (PASSAGEM DE PLANTÃO)     */}
+  {/* ================================================================= */}
+  {showDualChoiceModal && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '20px',
+      }}
+    >
+      <div
+        className="glass-panel"
+        style={{
+          maxWidth: '680px',
+          width: '100%',
+          borderRadius: '24px',
+          padding: '32px',
+          background: '#0f172a',
+          border: '1px solid rgba(167, 139, 250, 0.3)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '24px',
+        }}
+      >
+        {/* Header */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+            <span style={{ fontSize: '1.4rem' }}>🏥</span>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff', margin: 0 }}>
+              Modalidade de Passagem de Plantão
+            </h2>
+          </div>
+          <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+            Suas condutas clínicas e prescrições de todos os 4 leitos foram registradas.
+            Escolha como deseja que a inteligência artificial avalie o seu desempenho:
+          </p>
+        </div>
+
+        {/* Budget Breach Alert Box (HTTP 429) */}
+        {batchBudgetBreach && (
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: '16px',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#f87171' }}>
+              <ShieldAlert size={20} />
+              <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                Teto de Orçamento Batch Atingido (HTTP 429)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.86rem', color: '#fca5a5', lineHeight: 1.5 }}>
+              {batchBudgetBreach.error ||
+                'O limite de gastos em lote ($0.15/dia ou $0.90/mês) foi alcançado para proteção de custos.'}
+              {batchBudgetBreach.dailyAccumulated !== undefined && (
+                <div style={{ marginTop: '6px', fontSize: '0.8rem', opacity: 0.9 }}>
+                  Acumulado hoje: ${batchBudgetBreach.dailyAccumulated.toFixed(4)} | Acumulado mês: ${batchBudgetBreach.monthlyAccumulated?.toFixed(4) || '0.00'}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleSelectOptionA_Realtime}
+              disabled={submitting}
+              className="btn-primary"
+              style={{
+                alignSelf: 'flex-start',
+                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              <Zap size={16} /> Prosseguir com Correção em Tempo Real Agora
+            </button>
+          </div>
+        )}
+
+        {/* Local Batch Submission Error Alert (M8-ERR-02 Hardening) */}
+        {batchSubmitError && (
+          <div
+            style={{
+              padding: '14px 18px',
+              borderRadius: '16px',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              color: '#f87171',
+            }}
+          >
+            <AlertCircle size={20} style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '0.86rem', color: '#fca5a5', lineHeight: 1.5 }}>
+              <strong style={{ color: '#f87171' }}>Erro no Envio:</strong> {batchSubmitError}
+            </div>
+          </div>
+        )}
+
+        {/* Two Options Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+          {/* Option A: Realtime */}
+          <div
+            style={{
+              padding: '20px',
+              borderRadius: '18px',
+              background: 'rgba(30, 41, 59, 0.6)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '16px',
+              transition: 'all 0.2s',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>⚡</span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                  }}
+                >
+                  Imediato
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff', margin: '0 0 6px 0' }}>
+                Correção em Tempo Real
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', margin: 0, lineHeight: 1.45 }}>
+                Avaliação imediata via IA síncrona. O preceptor analisa cada prescrição e conduta em ~5 a 10 segundos na sua tela.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSelectOptionA_Realtime}
+              disabled={submittingBatch || submitting}
+              className="btn-primary"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                padding: '12px',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+              }}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> Avaliando...
+                </>
+              ) : (
+                <>
+                  <Zap size={16} /> Avaliar em Tempo Real
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Option B: Batch (-50% OFF) */}
+          <div
+            style={{
+              padding: '20px',
+              borderRadius: '18px',
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1.5px solid rgba(16, 185, 129, 0.4)',
+              boxShadow: '0 0 20px rgba(16, 185, 129, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '16px',
+              position: 'relative',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>📦</span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(16, 185, 129, 0.25)',
+                    color: '#34d399',
+                    border: '1px solid rgba(16, 185, 129, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Coins size={12} /> -50% OFF
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#34d399', margin: '0 0 6px 0' }}>
+                Passagem de Plantão Assíncrona
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', margin: 0, lineHeight: 1.45 }}>
+                Submissão em lote (OpenRouter Batch). Metade do consumo de cota. Processamento em segundo plano enquanto você atende outros pacientes ou descansa.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSelectOptionB_Batch}
+              disabled={submittingBatch || submitting}
+              className="btn-primary"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                padding: '12px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+              }}
+            >
+              {submittingBatch ? (
+                <>
+                  <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> Enviando Lote...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} /> Passar Plantão (-50% OFF)
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Footer / Dismiss */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowDualChoiceModal(false);
+              setBatchBudgetBreach(null);
+              setBatchSubmitError(null);
+            }}
+            disabled={submittingBatch}
+            className="btn-secondary"
+            style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+          >
+            Voltar e Revisar Leitos
+          </button>
+        </div>
       </div>
     </div>
+  )}
+
+  {/* ================================================================= */}
+  {/* MODAL 2: DUAL CHOICE - PRECEPTORSHIP FEEDBACK                     */}
+  {/* ================================================================= */}
+  {showFeedbackDualChoiceModal && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '20px',
+      }}
+    >
+      <div
+        className="glass-panel"
+        style={{
+          maxWidth: '680px',
+          width: '100%',
+          borderRadius: '24px',
+          padding: '32px',
+          background: '#0f172a',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '24px',
+        }}
+      >
+        {/* Header */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+            <span style={{ fontSize: '1.4rem' }}>👨‍⚕️</span>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff', margin: 0 }}>
+              Consolidação do Feedback da Preceptoria
+            </h2>
+          </div>
+          <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+            A avaliação clínica e intercorrência do plantão foram processadas!
+            Selecione como deseja gerar a devolutiva pedagógica e parecer do preceptor:
+          </p>
+        </div>
+
+        {/* Budget Breach Alert Box (HTTP 429) */}
+        {batchFeedbackBudgetBreach && (
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: '16px',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#f87171' }}>
+              <ShieldAlert size={20} />
+              <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                Teto de Orçamento Batch Atingido (HTTP 429)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.86rem', color: '#fca5a5', lineHeight: 1.5 }}>
+              {batchFeedbackBudgetBreach.error ||
+                'O limite de gastos em lote ($0.15/dia ou $0.90/mês) foi alcançado para proteção de custos.'}
+              {batchFeedbackBudgetBreach.dailyAccumulated !== undefined && (
+                <div style={{ marginTop: '6px', fontSize: '0.8rem', opacity: 0.9 }}>
+                  Acumulado hoje: ${batchFeedbackBudgetBreach.dailyAccumulated.toFixed(4)} | Acumulado mês: ${batchFeedbackBudgetBreach.monthlyAccumulated?.toFixed(4) || '0.00'}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleSelectFeedbackOptionA_Realtime}
+              disabled={submittingRealtimeFeedback}
+              className="btn-primary"
+              style={{
+                alignSelf: 'flex-start',
+                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              <Zap size={16} /> Prosseguir com Feedback em Tempo Real
+            </button>
+          </div>
+        )}
+
+        {/* Two Options Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+          {/* Option A: Realtime Feedback */}
+          <div
+            style={{
+              padding: '20px',
+              borderRadius: '18px',
+              background: 'rgba(30, 41, 59, 0.6)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '16px',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>⚡</span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                  }}
+                >
+                  Imediato
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff', margin: '0 0 6px 0' }}>
+                Feedback em Tempo Real
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', margin: 0, lineHeight: 1.45 }}>
+                Gera a devolutiva completa do preceptor imediatamente via IA síncrona. Redirecionamento instantâneo para o relatório do plantão.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSelectFeedbackOptionA_Realtime}
+              disabled={submittingRealtimeFeedback || submittingFeedbackBatch}
+              className="btn-primary"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                padding: '12px',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+              }}
+            >
+              {submittingRealtimeFeedback ? (
+                <>
+                  <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> Gerando...
+                </>
+              ) : (
+                <>
+                  <Zap size={16} /> Gerar Feedback Imediato
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Option B: Batch Feedback (-50% OFF) */}
+          <div
+            style={{
+              padding: '20px',
+              borderRadius: '18px',
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1.5px solid rgba(16, 185, 129, 0.4)',
+              boxShadow: '0 0 20px rgba(16, 185, 129, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '16px',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>📦</span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(16, 185, 129, 0.25)',
+                    color: '#34d399',
+                    border: '1px solid rgba(16, 185, 129, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Coins size={12} /> -50% OFF
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#34d399', margin: '0 0 6px 0' }}>
+                Feedback em Lote (Batch)
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', margin: 0, lineHeight: 1.45 }}>
+                Processa a análise pedagógica com 50% de economia de cota em segundo plano. Seu plantão fica aguardando o relatório final.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSelectFeedbackOptionB_Batch}
+              disabled={submittingRealtimeFeedback || submittingFeedbackBatch}
+              className="btn-primary"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                padding: '12px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+              }}
+            >
+              {submittingFeedbackBatch ? (
+                <>
+                  <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> Submetendo...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} /> Consolidar em Lote (-50%)
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Footer / Dismiss */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowFeedbackDualChoiceModal(false);
+              setBatchFeedbackBudgetBreach(null);
+            }}
+            disabled={submittingRealtimeFeedback || submittingFeedbackBatch}
+            className="btn-secondary"
+            style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+          >
+            Voltar e Revisar
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
   );
 }

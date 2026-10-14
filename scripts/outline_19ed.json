@@ -1,0 +1,802 @@
+[
+  {
+    "section": "Capa",
+    "title": "Rosto",
+    "page": 2
+  },
+  {
+    "section": "Capa",
+    "title": "Créditos",
+    "page": 3
+  },
+  {
+    "section": "Capa",
+    "title": "Sobre os editores",
+    "page": 4
+  },
+  {
+    "section": "Capa",
+    "title": "Sobre os autores",
+    "page": 5
+  },
+  {
+    "section": "Capa",
+    "title": "Sumário",
+    "page": 15
+  },
+  {
+    "section": "Capa",
+    "title": "Dedicatórias",
+    "page": 23
+  },
+  {
+    "section": "Capa",
+    "title": "Agradecimentos",
+    "page": 24
+  },
+  {
+    "section": "Capa",
+    "title": "Apresentação",
+    "page": 25
+  },
+  {
+    "section": "Capa",
+    "title": "Prefácio",
+    "page": 26
+  },
+  {
+    "section": "Capa",
+    "title": "Consulta rápida",
+    "page": 27
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "1. Abordagem inicial do paciente grave na sala de emergência",
+    "page": 78
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "2. Manejo da via aérea na emergência",
+    "page": 89
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "3. Suporte Básico de Vida (BLS)",
+    "page": 109
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "4. Suporte Avançado de Vida",
+    "page": 122
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "5. Parada cardiorrespiratória na criança",
+    "page": 139
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "6. Insuficiência respiratória aguda",
+    "page": 151
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "7. Ventilação mecânica na emergência",
+    "page": 168
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "8. Choque",
+    "page": 187
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "9. Sepse",
+    "page": 207
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "10. Coma e alteração do nível de consciência",
+    "page": 221
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "11. Medicina Aeroespacial – história, fisiologia e doenças relacionadas à altitude",
+    "page": 242
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "12. Anafilaxia e outras alergias",
+    "page": 250
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "13. Delirium",
+    "page": 264
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "14. Sedação e analgesia em procedimentos não eletivos",
+    "page": 272
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "15. Dor e anestesia regional",
+    "page": 283
+  },
+  {
+    "section": "Seção I – Abordagem inicial do paciente grave",
+    "title": "16. Agitação psicomotora",
+    "page": 301
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "17. Febre e síndromes hipertérmicas no paciente adulto",
+    "page": 307
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "18. Hipotermia acidental",
+    "page": 317
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "19. Abordagem inicial do paciente com dispneia",
+    "page": 328
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "20. Dor torácica",
+    "page": 335
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "21. Perda transitória da consciência",
+    "page": 356
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "22. Náuseas e vômitos",
+    "page": 369
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "23. Hemoptise",
+    "page": 379
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "24. Diarreia aguda",
+    "page": 390
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "25. Icterícia",
+    "page": 398
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "26. Dor abdominal",
+    "page": 409
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "27. Cefaleia",
+    "page": 428
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "28. Ascite",
+    "page": 438
+  },
+  {
+    "section": "Seção II – Sinais e sintomas no departamento de emergência",
+    "title": "29. Lombalgia",
+    "page": 448
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "30. Síndrome coronariana aguda sem supradesnivelamento do segmento ST",
+    "page": 460
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "31. Infarto agudo do miocárdio com supradesnivelamento do segmento ST",
+    "page": 474
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "32. Fibrilação atrial",
+    "page": 491
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "33. Taquiarritmias",
+    "page": 508
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "34. Bradicardias",
+    "page": 533
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "35. Insuficiência cardíaca aguda",
+    "page": 542
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "36. Emergências hipertensivas",
+    "page": 559
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "37. Síndromes aórticas agudas",
+    "page": 573
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "38. Pericardite aguda, derrame pericárdico e tamponamento cardíaco",
+    "page": 583
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "39. Endocardite infecciosa",
+    "page": 601
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "40. Trombose venosa profunda",
+    "page": 616
+  },
+  {
+    "section": "Seção III – Emergências cardiovasculares",
+    "title": "41. Oclusão arterial aguda",
+    "page": 628
+  },
+  {
+    "section": "Seção IV – Emergências respiratórias",
+    "title": "42. Asma",
+    "page": 639
+  },
+  {
+    "section": "Seção IV – Emergências respiratórias",
+    "title": "43. Doença pulmonar obstrutiva crônica",
+    "page": 650
+  },
+  {
+    "section": "Seção IV – Emergências respiratórias",
+    "title": "44. Pneumonia adquirida na comunidade (PAC)",
+    "page": 662
+  },
+  {
+    "section": "Seção IV – Emergências respiratórias",
+    "title": "45. Derrame pleural",
+    "page": 680
+  },
+  {
+    "section": "Seção IV – Emergências respiratórias",
+    "title": "46. Tromboembolismo pulmonar",
+    "page": 695
+  },
+  {
+    "section": "Seção IV – Emergências respiratórias",
+    "title": "47. Pneumotórax não traumático",
+    "page": 722
+  },
+  {
+    "section": "Seção V – Emergências infecciosas",
+    "title": "48. Infecções de vias aéreas superiores",
+    "page": 730
+  },
+  {
+    "section": "Seção V – Emergências infecciosas",
+    "title": "49. Infecção pelo HIV e AIDS",
+    "page": 742
+  },
+  {
+    "section": "Seção V – Emergências infecciosas",
+    "title": "50. Infecção do trato urinário",
+    "page": 762
+  },
+  {
+    "section": "Seção V – Emergências infecciosas",
+    "title": "51. Dengue",
+    "page": 772
+  },
+  {
+    "section": "Seção V – Emergências infecciosas",
+    "title": "52. Leptospirose",
+    "page": 785
+  },
+  {
+    "section": "Seção V – Emergências infecciosas",
+    "title": "53. Infecções cutâneas",
+    "page": 795
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "54. Abordagem do paciente com acidente vascular cerebral isquêmico agudo",
+    "page": 807
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "55. Hemorragia subaracnóidea",
+    "page": 833
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "56. Hemorragias intracranianas parenquimatosas",
+    "page": 843
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "57. Infecções do sistema nervoso central",
+    "page": 855
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "58. Paralisias flácidas agudas",
+    "page": 869
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "59. Abordagem da primeira crise epiléptica",
+    "page": 877
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "60. Síndromes vertiginosas agudas",
+    "page": 888
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "61. Emergências neuropsiquiátricas",
+    "page": 898
+  },
+  {
+    "section": "Seção VI – Emergências neuropsiquiátricas",
+    "title": "62. Hipertensão intracraniana",
+    "page": 911
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "63. Atendimento inicial ao paciente politraumatizado",
+    "page": 924
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "64. Traumatismo cranioencefálico",
+    "page": 935
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "65. Trauma cervical",
+    "page": 946
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "66. Trauma torácico",
+    "page": 963
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "67. Trauma abdominal",
+    "page": 971
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "68. Choque hemorrágico associado ao trauma",
+    "page": 982
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "69. Fratura exposta: abordagem na emergência",
+    "page": 992
+  },
+  {
+    "section": "Seção VII – Emergências relacionadas ao trauma",
+    "title": "70. Queimaduras térmicas",
+    "page": 1000
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "71. Encefalopatia hepática",
+    "page": 1015
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "72. Peritonite bacteriana espontânea",
+    "page": 1024
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "73. Síndrome hepatorrenal",
+    "page": 1032
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "74. Hepatites graves e insuficiência hepática aguda",
+    "page": 1039
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "75. Hemorragia digestiva alta",
+    "page": 1053
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "76. Doença diverticular aguda",
+    "page": 1065
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "77. Pancreatite aguda",
+    "page": 1076
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "78. Emergências biliares",
+    "page": 1087
+  },
+  {
+    "section": "Seção VIII – Emergências hepáticas e gastrointestinais",
+    "title": "79. Apendicite aguda",
+    "page": 1100
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "80. Lesão renal aguda",
+    "page": 1106
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "81. Diálise na emergência",
+    "page": 1123
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "82. Distúrbios acidobásicos",
+    "page": 1132
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "83. Hiponatremia",
+    "page": 1151
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "84. Hipernatremia",
+    "page": 1161
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "85. Hipocalemia",
+    "page": 1168
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "86. Hipercalemia",
+    "page": 1178
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "87. Hipocalcemia",
+    "page": 1191
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "88. Hipercalcemia",
+    "page": 1200
+  },
+  {
+    "section": "Seção IX – Emergências nefrológicas e urológicas",
+    "title": "89. Cólica nefrética",
+    "page": 1210
+  },
+  {
+    "section": "Seção X – Emergências metabólicas",
+    "title": "90. Hipoglicemia",
+    "page": 1219
+  },
+  {
+    "section": "Seção X – Emergências metabólicas",
+    "title": "91. Hiperglicemias e emergências hipoinsulinêmicas",
+    "page": 1225
+  },
+  {
+    "section": "Seção X – Emergências metabólicas",
+    "title": "92. Crise tireotóxica",
+    "page": 1235
+  },
+  {
+    "section": "Seção X – Emergências metabólicas",
+    "title": "93. Insuficiência adrenal",
+    "page": 1243
+  },
+  {
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "title": "94. Avaliação dos distúrbios de hemostasia no departamento de emergência",
+    "page": 1252
+  },
+  {
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "title": "95. Anemia falciforme",
+    "page": 1265
+  },
+  {
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "title": "96. Neutropenia febril",
+    "page": 1276
+  },
+  {
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "title": "97. Transfusão de hemocomponentes e reações transfusionais agudas",
+    "page": 1291
+  },
+  {
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "title": "98. Plaquetopenias",
+    "page": 1305
+  },
+  {
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "title": "99. Tromboelastografia na avaliação do paciente com sangramento",
+    "page": 1314
+  },
+  {
+    "section": "Seção XI – Emergências hematológicas e oncológicas",
+    "title": "100. Emergências oncológicas",
+    "page": 1322
+  },
+  {
+    "section": "Seção XII – Emergências reumatológicas",
+    "title": "101. Monoartrite aguda",
+    "page": 1339
+  },
+  {
+    "section": "Seção XIII – Causas externas",
+    "title": "102. Manejo inicial das intoxicações exógenas",
+    "page": 1352
+  },
+  {
+    "section": "Seção XIII – Causas externas",
+    "title": "103. Intoxicações por álcoois e drogas de abuso",
+    "page": 1367
+  },
+  {
+    "section": "Seção XIII – Causas externas",
+    "title": "104. Abordagem específica das intoxicações por fármacos",
+    "page": 1378
+  },
+  {
+    "section": "Seção XIII – Causas externas",
+    "title": "105. Intoxicações ambientais",
+    "page": 1402
+  },
+  {
+    "section": "Seção XIII – Causas externas",
+    "title": "106. Afogamento",
+    "page": 1423
+  },
+  {
+    "section": "Seção XIII – Causas externas",
+    "title": "107. Acidentes relacionados a animais peçonhentos",
+    "page": 1431
+  },
+  {
+    "section": "Seção XIII – Causas externas",
+    "title": "108. Síndrome de abstinência alcoólica",
+    "page": 1446
+  },
+  {
+    "section": "Seção XIV – Emergências dermatológicas",
+    "title": "109. Dermatoses agudas",
+    "page": 1455
+  },
+  {
+    "section": "Seção XIV – Emergências dermatológicas",
+    "title": "110. Farmacodermias",
+    "page": 1464
+  },
+  {
+    "section": "Seção XV – Emergências oftalmológicas e otorrinolaringológicas",
+    "title": "111. Emergências oftalmológicas",
+    "page": 1475
+  },
+  {
+    "section": "Seção XV – Emergências oftalmológicas e otorrinolaringológicas",
+    "title": "112. Emergências otorrinolaringológicas",
+    "page": 1528
+  },
+  {
+    "section": "Seção XVI – Emergências em LGBTQIA+",
+    "title": "113. Saúde LGBTQIA+ no departamento de emergência",
+    "page": 1547
+  },
+  {
+    "section": "Seção XVII – Emergências ginecológicas e obstétricas",
+    "title": "114. Emergências ginecológicas",
+    "page": 1561
+  },
+  {
+    "section": "Seção XVII – Emergências ginecológicas e obstétricas",
+    "title": "115. Emergências obstétricas",
+    "page": 1573
+  },
+  {
+    "section": "Seção XVIII – Cuidados paliativos no departamento de emergência",
+    "title": "116. Cuidado paliativo na emergência",
+    "page": 1590
+  },
+  {
+    "section": "Seção XIX – Ultrassonografia à beira do leito",
+    "title": "117. Acesso venoso guiado por ultrassonografia",
+    "page": 1602
+  },
+  {
+    "section": "Seção XIX – Ultrassonografia à beira do leito",
+    "title": "118. Avaliação torácica por ultrassom",
+    "page": 1618
+  },
+  {
+    "section": "Seção XIX – Ultrassonografia à beira do leito",
+    "title": "119. Ultrassonografia cardíaca focada",
+    "page": 1630
+  },
+  {
+    "section": "Seção XX – Procedimentos",
+    "title": "120. Marca-passo e dispositivos implantáveis no departamento de emergência",
+    "page": 1657
+  },
+  {
+    "section": "Seção XX – Procedimentos",
+    "title": "121. Acessos vasculares",
+    "page": 1667
+  },
+  {
+    "section": "Seção XX – Procedimentos",
+    "title": "122. Toracocentese e drenagem pleural",
+    "page": 1684
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "1. Cuidados pós-parada cardiorrespiratória",
+    "page": 1695
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "2. Comunicação no departamento de emergência",
+    "page": 1708
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "3. Manejo inicial do paciente idoso no departamento de emergência",
+    "page": 1714
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "4. A telemedicina e a medicina de emergência",
+    "page": 1722
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "5. Miocardite aguda",
+    "page": 1728
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "6. Emergências em cardiopatias congênitas no adulto",
+    "page": 1739
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "7. Pneumonites e pneumonias por aspiração e abscesso pulmonar",
+    "page": 1756
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "8. Hemorragia alveolar difusa",
+    "page": 1766
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "9. Infecção pelo vírus Influenza",
+    "page": 1773
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "10. Infecção pelo SARS-CoV-2 (COVID-19)",
+    "page": 1781
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "11. Chikungunya",
+    "page": 1812
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "12. Zika vírus",
+    "page": 1818
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "13. Febre amarela",
+    "page": 1823
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "14. Ebola",
+    "page": 1831
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "15. Sarampo",
+    "page": 1837
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "16. Tétano acidental",
+    "page": 1846
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "17. Atendimento aos pacientes transplantados no departamento de emergência",
+    "page": 1854
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "18. Abordagem ao estado de mal epiléptico",
+    "page": 1863
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "19. Diagnóstico de morte encefálica no departamento de emergência",
+    "page": 1875
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "20. Triagem de múltiplas vítimas no atendimento pré-hospitalar",
+    "page": 1882
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "21. Hemorragia digestiva baixa",
+    "page": 1890
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "22. Rabdomiólise",
+    "page": 1900
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "23. Estado mixedematoso",
+    "page": 1909
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "24. Emergências reumatológicas e vasculites sistêmicas",
+    "page": 1916
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "25. Intoxicação por plantas",
+    "page": 1925
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "26. Atendimento a vítimas de violência sexual",
+    "page": 1946
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "27. Lesões associadas a eletricidade",
+    "page": 1956
+  },
+  {
+    "section": "Conteúdo complementar",
+    "title": "28. Nutrição enteral no departamento de emergência e síndrome de realimentação",
+    "page": 1965
+  }
+]

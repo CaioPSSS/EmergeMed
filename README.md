@@ -14,6 +14,8 @@
    - [3.3. Fila de Anti-Repetição Inteligente (SRS)](#33-fila-de-anti-repetição-inteligente-srs)
    - [3.4. Ditado por Voz & IA Formatadora Ultrarrápida](#34-ditado-por-voz--ia-formatadora-ultrarrápida)
    - [3.5. Pipeline Noturna em Lote (Batch API) com Governança de Gastos](#35-pipeline-noturna-em-lote-batch-api-com-governança-de-gastos)
+   - [3.6. Avaliação Assíncrona de Plantões em Lote (Batch com 50% de Desconto)](#36-avaliação-assíncrona-de-plantões-em-lote-batch-com-50-de-desconto)
+   - [3.7. Painel de Configurações, Roteamento e Finanças de IA](#37-painel-de-configurações-roteamento-e-finanças-de-ia)
 4. [Design System e Responsividade Móvel (Mobile & Tablet)](#4-design-system-e-responsividade-móvel-mobile--tablet)
 5. [Arquitetura de Dados (PostgreSQL / Supabase)](#5-arquitetura-de-dados-postgresql--supabase)
 6. [Regras Clínicas e Invariantes do Sistema (O que NUNCA fazer)](#6-regras-clínicas-e-invariantes-do-sistema-o-que-nunca-fazer)
@@ -122,6 +124,35 @@ Script autônomo (`scripts/nightly-batch-pipeline.ts`) que roda assincronamente 
   - Se ainda houver lote pendente após o polling bounded, o workflow termina com sucesso e **bloqueia nova submissão** nessa noite.
   - O próximo run noturno volta a tentar ingestão dos lotes pendentes do `batch_generation_ledger`.
   - A proteção de teto considera custo realizado **+ reserva estimada de lotes pendentes** com base em `items_requested`, evitando novas submissões por “falso saldo livre”.
+
+### 3.6. Avaliação Assíncrona de Plantões em Lote (Batch com 50% de Desconto)
+Além da pipeline noturna para bancos de questões, o médico pode escolher avaliar seu plantão de forma assíncrona com 50% de economia:
+* **Escolha Dual de Avaliação:**
+  - **Opção A:** `⚡ Correção em Tempo Real` (avaliação imediata via `openai/gpt-6-luna`).
+  - **Opção B:** `Passagem de Plantão Assíncrona (Batch)` (envio em lote via `openai/gpt-6-luna:batch` com 50% de desconto).
+  - Disponível na finalização dos leitos e no relatório de preceptoria pós-adversos.
+* **Ciclo dos 5 Estados de Plantão (`public.tests.status`):**
+  1. `in_progress`: Médico em atendimento e preenchimento dos leitos.
+  2. `awaiting_batch_bed_evaluation`: Leitos submetidos para o OpenRouter Batch; painel com auto-polling a cada 20s e botão de atualização manual.
+  3. `ready_for_adverse`: Avaliação do lote concluída. Leitos avaliados têm inputs bloqueados. Se houver descompensação por erro de conduta, o app direciona o médico imediatamente para a conduta de resgate (Q5).
+  4. `awaiting_batch_feedback`: Resposta dos adversos submetida para lote para geração do parecer de preceptoria.
+  5. `completed`: Plantão finalizado com notas, histórico e FSRS computados.
+* **Sinalização Visual Ativa e Ingestão Transparente:**
+  - **Dashboard (`/dashboard`):** Componente `ActivePlantaoBanner.tsx` em destaque logo abaixo do cabeçalho, com mensagens dinâmicas para cada estado do plantão ativo e botão de atualizar lote.
+  - **Aba de Plantões (`/plantoes`):** Badges coloridas indicando o estado exato de cada plantão com botões de ação rápida contextuais (*"Continuar Plantão"*, *"Atender Intercorrência"*, *"Atualizar Lote"*, *"Ver Resultados"*).
+  - **Checagem Não-Bloqueante:** Ao abrir `/dashboard` ou `/plantoes`, o sistema faz polling silencioso em segundo plano (`isSilent = true`), atualizando o estado do lote sem travar nem piscar a interface.
+* **Robustez e Hardening de Concorrência:**
+  - Trava síncrona `useRef` contra cliques duplos rápidos antes da renderização do React.
+  - Alerta local dentro do modal em caso de falha de rede ou HTTP 429 (teto orçamentário), sem desmontar o teste nem perder o rascunho de prescrições do médico.
+
+### 3.7. Painel de Configurações, Roteamento e Finanças de IA (`/configuracoes`)
+Interface completamente modernizada para controle clínico e orçamentário:
+* **Matriz de Roteamento:** Seleção dinâmica dos modelos baseada estritamente em `AI_TASK_PROFILES` (`CLINICAL_CORE`, `CLINICAL_EVALUATION`, `CLINICAL_FEEDBACK`, `PRESCRIPTION_FAST_FORMAT`).
+* **Métricas de Acervo em Tempo Real:** Total de leitos no `bed_case_bank`, total de questões no `question_bank`, capítulos na fila de estudos e histórico do usuário.
+* **Painel Financeiro de Lote (Batch Ledger):**
+  - Barras de progresso dinâmicas frente aos tetos de **\$0.15/dia** e **\$0.90/mês**.
+  - Tabela com histórico detalhado dos últimos lotes submetidos e concluídos.
+* **Limpeza Arquitetural:** Removido o fluxo legado de upload de PDFs de livros pela interface web.
 
 ---
 
@@ -235,8 +266,11 @@ Observações operacionais:
 
 ### Suíte de Testes Automatizados E2E
 ```bash
-# Executar a suíte completa de testes opacos (Tiers 1 a 4)
+# Executar a suíte de testes legada (Tiers 1 a 4)
 npm run test:e2e
+
+# Executar a Suíte Master E2E do Modo Plantão Batch (11 suítes, 251 asserções integradas)
+npx tsx tests/e2e-plantao-batch-suite.ts
 ```
 
 ---

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { PlantaoTestStatus } from '@/types/plantao';
 import {
   Stethoscope,
   Award,
@@ -14,7 +15,16 @@ import {
   CheckCircle2,
   AlertTriangle,
   Flame,
+  RefreshCw,
+  Zap,
+  FileText,
 } from 'lucide-react';
+
+function getPlantaoState(t: any): PlantaoTestStatus {
+  if (t.status) return t.status as PlantaoTestStatus;
+  if (t.plantao_data?.status) return t.plantao_data.status as PlantaoTestStatus;
+  return t.completed ? 'completed' : 'in_progress';
+}
 
 export default function PlantoesPage() {
   const router = useRouter();
@@ -23,34 +33,86 @@ export default function PlantoesPage() {
   const [tests, setTests] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [checkingBatchMap, setCheckingBatchMap] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    async function loadPlantaoHistory() {
-      setLoading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  async function loadPlantaoHistory(isSilent: boolean = false) {
+    if (!isSilent) setLoading(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (user) {
-        const { data } = await supabase
-          .from('tests')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('mode', 'plantao')
-          .order('created_at', { ascending: false });
+    if (user) {
+      const { data } = await supabase
+        .from('tests')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('mode', 'plantao')
+        .order('created_at', { ascending: false });
 
-        if (data) {
-          setTests(data);
+      if (data) {
+        setTests(data);
+
+        // Check if any plantões are awaiting batch
+        const pendingBatches = data.filter((t) => {
+          const st = getPlantaoState(t);
+          return st === 'awaiting_batch_bed_evaluation' || st === 'awaiting_batch_feedback';
+        });
+
+        if (pendingBatches.length > 0 && !isSilent) {
+          // Trigger non-blocking background check
+          runBackgroundBatchCheck();
         }
       }
-      setLoading(false);
     }
+    if (!isSilent) setLoading(false);
+  }
 
+  async function runBackgroundBatchCheck() {
+    try {
+      const res = await fetch('/api/plantao/check-batch-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.updated) {
+          await loadPlantaoHistory(true);
+        }
+      }
+    } catch (e) {
+      console.warn('[Plantoes] Non-blocking background check error:', e);
+    }
+  }
+
+  const handleCheckBatchItem = async (e: React.MouseEvent, testId: string) => {
+    e.stopPropagation();
+    setCheckingBatchMap((prev) => ({ ...prev, [testId]: true }));
+    try {
+      const res = await fetch('/api/plantao/check-batch-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testId }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.updated) {
+          await loadPlantaoHistory(true);
+        }
+      }
+    } catch (e) {
+      console.warn('[Plantoes] Manual item batch check error:', e);
+    } finally {
+      setCheckingBatchMap((prev) => ({ ...prev, [testId]: false }));
+    }
+  };
+
+  useEffect(() => {
     loadPlantaoHistory();
   }, []);
 
-  const completedTests = tests.filter((t) => t.completed);
-  const pendingTests = tests.filter((t) => !t.completed);
+  const completedTests = tests.filter((t) => getPlantaoState(t) === 'completed');
+  const pendingTests = tests.filter((t) => getPlantaoState(t) !== 'completed');
 
   const totalCompleted = completedTests.length;
   const totalPending = pendingTests.length;
@@ -67,21 +129,254 @@ export default function PlantoesPage() {
     0
   );
 
-  const getScoreBadge = (score: number) => {
-    if (score >= 8)
-      return { bg: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: 'rgba(16, 185, 129, 0.3)' };
-    if (score >= 6)
-      return { bg: 'rgba(14, 165, 233, 0.15)', color: '#38bdf8', border: 'rgba(14, 165, 233, 0.3)' };
-    if (score >= 4)
-      return { bg: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.3)' };
-    return { bg: 'rgba(244, 63, 94, 0.15)', color: '#f43f5e', border: 'rgba(244, 63, 94, 0.3)' };
-  };
-
   const filteredTests = tests.filter((t) => {
-    if (filter === 'pending') return !t.completed;
-    if (filter === 'completed') return t.completed;
+    const st = getPlantaoState(t);
+    if (filter === 'pending') return st !== 'completed';
+    if (filter === 'completed') return st === 'completed';
     return true;
   });
+
+  const renderBadge = (t: any) => {
+    const status = getPlantaoState(t);
+    const score = t.score;
+
+    switch (status) {
+      case 'awaiting_batch_bed_evaluation':
+        return (
+          <div
+            data-testid={`badge-${t.id}`}
+            data-status={status}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '10px',
+              background: 'rgba(14, 165, 233, 0.15)',
+              color: '#38bdf8',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <RefreshCw size={14} className="animate-spin" />
+            <span>⏳ Avaliando Leitos (Lote)</span>
+          </div>
+        );
+
+      case 'ready_for_adverse':
+        return (
+          <div
+            data-testid={`badge-${t.id}`}
+            data-status={status}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '10px',
+              background: 'rgba(244, 63, 94, 0.2)',
+              color: '#fda4af',
+              border: '1px solid rgba(244, 63, 94, 0.5)',
+              fontWeight: 800,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+              animation: 'pulse 2s infinite',
+            }}
+          >
+            <AlertTriangle size={14} />
+            <span>🔔 Intercorrência Clínica!</span>
+          </div>
+        );
+
+      case 'awaiting_batch_feedback':
+        return (
+          <div
+            data-testid={`badge-${t.id}`}
+            data-status={status}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '10px',
+              background: 'rgba(139, 92, 246, 0.15)',
+              color: '#c084fc',
+              border: '1px solid rgba(139, 92, 246, 0.4)',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <RefreshCw size={14} className="animate-spin" />
+            <span>⏳ Gerando Preceptoria (Lote)</span>
+          </div>
+        );
+
+      case 'completed':
+        return (
+          <div
+            data-testid={`badge-${t.id}`}
+            data-status={status}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '10px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              color: '#34d399',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <CheckCircle2 size={14} />
+            <span>✓ Concluído ({score !== null && score !== undefined ? `${score}/10` : '—'})</span>
+          </div>
+        );
+
+      case 'in_progress':
+      default:
+        return (
+          <div
+            data-testid={`badge-${t.id}`}
+            data-status={status}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '10px',
+              background: 'rgba(249, 115, 22, 0.15)',
+              color: '#fb923c',
+              border: '1px solid rgba(249, 115, 22, 0.3)',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Clock size={14} />
+            <span>Em Andamento</span>
+          </div>
+        );
+    }
+  };
+
+  const renderAction = (t: any) => {
+    const status = getPlantaoState(t);
+    const isCheckingThis = !!checkingBatchMap[t.id];
+
+    switch (status) {
+      case 'awaiting_batch_bed_evaluation':
+      case 'awaiting_batch_feedback':
+        return (
+          <button
+            onClick={(e) => handleCheckBatchItem(e, t.id)}
+            disabled={isCheckingThis}
+            className="btn-secondary"
+            data-testid={`btn-action-${t.id}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.82rem',
+              background: 'rgba(14, 165, 233, 0.15)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 700,
+              cursor: isCheckingThis ? 'wait' : 'pointer',
+            }}
+          >
+            <RefreshCw size={14} className={isCheckingThis ? 'animate-spin' : ''} />
+            <span>{isCheckingThis ? 'Consultando...' : '🔄 Atualizar Lote'}</span>
+          </button>
+        );
+
+      case 'ready_for_adverse':
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/testes/${t.id}`);
+            }}
+            className="btn-primary"
+            data-testid={`btn-action-${t.id}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.82rem',
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            <Zap size={14} />
+            <span>🚨 Atender Intercorrência</span>
+          </button>
+        );
+
+      case 'completed':
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/testes/${t.id}/resultado`);
+            }}
+            className="btn-secondary"
+            data-testid={`btn-action-${t.id}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.82rem',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              color: '#34d399',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <span>Ver Resultados</span>
+            <ChevronRight size={14} />
+          </button>
+        );
+
+      case 'in_progress':
+      default:
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/testes/${t.id}`);
+            }}
+            className="btn-primary"
+            data-testid={`btn-action-${t.id}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.82rem',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <span>Continuar Plantão</span>
+            <Play size={14} />
+          </button>
+        );
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
@@ -178,7 +473,8 @@ export default function PlantoesPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {filteredTests.map((t) => {
-              const isCompleted = t.completed;
+              const itemStatus = getPlantaoState(t);
+              const isCompleted = itemStatus === 'completed';
               const dateVal = isCompleted ? t.completed_at || t.created_at : t.created_at;
               const dateStr = dateVal
                 ? new Date(dateVal).toLocaleDateString('pt-BR', {
@@ -190,7 +486,6 @@ export default function PlantoesPage() {
                   })
                 : 'Recente';
 
-              const badgeStyle = getScoreBadge(Number(t.score) || 0);
               const pData = t.plantao_data || {};
               const bedsCount = pData.bedCount || t.chapter_ids?.length || 4;
               const adverseCount = pData.adverseEvolutions || 0;
@@ -214,41 +509,7 @@ export default function PlantoesPage() {
                   onMouseLeave={(e) => (e.currentTarget.style.borderColor = isCompleted ? 'var(--border-subtle)' : 'rgba(16, 185, 129, 0.3)')}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    {isCompleted ? (
-                      <div
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: '10px',
-                          background: badgeStyle.bg,
-                          color: badgeStyle.color,
-                          border: `1px solid ${badgeStyle.border}`,
-                          fontWeight: 800,
-                          fontSize: '1.1rem',
-                          minWidth: '54px',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {t.score !== null ? t.score : '—'}
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: '10px',
-                          background: 'rgba(249, 115, 22, 0.15)',
-                          color: '#fb923c',
-                          border: '1px solid rgba(249, 115, 22, 0.3)',
-                          fontWeight: 700,
-                          fontSize: '0.78rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        <Clock size={14} /> Em Andamento
-                      </div>
-                    )}
+                    {renderBadge(t)}
 
                     <div>
                       <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -273,20 +534,7 @@ export default function PlantoesPage() {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {!isCompleted ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/testes/${t.id}`);
-                        }}
-                        className="btn-primary"
-                        style={{ padding: '8px 16px', fontSize: '0.82rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
-                      >
-                        Continuar Plantão <Play size={14} />
-                      </button>
-                    ) : (
-                      <ChevronRight size={18} color="var(--text-subtle)" />
-                    )}
+                    {renderAction(t)}
                   </div>
                 </div>
               );

@@ -11,6 +11,7 @@ import { analyzeErrorPatterns, ErrorPatternReport } from '@/lib/error-pattern-an
 import { RereadQuizModal } from '@/components/RereadQuizModal';
 import { StudyQueueWidget } from '@/components/StudyQueueWidget';
 import { addToStudyQueue } from '@/lib/study-queue-service';
+import { ActivePlantaoBanner, ActivePlantaoData } from '@/components/dashboard/ActivePlantaoBanner';
 import {
   Shuffle,
   CheckCircle2,
@@ -218,6 +219,10 @@ export default function DashboardPage() {
   const [queueRefreshKey, setQueueRefreshKey] = useState<number>(0);
   const [queueToast, setQueueToast] = useState<string | null>(null);
 
+  const [activePlantao, setActivePlantao] = useState<ActivePlantaoData | null>(null);
+  const [isCheckingBatch, setIsCheckingBatch] = useState<boolean>(false);
+  const [dismissCompletedBanner, setDismissCompletedBanner] = useState<boolean>(false);
+
   async function fetchEngineRecommendation(chapterIdOverride?: number, excludeStr?: string) {
     try {
       let url = '/api/recommendations?surface=dashboard';
@@ -269,14 +274,14 @@ export default function DashboardPage() {
     }
   }
 
-  async function loadDashboardData() {
-    setLoading(true);
+  async function loadDashboardData(isSilent: boolean = false) {
+    if (!isSilent) setLoading(true);
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (user) {
-      const [progress, testsData, unified] = await Promise.all([
+      const [progress, testsData, unified, plantaoRes] = await Promise.all([
         supabase
           .from('chapter_progress')
           .select('chapter_id, is_read, read_count, last_read_at')
@@ -288,7 +293,30 @@ export default function DashboardPage() {
           .eq('user_id', user.id)
           .eq('completed', true),
         getUnifiedChapters(supabase, user.id),
+        supabase
+          .from('tests')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('mode', 'plantao')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
+
+      const plantaoRecord = plantaoRes?.data;
+      if (plantaoRecord) {
+        const resolvedStatus =
+          plantaoRecord.status ||
+          plantaoRecord.plantao_data?.status ||
+          (plantaoRecord.completed ? 'completed' : 'in_progress');
+
+        setActivePlantao({
+          ...plantaoRecord,
+          status: resolvedStatus,
+        });
+      } else {
+        setActivePlantao(null);
+      }
 
       setChaptersList(unified);
 
@@ -345,12 +373,46 @@ export default function DashboardPage() {
 
       await fetchEngineRecommendation();
     }
-    setLoading(false);
+    if (!isSilent) setLoading(false);
   }
+
+  const handleBatchCheck = async (testIdOverride?: string) => {
+    const targetId = testIdOverride || activePlantao?.id;
+    if (!targetId) return;
+
+    setIsCheckingBatch(true);
+    try {
+      const res = await fetch('/api/plantao/check-batch-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testId: targetId }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.updated) {
+          await loadDashboardData(true);
+        }
+      }
+    } catch (e) {
+      console.warn('[Dashboard] Batch check non-blocking error:', e);
+    } finally {
+      setIsCheckingBatch(false);
+    }
+  };
 
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useEffect(() => {
+    if (
+      activePlantao &&
+      (activePlantao.status === 'awaiting_batch_bed_evaluation' ||
+        activePlantao.status === 'awaiting_batch_feedback')
+    ) {
+      handleBatchCheck(activePlantao.id);
+    }
+  }, [activePlantao?.id, activePlantao?.status]);
 
   const handleAddToQueue = async (chapterId: number, chapterTitle: string) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -548,6 +610,16 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Active Plantão Banner */}
+      {activePlantao && (!dismissCompletedBanner || activePlantao.status !== 'completed') && (
+        <ActivePlantaoBanner
+          plantao={activePlantao}
+          onRefreshBatch={() => handleBatchCheck(activePlantao.id)}
+          isRefreshing={isCheckingBatch}
+          onDismiss={() => setDismissCompletedBanner(true)}
+        />
+      )}
 
       {/* Stats Bar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>

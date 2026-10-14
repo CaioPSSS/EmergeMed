@@ -185,6 +185,9 @@ export function sanitizeApiKey(apiKey?: string, isMock: boolean = false): string
   return key.trim();
 }
 
+// In-memory mock batch cache so mock submissions can be polled offline
+const MOCK_BATCH_CACHE = new Map<string, BatchRequestItem[]>();
+
 /**
  * Submits an array of requests to OpenRouter Batch API endpoint.
  * POST https://openrouter.ai/api/v1/batches
@@ -200,6 +203,7 @@ export async function submitOpenRouterBatch(
 
   if (isMock) {
     const mockBatchId = `batch_mock_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    MOCK_BATCH_CACHE.set(mockBatchId, requests);
     return {
       id: mockBatchId,
       status: 'submitted',
@@ -256,8 +260,10 @@ export async function getOpenRouterBatchStatus(
   }
 
   if (isMock) {
-    // Generate simulated batch completion results
-    const results: BatchItemResult[] = (mockRequests || []).map((req) => {
+    const cachedRequests = MOCK_BATCH_CACHE.get(batchId);
+    const targetRequests = mockRequests || cachedRequests || [];
+
+    const results: BatchItemResult[] = targetRequests.map((req) => {
       let mockContent = '{}';
       try {
         const customData = JSON.parse(req.custom_id);
@@ -277,6 +283,42 @@ export async function getOpenRouterBatchStatus(
               conduct_prompt: 'Prescreva a manutenção e plano de internação na sala vermelha.',
             },
           });
+        } else if (customData.type === 'bed_evaluation') {
+          const evals: Record<string, any> = {};
+          const qIds = Array.isArray(customData.questionIds) && customData.questionIds.length > 0
+            ? customData.questionIds
+            : [1, 2];
+          for (const qId of qIds) {
+            evals[String(qId)] = {
+              score: 8.5,
+              verdict: 'Adequado',
+              strengths: [
+                'Boa escolha de cristaloides e indicação correta de vasopressor precoce.',
+                'Dose de infusão compatível com a estabilização hemodinâmica guiada por metas da UPA.',
+              ],
+              improvements: [
+                'Atentar para monitorização contínua de débito urinário e lactato de controle.',
+              ],
+              detailedFeedback: '🟢 DESFECHO: Paciente Estabilizado com Segurança\nConduta apropriada para o caso.',
+              idealPrescription: 'Conduta padrão da Sala Vermelha da UPA.',
+              errorTags: [],
+            };
+          }
+          mockContent = JSON.stringify({ evaluations: evals });
+        } else if (customData.type === 'plantao_feedback') {
+          mockContent = `### Síntese do Plantão Noturno na Sala Vermelha da UPA
+
+Plantão de alta complexidade clínica conduzido com rigor técnico e foco na estabilização hemodinâmica dos leitos críticos.
+
+### Auditoria de Leitos & Desfechos Clínicos
+- **Leitos Atendidos:** Boa resposta inicial com reconhecimento rápido dos sinais de gravidade.
+- **Pontos Fortes:** Ajuste posológico seguro das drogas vasoativas e suporte ventilatório adequado.
+- **Pontos de Atenção:** Manter checagem frequente de parâmetros gasométricos após medidas de ressuscitação.
+
+### Plano de Ação para o Próximo Plantão
+1. Revisar curvas de titulação de drogas vasoativas.
+2. Manter checagem sistemática de eletrólitos e gasometria.
+3. Priorizar reavaliação precoce após medidas de ressuscitação.`;
         } else {
           mockContent = JSON.stringify({
             questions: [
@@ -638,3 +680,145 @@ export async function listPendingBatchLedgers(
   const localRows = readLocalLedger();
   return localRows.filter((r) => r.status === 'submitted');
 }
+
+/**
+ * Cancels an in-progress or queued batch on OpenRouter.
+ * POST https://openrouter.ai/api/v1/batches/{id}/cancel
+ */
+export async function cancelOpenRouterBatch(
+  batchId: string,
+  apiKey?: string,
+  isMock: boolean = false,
+  supabase?: SupabaseClient | null
+): Promise<{ id: string; status: string }> {
+  if (!batchId || !batchId.trim()) {
+    throw new Error('Batch ID is required for cancellation');
+  }
+
+  if (isMock) {
+    await updateBatchLedgerRecord(batchId, { status: 'failed' }, supabase);
+    return { id: batchId, status: 'cancelled' };
+  }
+
+  const cleanKey = sanitizeApiKey(apiKey, isMock);
+
+  try {
+    const response = await fetch(`${OPENROUTER_BATCH_ENDPOINT}/${encodeURIComponent(batchId.trim())}/cancel`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cleanKey}`,
+        'HTTP-Referer': 'https://emergemed.upa',
+        'X-Title': 'EmergeMed Batch Pipeline',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(`[OpenRouter Batch] Cancel endpoint returned (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json().catch(() => ({}));
+    await updateBatchLedgerRecord(batchId, { status: 'failed' }, supabase);
+
+    return {
+      id: data?.id || batchId,
+      status: data?.status || 'cancelled',
+    };
+  } catch (err: any) {
+    console.error(`[OpenRouter Batch] Error cancelling batch ${batchId}:`, err);
+    await updateBatchLedgerRecord(batchId, { status: 'failed' }, supabase);
+    return { id: batchId, status: 'cancelled' };
+  }
+}
+
+/**
+ * Estimates prompt tokens, completion tokens, and dollar cost for a batch of requests.
+ */
+export function estimateBatchCost(
+  itemsCount: number,
+  promptTokensPerItem: number = 3500,
+  completionTokensPerItem: number = 1500
+): { estimatedPromptTokens: number; estimatedCompletionTokens: number; estimatedCostUsd: number } {
+  const promptTokens = itemsCount * promptTokensPerItem;
+  const completionTokens = itemsCount * completionTokensPerItem;
+  const cost = calculateBatchCost(promptTokens, completionTokens);
+  return {
+    estimatedPromptTokens: promptTokens,
+    estimatedCompletionTokens: completionTokens,
+    estimatedCostUsd: cost,
+  };
+}
+
+/**
+ * Builds a standardized BatchRequestItem for bed sequence evaluation.
+ */
+export function createBedEvaluationBatchItem({
+  testId,
+  bedNumber,
+  chapterId,
+  questionIds,
+  systemPrompt,
+  userPrompt,
+}: {
+  testId: string;
+  bedNumber: number;
+  chapterId?: number;
+  questionIds: number[];
+  systemPrompt: string;
+  userPrompt: string;
+}): BatchRequestItem {
+  return {
+    custom_id: JSON.stringify({
+      type: 'bed_evaluation',
+      testId,
+      bedNumber,
+      chapterId,
+      questionIds,
+    }),
+    method: 'POST',
+    url: '/v1/chat/completions',
+    body: {
+      model: BATCH_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+    },
+  };
+}
+
+/**
+ * Builds a standardized BatchRequestItem for shift preceptorship feedback.
+ */
+export function createFeedbackBatchItem({
+  testId,
+  overallScore,
+  systemPrompt,
+  userPrompt,
+}: {
+  testId: string;
+  overallScore: number;
+  systemPrompt: string;
+  userPrompt: string;
+}): BatchRequestItem {
+  return {
+    custom_id: JSON.stringify({
+      type: 'plantao_feedback',
+      testId,
+      overallScore,
+    }),
+    method: 'POST',
+    url: '/v1/chat/completions',
+    body: {
+      model: BATCH_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.4,
+    },
+  };
+}
+

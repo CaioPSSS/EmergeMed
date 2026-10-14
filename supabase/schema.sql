@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.tests (
   draft_index INTEGER DEFAULT 0,
   mode TEXT DEFAULT 'standard', -- 'standard' | 'plantao'
   plantao_data JSONB,
+  status TEXT DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'awaiting_batch_bed_evaluation', 'ready_for_adverse', 'awaiting_batch_feedback', 'completed')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   completed_at TIMESTAMP WITH TIME ZONE
 );
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS public.tests (
 ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS mode TEXT DEFAULT 'standard';
 ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS plantao_data JSONB;
 ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS draft_index INTEGER DEFAULT 0;
+ALTER TABLE public.tests ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'in_progress';
 
 -- Table: chapter_weights (Stores frequency and importance weights per chapter)
 CREATE TABLE IF NOT EXISTS public.chapter_weights (
@@ -297,6 +299,7 @@ CREATE INDEX IF NOT EXISTS idx_error_patterns_user ON public.error_pattern_tags(
 CREATE INDEX IF NOT EXISTS idx_daily_activity ON public.user_daily_activity(user_id, activity_date);
 CREATE INDEX IF NOT EXISTS idx_tests_user_mode ON public.tests(user_id, mode);
 CREATE INDEX IF NOT EXISTS idx_tests_user_completed ON public.tests(user_id, completed);
+CREATE INDEX IF NOT EXISTS idx_tests_user_status ON public.tests(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_review_stats_next_review ON public.chapter_review_stats(user_id, next_review_at);
 CREATE INDEX IF NOT EXISTS idx_rec_events_user_date ON public.chapter_recommendation_events(user_id, created_at DESC);
 
