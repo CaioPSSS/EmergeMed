@@ -185,16 +185,16 @@ async function main() {
   // --------------------------------------------------------------------------
   console.log('\n--- SUITE 3: HTTP 429 Budget Breach Handling & Fallback ---');
 
-  // Test 3.1: Backend submit-batch route enforces 429 with budgetBreach flag
-  const routeEnforces429 =
-    submitBatchRouteSource.includes('res.status === 429') ||
-    (submitBatchRouteSource.includes('status: 429') && submitBatchRouteSource.includes('budgetBreach: true'));
+  // Test 3.1: Backend submit-batch route uses plantao_correction (exempt from budget cap blocking)
+  const routeUsesPlantaoCorrection =
+    submitBatchRouteSource.includes("batch_kind: 'plantao_correction'") ||
+    submitBatchRouteSource.includes('plantao_correction');
   recordResult({
     category: 'Budget Guard',
     testId: 'M8-429-01',
-    title: 'Backend submit-batch route returns HTTP 429 when budget cap is breached',
-    passed: routeEnforces429,
-    verdict: routeEnforces429 ? 'PASS' : 'FAIL',
+    title: 'Backend submit-batch route records batch_kind plantao_correction (exempt from cap blocking)',
+    passed: routeUsesPlantaoCorrection,
+    verdict: routeUsesPlantaoCorrection ? 'PASS' : 'FAIL',
   });
 
   // Test 3.2: Modal 1 catches HTTP 429 and populates batchBudgetBreach

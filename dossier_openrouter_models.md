@@ -101,7 +101,7 @@ export const AI_TASK_PROFILES = {
   1. O avaliador recebe princípios de bom senso (`CLINICAL_JUDGMENT_PRINCIPLES`): pluralidade de protocolos, fidelidade aos dados do caso e honestidade sobre a dúvida.
   2. Itens que ele pretende punir como moderado/crítico sem certeza vão para `disputedItems`.
   3. Somente nesses casos, `verifyDisputedEvaluationWithSearch` faz uma chamada síncrona com `tools: [{ type: 'openrouter:web_search', parameters: { engine: 'auto' } }]` e reescreve a avaliação (`aceito_por_protocolo` / `erro_confirmado` / `inconclusivo`), registrando fontes em `verification`.
-  4. O plugin `web` está descontinuado no OpenRouter e é rejeitado (HTTP 422) no Batch, assim como `:online` e engines orquestradas (exa/firecrawl/parallel). Como a verificação depende do resultado do lote, ela roda de forma síncrona em `check-batch-status`, limitada por `MAX_DISPUTE_VERIFICATIONS_PER_RUN`.
+  4. O plugin `web` está descontinuado no OpenRouter e é rejeitado (HTTP 422) no Batch, assim como `:online` e engines orquestradas (exa/firecrawl/parallel). Server tools nativos (`openrouter:web_search`) funcionam na API se suportados pelo provedor, mas a estratégia de verificação pós-lote síncrona em `check-batch-status` (via `verifyDisputedEvaluationWithSearch`) oferece transparência total, sem risco de rejeição 422 na submissão do lote.
 * **Custo/latência:** zero quando não há disputa (caso comum); uma chamada extra com busca por prescrição disputada.
 
 ---
@@ -122,8 +122,10 @@ Com o modelo `openai/gpt-6-luna:batch`:
   - Output: ~450 tokens = \$0.000112
   - **Custo total por questão:** **~$0.000157 USD**.
 
-### Capacidade com os Hard Caps Institucionais:
+### Capacidade com os Hard Caps Institucionais (Geração Noturna):
 * **Teto Diário (\$0.15 USD):**
   - Permite gerar até **~350 leitos completos** OU **~950 questões** por dia!
 * **Teto Mensal (\$0.90 USD):**
   - Permite pré-popular todo o currículo da UPA com milhares de casos validados por uma fração de um cafezinho.
+* **Isenção de Correções de Plantão:**
+  - As correções de leito e feedbacks do Modo Plantão (`plantao_correction`) **não consomem nem são limitadas** por esses tetos de geração. O discriminador `batch_kind` em `batch_generation_ledger` garante isolamento rigoroso entre a pré-população noturna e os testes dos alunos.

@@ -18,7 +18,8 @@
     "batch:poll": "tsx scripts/nightly-batch-pipeline.ts --poll-and-ingest",
     "batch:pending-status": "tsx scripts/nightly-batch-pipeline.ts --pending-status",
     "batch:status": "tsx scripts/nightly-batch-pipeline.ts --status",
-    "batch:dry": "tsx scripts/nightly-batch-pipeline.ts --submit --mock"
+    "batch:dry": "tsx scripts/nightly-batch-pipeline.ts --submit --mock",
+    "batch:salvage": "tsx scripts/nightly-batch-pipeline.ts --salvage"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

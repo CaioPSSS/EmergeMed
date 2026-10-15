@@ -112,11 +112,16 @@ Script autônomo (`scripts/nightly-batch-pipeline.ts`) que roda assincronamente 
 * **Metas de Saturação:**
   - Até 6 leitos estruturados por capítulo no `bed_case_bank` (1-2 clássicos, 3-4 complexos, 5-6 atípicos).
   - Até 20 MCQs por capítulo no `question_bank` com proporção 60/40.
-* **Governança Orçamentária Rígida:**
-  - Tabela `batch_generation_ledger`.
+* **Governança Orçamentária Rígida (Exclusiva para Geração Noturna):**
+  - Tabela `batch_generation_ledger` com discriminador `batch_kind = 'nightly_generation'`.
   - **Hard Cap Diário:** \$0.15 USD.
   - **Hard Cap Mensal:** \$0.90 USD.
   - Interrupção automática imediata antes do envio se o teto for atingido.
+* **Paridade Estrita de Prompts e Qualidade Médica (100% Idêntico à Geração Síncrona):**
+  - Usa os mesmos construtores compartilhados (`buildPlantaoBedGenerationRequest` e `buildQuestionsGenerationRequest`) e os mesmos prompts clínicos (`SYSTEM_PROMPT_PLANTAO_GENERATOR` e `SYSTEM_PROMPT_QUESTION_GENERATOR`).
+  - O pipeline busca o texto integral de cada capítulo na tabela `chapter_contents` do Supabase e a lista de fenótipos existentes no `bed_case_bank`, garantindo variação e riqueza idênticas à geração síncrona.
+* **Recuperação Resiliente de Lotes (`--salvage`):**
+  - Se um lote falhar parcialmente no provedor, o comando `npm run batch:salvage` reabre e inspeciona requisições individuais com sucesso, aproveitando casos clínicos válidos sem desperdício de tokens.
 * **Execução Noturna Automática:**
   - Workflow dedicado: `.github/workflows/nightly-batch.yml`.
   - Fase 1: `batch:poll` primeiro (polling + ingestão dos lotes já submetidos).
@@ -141,17 +146,19 @@ Além da pipeline noturna para bancos de questões, o médico pode escolher aval
   - **Dashboard (`/dashboard`):** Componente `ActivePlantaoBanner.tsx` em destaque logo abaixo do cabeçalho, com mensagens dinâmicas para cada estado do plantão ativo e botão de atualizar lote.
   - **Aba de Plantões (`/plantoes`):** Badges coloridas indicando o estado exato de cada plantão com botões de ação rápida contextuais (*"Continuar Plantão"*, *"Atender Intercorrência"*, *"Atualizar Lote"*, *"Ver Resultados"*).
   - **Checagem Não-Bloqueante:** Ao abrir `/dashboard` ou `/plantoes`, o sistema faz polling silencioso em segundo plano (`isSilent = true`), atualizando o estado do lote sem travar nem piscar a interface.
+* **Isenção de Tetos de Orçamento para Correções:**
+  - Diferente da geração noturna, as correções de leito e pareceres de preceptoria do Modo Plantão **NÃO são submetidas aos limites de \$0.15/dia e \$0.90/mês**. São registradas com `batch_kind = 'plantao_correction'`, garantindo que o médico nunca tenha suas correções bloqueadas por consumo de cota de geração.
 * **Robustez e Hardening de Concorrência:**
   - Trava síncrona `useRef` contra cliques duplos rápidos antes da renderização do React.
-  - Alerta local dentro do modal em caso de falha de rede ou HTTP 429 (teto orçamentário), sem desmontar o teste nem perder o rascunho de prescrições do médico.
+  - Alerta local dentro do modal em caso de falha de rede ou instabilidade, sem desmontar o teste nem perder o rascunho de prescrições do médico.
 
 ### 3.7. Painel de Configurações, Roteamento e Finanças de IA (`/configuracoes`)
 Interface completamente modernizada para controle clínico e orçamentário:
 * **Matriz de Roteamento:** Seleção dinâmica dos modelos baseada estritamente em `AI_TASK_PROFILES` (`CLINICAL_CORE`, `CLINICAL_EVALUATION`, `CLINICAL_FEEDBACK`, `PRESCRIPTION_FAST_FORMAT`).
 * **Métricas de Acervo em Tempo Real:** Total de leitos no `bed_case_bank`, total de questões no `question_bank`, capítulos na fila de estudos e histórico do usuário.
 * **Painel Financeiro de Lote (Batch Ledger):**
-  - Barras de progresso dinâmicas frente aos tetos de **\$0.15/dia** e **\$0.90/mês**.
-  - Tabela com histórico detalhado dos últimos lotes submetidos e concluídos.
+  - Barras de progresso dinâmicas frente aos tetos de **\$0.15/dia** e **\$0.90/mês** (focados exclusivamente na geração assíncrona noturna `nightly_generation`).
+  - Tabela com histórico detalhado dos últimos lotes submetidos e concluídos, diferenciando `nightly_generation` e `plantao_correction`.
 * **Limpeza Arquitetural:** Removido o fluxo legado de upload de PDFs de livros pela interface web.
 
 ---
@@ -211,7 +218,7 @@ Para qualquer agente de IA ou desenvolvedor atuando neste repositório:
    - ❌ **NUNCA** reintroduzir busca incondicional nas chamadas clínicas (latência > 15 s e custo). A busca existe para resolver dúvida legítima entre protocolos, não para substituir o livro.
    - O revisor é *fail-open*: se a busca falhar, mantém-se a avaliação preliminar.
 5. ❌ **NUNCA disparar Evolução Adversa (Q5) por veredito, nota ou múltipla escolha:** O único gatilho é `deteriorationRisk.triggered` declarado pelo avaliador (SIM às 3 perguntas: conduta fora de qualquer prática reconhecida; mecanismo de dano plausível no horizonte do plantão; dano que exige nova intervenção de resgate). A regra é centralizada em `lib/ai/adverse-trigger.ts` e usada no cliente e no servidor. O gerador ainda pode recusar (`noAdverseEvolution`) se o mecanismo não se sustentar.
-6. ❌ **NUNCA ultrapassar os Hard Caps de Batch:** \$0.15/dia e \$0.90/mês são invioláveis. (As verificações síncronas com busca pós-lote não passam pelo ledger de Batch — por isso são limitadas por `MAX_DISPUTE_VERIFICATIONS_PER_RUN`.)
+6. ❌ **Hard Caps de Orçamento (\$0.15/dia e \$0.90/mês) aplicam-se estritamente à Geração Noturna (`nightly_generation`):** Correções e feedbacks do Modo Plantão em lote (`plantao_correction`) são **isentas** desses tetos, permitindo ao médico avaliar seus plantões sem bloqueios. O discriminador `batch_kind` no banco garante o isolamento contábil.
 7. ❌ **NUNCA desrespeitar os recursos de UPA:** Não prescrever procedimentos de alta complexidade (CATE de emergência, RM de crânio, cirurgia de tórax aberto) como se fossem executados fisicamente dentro da UPA; a conduta correta é estabilização e regulação imediata (SAMU/Central de Leitos).
 
 ---
@@ -246,6 +253,9 @@ npm run batch:submit
 
 # Fazer polling e ingerir resultados do lote no banco
 npm run batch:poll
+
+# Resgatar requisições válidas de lotes que falharam parcialmente
+npm run batch:salvage
 
 # Status machine-readable de lotes pendentes (orquestração/workflow)
 npm run batch:pending-status -- --json
