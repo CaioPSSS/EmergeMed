@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { Stethoscope, Lock, Mail, AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
+import { Lock, Mail, AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
+import { EmergeMedLogo } from '@/components/EmergeMedLogo';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -57,19 +58,8 @@ export default function SignupPage() {
       }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{
-            width: '56px',
-            height: '56px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(16, 185, 129, 0.2))',
-            border: '1px solid rgba(56, 189, 248, 0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 16px auto',
-            color: '#38bdf8',
-          }}>
-            <Stethoscope size={30} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+            <EmergeMedLogo size={56} style={{ borderRadius: '14px', boxShadow: '0 4px 20px rgba(16, 185, 129, 0.25)' }} />
           </div>
           <h1 className="text-gradient" style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '6px' }}>
             Criar Conta no EmergeMed

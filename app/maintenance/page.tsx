@@ -1,4 +1,5 @@
-import { Stethoscope, WifiOff, RefreshCw } from 'lucide-react';
+import { WifiOff, RefreshCw } from 'lucide-react';
+import { EmergeMedLogo } from '@/components/EmergeMedLogo';
 
 export const metadata = {
   title: 'Manutenção — EmergeMed',
@@ -100,7 +101,7 @@ export default function MaintenancePage() {
           color: 'var(--text-subtle)',
           fontSize: '0.82rem',
         }}>
-          <Stethoscope size={16} />
+          <EmergeMedLogo size={18} style={{ borderRadius: '4px' }} />
           EmergeMed — Preparação para Emergências
         </div>
       </div>

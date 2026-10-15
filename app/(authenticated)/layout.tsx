@@ -24,6 +24,7 @@ import {
   Award,
 } from 'lucide-react';
 import { getGamificationSnapshot } from '@/lib/gamification-engine';
+import { EmergeMedLogo } from '@/components/EmergeMedLogo';
 
 export default function AuthenticatedLayout({
   children,
@@ -109,19 +110,7 @@ export default function AuthenticatedLayout({
       {/* Mobile Top Bar */}
       <div className="mobile-topbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(16, 185, 129, 0.25))',
-            border: '1px solid rgba(56, 189, 248, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#38bdf8',
-          }}>
-            <Stethoscope size={18} />
-          </div>
+          <EmergeMedLogo size={32} style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)' }} />
           <span className="text-gradient" style={{ fontSize: '1.1rem', fontWeight: 800 }}>
             EmergeMed
           </span>
@@ -148,20 +137,7 @@ export default function AuthenticatedLayout({
         <div>
           {/* Brand Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 8px', marginBottom: '32px' }}>
-            <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(16, 185, 129, 0.25))',
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#38bdf8',
-              flexShrink: 0,
-            }}>
-              <Stethoscope size={24} />
-            </div>
+            <EmergeMedLogo size={42} style={{ borderRadius: '10px', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)', flexShrink: 0 }} />
             <div>
               <div className="text-gradient" style={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1.1 }}>
                 EmergeMed
