@@ -51,7 +51,15 @@ import {
 // ============================================================================
 
 const LOCK_FILE = path.join(process.cwd(), '.nightly-batch.lock');
-const ALLOWED_FLAGS = ['--submit', '--poll-and-ingest', '--status', '--pending-status', '--mock', '--json'];
+const ALLOWED_FLAGS = ['--submit', '--poll-and-ingest', '--salvage', '--cancel-pending', '--status', '--pending-status', '--mock', '--json'];
+
+/**
+ * Maximum number of candidate chapters / requests scheduled in a single live nightly batch run
+ * to keep payload sizes compact, avoid OpenRouter 402 upfront balance reservation errors,
+ * and stay strictly within the $0.15 daily cap when full book chapters are embedded.
+ */
+export const MAX_CANDIDATE_CHAPTERS_PER_LIVE_RUN = 15;
+export const MAX_REQUESTS_PER_LIVE_BATCH = 20;
 
 export interface PollAndIngestSummary {
   pendingAtStart: number;
@@ -92,7 +100,8 @@ function loadEnv(): void {
 
 loadEnv();
 
-function getSupabaseClient(): SupabaseClient | null {
+function getSupabaseClient(isMock: boolean = false): SupabaseClient | null {
+  if (isMock) return null;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
@@ -719,9 +728,13 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
   console.log(`  Model: ${BATCH_MODEL}`);
   console.log('================================================================================\n');
 
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseClient(isMock);
 
-  const pendingBatches = await listPendingBatchLedgers(supabase, 'nightly_generation');
+  const rawPendingBatches = await listPendingBatchLedgers(supabase, 'nightly_generation');
+  const pendingBatches = isMock
+    ? rawPendingBatches
+    : rawPendingBatches.filter((b) => !String(b.batch_id || '').startsWith('batch_mock_'));
+
   if (shouldBlockSubmissionDueToPending(pendingBatches.length)) {
     console.log(`[Queue] Found ${pendingBatches.length} pending submitted batch(es).`);
     console.log('✓ Submission skipped: existing batch work is still in progress and must finish before creating a new batch.');
@@ -788,9 +801,12 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
     allChaptersMap.set(c.id, c);
   }
 
-  // Fetch full book chapter texts from Supabase `chapter_contents` and existing phenotypes from `bed_case_bank`
-  // (exact same sources used by synchronous routes `app/api/generate-plantao/route.ts` and `app/api/generate-questions/route.ts`)
-  const candidateChapterIds = candidates.map((c) => c.chapterId);
+  // In live mode, scope chapter_contents prefetch to top prioritized candidates for tonight's run
+  const targetCandidates = isMock
+    ? candidates
+    : candidates.slice(0, MAX_CANDIDATE_CHAPTERS_PER_LIVE_RUN);
+
+  const candidateChapterIds = targetCandidates.map((c) => c.chapterId);
   const chapterTextsMap = new Map<number, string>();
   const existingPhenotypesMap = new Map<number, string[]>();
 
@@ -845,7 +861,9 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
   const requests: BatchRequestItem[] = [];
   let projectedCost = 0;
 
-  for (const candidate of candidates) {
+  for (const candidate of targetCandidates) {
+    if (!isMock && requests.length >= MAX_REQUESTS_PER_LIVE_BATCH) break;
+
     const chapterMeta = allChaptersMap.get(candidate.chapterId);
     const chapterInfo = {
       id: candidate.chapterId,
@@ -854,6 +872,7 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
       sectionTitle: chapterMeta?.sectionTitle || 'Emergência Clínica',
     };
     const chapterText = chapterTextsMap.get(candidate.chapterId);
+    const extraChapterTokens = chapterText ? Math.ceil(chapterText.length / 4) : 0;
     const basePhenotypes = existingPhenotypesMap.get(candidate.chapterId) || [];
 
     // Schedule at most 1 new bed case per chapter per batch run so that each subsequent night
@@ -861,10 +880,10 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
     const bedsToSchedule = Math.min(candidate.bedsNeeded, 1);
 
     for (let i = 0; i < bedsToSchedule; i++) {
+      if (!isMock && requests.length >= MAX_REQUESTS_PER_LIVE_BATCH) break;
+
       const caseIdx = candidate.currentBeds + i + 1;
-      const complexity: 'classic' | 'complex' | 'atypical' =
-        caseIdx === 1 ? 'classic' : caseIdx <= 3 ? 'complex' : 'atypical';
-      const estimatedCost = calculateBatchCost(1500, 1000);
+      const estimatedCost = calculateBatchCost(1500 + extraChapterTokens, 1000);
 
       if (projectedCost + estimatedCost > maxSpendAllowed) {
         break;
@@ -879,14 +898,12 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
         existingPhenotypes: basePhenotypes,
       });
 
+      // Keep custom_id compact (< 64 chars) for OpenAI/OpenRouter Batch API compatibility
       requests.push({
         custom_id: JSON.stringify({
           type: 'bed_case',
           chapterId: candidate.chapterId,
-          chapterTitle: chapterInfo.title,
-          sectionTitle: chapterInfo.sectionTitle,
           caseIdx,
-          complexity,
         }),
         method: 'POST',
         url: '/v1/chat/completions',
@@ -902,9 +919,9 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
     }
 
     // Generate MCQs needed using the exact `buildQuestionsGenerationRequest` from `lib/ai/openrouter.ts`
-    if (candidate.mcqsNeeded > 0) {
+    if (candidate.mcqsNeeded > 0 && (isMock || requests.length < MAX_REQUESTS_PER_LIVE_BATCH)) {
       const count = Math.min(candidate.mcqsNeeded, 10);
-      const estimatedCost = calculateBatchCost(1200, 1500);
+      const estimatedCost = calculateBatchCost(1200 + extraChapterTokens, 1500);
 
       if (projectedCost + estimatedCost <= maxSpendAllowed) {
         const stdCount = Math.round(count * 0.6);
@@ -923,7 +940,6 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
           custom_id: JSON.stringify({
             type: 'mcqs',
             chapterId: candidate.chapterId,
-            chapterTitle: chapterInfo.title,
             count,
           }),
           method: 'POST',
@@ -970,7 +986,7 @@ export async function runBatchSubmission(isMock: boolean = false): Promise<void>
     return;
   }
 
-  console.log(`[Batch] Prepared ${requests.length} requests across ${candidates.length} candidate chapters.`);
+  console.log(`[Batch] Prepared ${requests.length} requests across ${targetCandidates.length} candidate chapters.`);
   console.log(`[Budget] Projected Batch Cost: $${projectedCost.toFixed(6)} (Limit: $${maxSpendAllowed.toFixed(6)})`);
 
   // 4. Submit batch to OpenRouter
@@ -1022,7 +1038,7 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<PollAnd
   console.log(`  Mode: ${isMock ? 'MOCK (Offline Simulation)' : 'LIVE (OpenRouter Batch API)'}`);
   console.log('================================================================================\n');
 
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseClient(isMock);
   const pendingBatches = await listPendingBatchLedgers(supabase, 'nightly_generation');
   const summary: PollAndIngestSummary = {
     pendingAtStart: pendingBatches.length,
@@ -1046,25 +1062,9 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<PollAnd
   for (const batchRow of pendingBatches) {
     console.log(`\n--- Processing Batch ${batchRow.batch_id} ---`);
 
-    let mockRequests: BatchRequestItem[] = [];
-    if (isMock) {
-      const mockStorage = path.join(process.cwd(), '.agents', `mock_batch_${batchRow.batch_id}.json`);
-      if (fs.existsSync(mockStorage)) {
-        mockRequests = JSON.parse(fs.readFileSync(mockStorage, 'utf8'));
-      }
-    }
-
-    const statusResponse = await getOpenRouterBatchStatus(
-      batchRow.batch_id,
-      process.env.OPENROUTER_API_KEY,
-      isMock,
-      mockRequests
-    );
-
-    console.log(`[Status] Batch State: ${statusResponse.status}`);
-    const batchProgress = classifyBatchProgressStatus(statusResponse.status);
-
-    if (batchProgress === 'failed') {
+    // If running in live mode and a synthetic mock batch ID was persisted in Supabase, mark it failed so it never blocks live runs
+    if (!isMock && String(batchRow.batch_id || '').startsWith('batch_mock_')) {
+      console.warn(`[Status] Batch ${batchRow.batch_id} is a synthetic mock batch in live DB. Marking as failed to unblock queue.`);
       await updateBatchLedgerRecord(
         batchRow.batch_id,
         {
@@ -1074,9 +1074,80 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<PollAnd
         supabase
       );
       summary.failedBatches += 1;
-      console.warn(`[Status] Batch ${batchRow.batch_id} is terminal with status "${statusResponse.status}". Marked as failed in ledger.`);
       continue;
     }
+
+    let mockRequests: BatchRequestItem[] = [];
+    if (isMock) {
+      const mockStorage = path.join(process.cwd(), '.agents', `mock_batch_${batchRow.batch_id}.json`);
+      if (fs.existsSync(mockStorage)) {
+        mockRequests = JSON.parse(fs.readFileSync(mockStorage, 'utf8'));
+      }
+    }
+
+    let statusResponse;
+    try {
+      statusResponse = await getOpenRouterBatchStatus(
+        batchRow.batch_id,
+        process.env.OPENROUTER_API_KEY,
+        isMock,
+        mockRequests
+      );
+    } catch (pollErr: any) {
+      const errMsg = String(pollErr?.message || pollErr);
+      console.warn(`[Status] Error polling batch ${batchRow.batch_id}: ${errMsg}`);
+      // OpenRouter returns transient 404 immediately after POST /v1/batches while status="validating" is indexing.
+      // Only mark 404 as permanently failed if the batch was submitted more than 24 hours ago (or 410 Gone).
+      const submittedAtMs = batchRow.submission_timestamp ? new Date(batchRow.submission_timestamp).getTime() : 0;
+      const ageMs = submittedAtMs > 0 ? Date.now() - submittedAtMs : 0;
+      const isStale404 = ageMs > 24 * 60 * 60 * 1000;
+
+      if (errMsg.includes('(410)') || (errMsg.includes('(404)') && isStale404)) {
+        await updateBatchLedgerRecord(
+          batchRow.batch_id,
+          {
+            completion_timestamp: new Date().toISOString(),
+            status: 'failed',
+          },
+          supabase
+        );
+        summary.failedBatches += 1;
+      } else {
+        console.log(`[Status] Batch ${batchRow.batch_id} is still indexing/validating on OpenRouter (transient 404). Will retry on next poll.`);
+        summary.stillPendingBatches += 1;
+      }
+      continue;
+    }
+
+    console.log(`[Status] Batch State: ${statusResponse.status}`);
+    const batchProgress = classifyBatchProgressStatus(statusResponse.status);
+
+    const salvageableResults = (statusResponse.results || []).filter((r) =>
+      Boolean(r?.response?.body?.choices?.[0]?.message?.content)
+    );
+
+    if (batchProgress === 'failed' && salvageableResults.length === 0) {
+      if (statusResponse.error) {
+        console.warn(`[Status] Batch Error Details:`, JSON.stringify(statusResponse.error));
+      }
+      await updateBatchLedgerRecord(
+        batchRow.batch_id,
+        {
+          completion_timestamp: new Date().toISOString(),
+          status: 'failed',
+        },
+        supabase
+      );
+      summary.failedBatches += 1;
+      console.warn(`[Status] Batch ${batchRow.batch_id} is terminal with status "${statusResponse.status}" and 0 salvageable items. Marked as failed in ledger.`);
+      continue;
+    }
+
+    if (batchProgress === 'failed' && salvageableResults.length > 0) {
+      console.log(
+        `[Salvage] Batch ${batchRow.batch_id} has status "${statusResponse.status}", but ${salvageableResults.length} request(s) succeeded! Salvaging valid items...`
+      );
+    } else
 
     if (batchProgress !== 'completed') {
       console.log(`[Status] Batch still in progress. Skipping ingestion for now.`);
@@ -1109,6 +1180,9 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<PollAnd
         const chapterMeta = allChaptersMap.get(Number(customData.chapterId));
         const chapterTitle = customData.chapterTitle || chapterMeta?.title || `Capítulo ${customData.chapterId}`;
         const sectionTitle = customData.sectionTitle || chapterMeta?.sectionTitle || '';
+        const caseIdx = Number(customData.caseIdx) || 1;
+        const complexity: 'classic' | 'complex' | 'atypical' =
+          customData.complexity || (caseIdx === 1 ? 'classic' : caseIdx <= 3 ? 'complex' : 'atypical');
 
         if (customData.type === 'bed_case') {
           const validation = validateBedCase(parsed, chapterTitle);
@@ -1133,7 +1207,7 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<PollAnd
             chapter_title: chapterTitle,
             section_title: sectionTitle,
             phenotype_title: phenotypeTitle,
-            complexity_level: customData.complexity || 'classic',
+            complexity_level: complexity,
             questions: normalizedQuestions,
             times_used: 0,
           });
@@ -1202,6 +1276,8 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<PollAnd
     console.log(`[Cost] Incurred: $${actualCost.toFixed(6)} | Day: $${updatedDaily.toFixed(6)} | Month: $${updatedMonthly.toFixed(6)}`);
     console.log(`[Ingestion Summary] Ingested: ${itemsIngested} | Failed: ${itemsFailed}`);
 
+    const finalStatus = batchProgress === 'failed' && itemsIngested === 0 ? 'failed' : 'completed';
+
     // Update batch ledger row
     await updateBatchLedgerRecord(
       batchRow.batch_id,
@@ -1215,16 +1291,48 @@ export async function runPollAndIngest(isMock: boolean = false): Promise<PollAnd
         monthly_accumulated_usd: updatedMonthly,
         items_ingested: itemsIngested,
         items_failed: itemsFailed,
-        status: 'completed',
+        status: finalStatus,
       },
       supabase
     );
 
-    console.log(`✓ Batch ${batchRow.batch_id} finalized and marked completed.`);
-    summary.completedBatches += 1;
+    if (finalStatus === 'completed') {
+      console.log(`✓ Batch ${batchRow.batch_id} finalized and marked completed (${itemsIngested} ingested).`);
+      summary.completedBatches += 1;
+    } else {
+      console.warn(`⚠️ Batch ${batchRow.batch_id} had 0 valid items after salvage check; marked failed.`);
+      summary.failedBatches += 1;
+    }
   }
 
   return summary;
+}
+
+
+export async function runSalvageFailedBatches(isMock: boolean = false): Promise<PollAndIngestSummary> {
+  const supabase = getSupabaseClient(isMock);
+  if (supabase && !isMock) {
+    // Re-open any failed nightly_generation batch that had 0 items ingested so runPollAndIngest can inspect & salvage its completed items
+    const { data: failedRows } = await supabase
+      .from('batch_generation_ledger')
+      .select('batch_id, items_ingested, batch_kind')
+      .eq('status', 'failed')
+      .eq('items_ingested', 0);
+
+    if (Array.isArray(failedRows)) {
+      for (const r of failedRows) {
+        const bid = String(r.batch_id || '');
+        const kind = r.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
+        if (kind === 'nightly_generation' && bid && !bid.startsWith('batch_mock_') && !bid.startsWith('batch_cap_')) {
+          await supabase
+            .from('batch_generation_ledger')
+            .update({ status: 'submitted' })
+            .eq('batch_id', bid);
+        }
+      }
+    }
+  }
+  return runPollAndIngest(isMock);
 }
 
 // ============================================================================
@@ -1236,7 +1344,7 @@ export async function runStatusDisplay(): Promise<void> {
   console.log(`▶ [NIGHTLY BATCH PIPELINE] STATUS & BUDGET LEDGER OVERVIEW`);
   console.log('================================================================================\n');
 
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseClient(false);
   const {
     dailyAccumulated,
     monthlyAccumulated,
@@ -1279,13 +1387,16 @@ export async function runStatusDisplay(): Promise<void> {
   console.log('================================================================================\n');
 }
 
-export async function getPendingBatchStatus(): Promise<{
+export async function getPendingBatchStatus(isMock: boolean = false): Promise<{
   pendingSubmittedCount: number;
   hasPendingSubmitted: boolean;
   pendingBatchIds: string[];
 }> {
-  const supabase = getSupabaseClient();
-  const pending = await listPendingBatchLedgers(supabase, 'nightly_generation');
+  const supabase = getSupabaseClient(isMock);
+  const rawPending = await listPendingBatchLedgers(supabase, 'nightly_generation');
+  const pending = isMock
+    ? rawPending
+    : rawPending.filter((b) => !String(b.batch_id || '').startsWith('batch_mock_'));
   return {
     pendingSubmittedCount: pending.length,
     hasPendingSubmitted: pending.length > 0,
@@ -1317,10 +1428,11 @@ async function main(): Promise<void> {
   const isJson = args.includes('--json');
   const isSubmit = args.includes('--submit');
   const isPoll = args.includes('--poll-and-ingest');
+  const isSalvage = args.includes('--salvage');
   const isStatus = args.includes('--status');
   const isPendingStatus = args.includes('--pending-status');
 
-  if (!isSubmit && !isPoll && !isStatus && !isPendingStatus) {
+  if (!isSubmit && !isPoll && !isSalvage && !isStatus && !isPendingStatus) {
     console.log('EmergeMed Nightly Batch Pipeline CLI');
     console.log('Uso:');
     console.log('  npx tsx scripts/nightly-batch-pipeline.ts --submit [--mock]');
@@ -1331,7 +1443,7 @@ async function main(): Promise<void> {
   }
 
   if (isPendingStatus) {
-    const pendingStatus = await getPendingBatchStatus();
+    const pendingStatus = await getPendingBatchStatus(isMock);
     if (isJson) {
       process.stdout.write(`${JSON.stringify(pendingStatus)}\n`);
     } else {
@@ -1349,7 +1461,7 @@ async function main(): Promise<void> {
   }
 
   // Check OpenRouter API key if running in live mode
-  if (!isMock && (isSubmit || isPoll)) {
+  if (!isMock && (isSubmit || isPoll || isSalvage)) {
     if (!process.env.OPENROUTER_API_KEY || !process.env.OPENROUTER_API_KEY.trim()) {
       console.error('❌ Erro: Variável OPENROUTER_API_KEY não encontrada no ambiente (.env.local).');
       console.error('   Para testes locais ou simulação sem custos, use a flag --mock.');
@@ -1375,6 +1487,12 @@ async function main(): Promise<void> {
   try {
     if (isSubmit) {
       await runBatchSubmission(isMock);
+    }
+    if (isSalvage) {
+      const summary = await runSalvageFailedBatches(isMock);
+      if (isJson) {
+        process.stdout.write(`${JSON.stringify(summary)}\n`);
+      }
     }
     if (isPoll) {
       const summary = await runPollAndIngest(isMock);

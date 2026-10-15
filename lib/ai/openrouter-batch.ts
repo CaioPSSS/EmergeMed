@@ -16,6 +16,8 @@ import path from 'path';
 // ============================================================================
 
 export const BATCH_MODEL = 'openai/gpt-6-luna:batch';
+export const BATCH_SUBMISSION_MODEL = 'openai/gpt-6-luna';
+export const BATCH_DEFAULT_ENDPOINT = '/v1/chat/completions';
 export const PROMPT_TOKEN_PRICE_PER_M = 0.05;
 export const COMPLETION_TOKEN_PRICE_PER_M = 0.25;
 
@@ -73,15 +75,29 @@ export interface AccumulatedBudgetSnapshot {
 
 export interface BatchRequestItem {
   custom_id: string;
-  method: 'POST';
-  url: string; // '/v1/chat/completions'
+  method?: 'POST';
+  url?: string; // '/v1/chat/completions'
   body: {
-    model: string;
+    model?: string;
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
     temperature?: number;
     max_tokens?: number;
     response_format?: { type: 'json_object' };
   };
+}
+
+export interface OpenRouterBatchSubmitPayload {
+  endpoint: string;
+  model: string;
+  requests: Array<{
+    custom_id: string;
+    body: {
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+      temperature?: number;
+      max_tokens?: number;
+      response_format?: { type: 'json_object' };
+    };
+  }>;
 }
 
 export interface BatchSubmissionResponse {
@@ -125,9 +141,16 @@ export interface BatchStatusResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    cost?: number;
   };
-  created_at?: string;
+  error?: {
+    code?: number;
+    message?: string;
+    [key: string]: any;
+  } | null;
+  created_at?: string | number;
   completed_at?: string;
+  finalized_at?: number | string | null;
 }
 
 // ============================================================================
@@ -192,58 +215,53 @@ export function sanitizeApiKey(apiKey?: string, isMock: boolean = false): string
   return key.trim();
 }
 
-// In-memory mock batch cache so mock submissions can be polled offline
-const MOCK_BATCH_CACHE = new Map<string, BatchRequestItem[]>();
-
 /**
- * Slug de modelo aceito pelo POST /v1/batches. A OpenRouter escolhe sozinha o endpoint
- * `:batch` do modelo, então o slug é enviado SEM o sufixo (BATCH_MODEL segue com o
- * sufixo só como rótulo no ledger).
+ * Normalizes a model identifier for OpenRouter's POST /api/v1/batches payload.
+ * OpenRouter requires the base model slug (e.g. "openai/gpt-6-luna") without the ":batch" suffix.
  */
-export function toBatchApiModelSlug(model: string): string {
-  return model.replace(/:batch$/, '');
+export function normalizeBatchModelSlug(model: string = BATCH_MODEL): string {
+  const cleaned = String(model || BATCH_MODEL).trim().replace(/:batch$/i, '');
+  return cleaned || BATCH_SUBMISSION_MODEL;
 }
 
 /**
- * Monta o corpo do POST https://openrouter.ai/api/v1/batches.
- *
- * Regras da API:
- *  - `endpoint` e `model` são obrigatórios, no nível do lote, e DEVEM ser serializados
- *    ANTES de `requests` (a API lê o JSON em stream e responde 400 se `requests` vier
- *    primeiro). A ordem das chaves abaixo é intencional: não reordenar.
- *  - Cada item de `requests` é somente `{ custom_id, body }` (sem `method`/`url`).
- *  - `body.model` é opcional; se vier, tem que ser igual ao do lote, então é removido.
- *  - Todos os itens de um lote usam o mesmo endpoint.
+ * Builds the exact payload required by OpenRouter's POST /api/v1/batches endpoint:
+ * - `endpoint` and `model` (without `:batch`) serialized BEFORE `requests` (required by OpenRouter's stream parser).
+ * - Each item in `requests` contains only `{ custom_id, body }`, omitting `body.model` so it inherits the batch-level model.
  */
-export function buildBatchSubmitPayload(requests: BatchRequestItem[]): {
-  endpoint: string;
-  model: string;
-  requests: Array<{ custom_id: string; body: Omit<BatchRequestItem['body'], 'model'> }>;
-} {
-  const endpoints = new Set(requests.map((r) => r.url || '/v1/chat/completions'));
-  if (endpoints.size !== 1) {
-    throw new Error(
-      `All requests in a batch must share the same endpoint (found: ${Array.from(endpoints).join(', ')})`
-    );
+export function buildBatchSubmitPayload(
+  requests: BatchRequestItem[],
+  model: string = BATCH_MODEL,
+  endpoint: string = BATCH_DEFAULT_ENDPOINT
+): OpenRouterBatchSubmitPayload {
+  if (!requests || requests.length === 0) {
+    throw new Error('Batch requests payload cannot be empty');
   }
-  const [endpoint] = Array.from(endpoints);
 
-  const batchModel = toBatchApiModelSlug(BATCH_MODEL);
+  const normalizedModel = normalizeBatchModelSlug(model);
+  const resolvedEndpoint = endpoint || requests[0]?.url || BATCH_DEFAULT_ENDPOINT;
 
+  const formattedRequests = requests.map((req, idx) => {
+    if (!req.custom_id || !String(req.custom_id).trim()) {
+      throw new Error(`custom_id is required on requests[${idx}]`);
+    }
+    const { model: _ignoredItemModel, ...restBody } = req.body || ({} as any);
+    return {
+      custom_id: String(req.custom_id),
+      body: restBody,
+    };
+  });
+
+  // Key order is strictly: endpoint, model, requests
   return {
-    endpoint,
-    model: batchModel,
-    requests: requests.map(({ custom_id, body }) => {
-      const { model, ...rest } = body;
-      if (model && toBatchApiModelSlug(model) !== batchModel) {
-        throw new Error(
-          `Request ${custom_id} uses model "${model}" which differs from the batch model "${batchModel}"`
-        );
-      }
-      return { custom_id, body: rest };
-    }),
+    endpoint: resolvedEndpoint,
+    model: normalizedModel,
+    requests: formattedRequests,
   };
 }
+
+// In-memory mock batch cache so mock submissions can be polled offline
+const MOCK_BATCH_CACHE = new Map<string, BatchRequestItem[]>();
 
 /**
  * Submits an array of requests to OpenRouter Batch API endpoint.
@@ -271,7 +289,6 @@ export async function submitOpenRouterBatch(
   }
 
   const cleanKey = sanitizeApiKey(apiKey, isMock);
-
   const payload = buildBatchSubmitPayload(requests);
 
   const response = await fetch(OPENROUTER_BATCH_ENDPOINT, {
@@ -295,10 +312,15 @@ export async function submitOpenRouterBatch(
     throw new Error('Invalid batch submission response: missing batch ID');
   }
 
+  const createdAtIso =
+    typeof data.created_at === 'number'
+      ? new Date(data.created_at * 1000).toISOString()
+      : data.created_at || new Date().toISOString();
+
   return {
     id: data.id,
     status: data.status || 'submitted',
-    created_at: data.created_at || new Date().toISOString(),
+    created_at: createdAtIso,
     model: BATCH_MODEL,
     total_requests: requests.length,
   };
@@ -472,6 +494,10 @@ Plantão de alta complexidade clínica conduzido com rigor técnico e foco na es
     throw new Error('Invalid batch status response payload');
   }
 
+  if (!data.completed_at && typeof data.finalized_at === 'number') {
+    data.completed_at = new Date(data.finalized_at * 1000).toISOString();
+  }
+
   return data as BatchStatusResponse;
 }
 
@@ -534,14 +560,14 @@ export async function fetchAccumulatedBudget(
     try {
       let { data, error } = await supabase
         .from('batch_generation_ledger')
-        .select('cost_usd, submission_timestamp, status, items_requested, batch_kind')
+        .select('batch_id, cost_usd, submission_timestamp, completion_timestamp, status, items_requested, batch_kind')
         .gte('submission_timestamp', startOfMonth);
 
       if (error) {
         // Fallback if batch_kind column is not yet present in DB
         const fallback = await supabase
           .from('batch_generation_ledger')
-          .select('cost_usd, submission_timestamp, status, items_requested')
+          .select('batch_id, cost_usd, submission_timestamp, completion_timestamp, status, items_requested')
           .gte('submission_timestamp', startOfMonth);
         data = fallback.data as any;
         error = fallback.error;
@@ -553,6 +579,9 @@ export async function fetchAccumulatedBudget(
             row.batch_kind === 'plantao_correction' ? 'plantao_correction' : 'nightly_generation';
           if (rowKind !== batchKind) continue;
 
+          // Ignore synthetic mock records if they were ever persisted to Supabase
+          if (row.batch_id && String(row.batch_id).startsWith('batch_mock_')) continue;
+
           const cost = Number(row.cost_usd) || 0;
           const status = String(row.status || '');
           const pendingReservation = status === 'submitted'
@@ -562,7 +591,8 @@ export async function fetchAccumulatedBudget(
           monthlyAccumulated += cost;
           monthlyPendingReserved += pendingReservation;
 
-          if (row.submission_timestamp >= startOfDay) {
+          const completedToday = Boolean(row.completion_timestamp && row.completion_timestamp >= startOfDay);
+          if (row.submission_timestamp >= startOfDay || completedToday) {
             dailyAccumulated += cost;
             dailyPendingReserved += pendingReservation;
           }
@@ -608,7 +638,8 @@ export async function fetchAccumulatedBudget(
       monthlyAccumulated += cost;
       monthlyPendingReserved += pendingReservation;
     }
-    if (row.submission_timestamp >= startOfDay) {
+    const completedToday = Boolean(row.completion_timestamp && row.completion_timestamp >= startOfDay);
+    if (row.submission_timestamp >= startOfDay || completedToday) {
       dailyAccumulated += cost;
       dailyPendingReserved += pendingReservation;
     }
@@ -722,10 +753,18 @@ export async function updateBatchLedgerRecord(
 
   if (supabase) {
     try {
-      await supabase
+      const { error } = await supabase
         .from('batch_generation_ledger')
         .update(updates)
         .eq('batch_id', batchId);
+
+      if (error && 'batch_kind' in updates) {
+        const { batch_kind: _ignoredKind, ...fallbackUpdates } = updates;
+        await supabase
+          .from('batch_generation_ledger')
+          .update(fallbackUpdates)
+          .eq('batch_id', batchId);
+      }
     } catch (err) {
       console.warn('[Ledger] Failed to update Supabase batch_generation_ledger:', err);
     }
@@ -804,7 +843,7 @@ export async function listPendingBatchLedgers(
 
 /**
  * Cancels an in-progress or queued batch on OpenRouter.
- * POST https://openrouter.ai/api/v1/batches/{id}/cancel
+ * DELETE https://openrouter.ai/api/v1/batches/{id} / POST cancel fallback
  */
 export async function cancelOpenRouterBatch(
   batchId: string,
