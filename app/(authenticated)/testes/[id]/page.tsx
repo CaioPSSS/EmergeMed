@@ -869,6 +869,38 @@ export default function TakeTestPage({ params }: { params: Promise<{ id: string 
           return;
         }
 
+        if (data.status === 'awaiting_batch_feedback') {
+          setCurrentPlantaoStatus('awaiting_batch_feedback');
+          const { data: refreshedTest } = await supabase
+            .from('tests')
+            .select('*')
+            .eq('id', testId)
+            .single();
+
+          if (refreshedTest) {
+            setTestRecord(refreshedTest);
+            if (refreshedTest.questions) setQuestions(refreshedTest.questions as QuestionItem[]);
+            if (refreshedTest.answers) setUserAnswers(refreshedTest.answers);
+            if (refreshedTest.results) setCachedEvaluations(refreshedTest.results);
+          } else {
+            setTestRecord((prev: any) => ({
+              ...prev,
+              status: 'awaiting_batch_feedback',
+              plantao_data: {
+                ...(prev?.plantao_data || {}),
+                feedbackBatchId: data.feedbackBatchId,
+                status: 'awaiting_batch_feedback',
+              },
+            }));
+          }
+
+          if (isManual) {
+            setBatchCheckMessage('✅ Leitos avaliados com sucesso! Passagem de plantão iniciada em lote.');
+            setTimeout(() => setBatchCheckMessage(null), 4000);
+          }
+          return;
+        }
+
         if (data.status === 'ready_for_adverse') {
           setCurrentPlantaoStatus('ready_for_adverse');
           const { data: refreshedTest } = await supabase

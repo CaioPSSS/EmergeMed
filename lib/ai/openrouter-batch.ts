@@ -10,6 +10,8 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
+import { SYSTEM_PROMPT_PLANTAO_FEEDBACK } from '@/lib/ai/prompts';
+import { fixMojibake } from '@/lib/text-sanitizer';
 
 // ============================================================================
 // 1. CONSTANTS & SPECIFICATIONS
@@ -980,4 +982,277 @@ export function createFeedbackBatchItem({
       temperature: 0.4,
     },
   };
+}
+
+export interface DispatchPlantaoFeedbackBatchParams {
+  testId: string;
+  supabase: any;
+  userId?: string;
+  testRecord?: any;
+  evaluations?: Record<number, any>;
+  evaluationsSummary?: any[] | string;
+  overallScore?: number;
+  apiKey?: string;
+  isMock?: boolean;
+}
+
+export interface DispatchPlantaoFeedbackBatchResult {
+  success: boolean;
+  batchId?: string;
+  status: 'awaiting_batch_feedback';
+  submittedAt?: string;
+  isMock?: boolean;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Dispatches the Phase 2 Plantão Preceptorship Feedback batch to OpenRouter.
+ * Used both by the manual endpoint (/api/plantao/submit-feedback-batch) and
+ * by the autonomous auto-chaining engine in /api/plantao/check-batch-status.
+ */
+export async function dispatchPlantaoFeedbackBatch({
+  testId,
+  supabase,
+  userId,
+  testRecord,
+  evaluations,
+  evaluationsSummary,
+  overallScore,
+  apiKey,
+  isMock: explicitIsMock,
+}: DispatchPlantaoFeedbackBatchParams): Promise<DispatchPlantaoFeedbackBatchResult> {
+  try {
+    // 1. Fetch test record if not provided
+    let targetRecord = testRecord;
+    if (!targetRecord) {
+      const { data, error } = await supabase
+        .from('tests')
+        .select('*')
+        .eq('id', testId)
+        .single();
+
+      if (error || !data) {
+        return {
+          success: false,
+          status: 'awaiting_batch_feedback',
+          error: error?.message || 'Plantão não encontrado.',
+        };
+      }
+      targetRecord = data;
+    }
+
+    const effectiveUserId = userId || targetRecord.user_id;
+
+    // 2. Idempotency guard: if already submitted or completed, return existing batch id
+    const plantaoData = targetRecord.plantao_data || {};
+    const existingBatchId = plantaoData.feedbackBatchId || plantaoData.feedback_batch_id;
+    if (
+      (targetRecord.status === 'awaiting_batch_feedback' || targetRecord.status === 'completed') &&
+      existingBatchId
+    ) {
+      return {
+        success: true,
+        batchId: existingBatchId,
+        status: 'awaiting_batch_feedback',
+        message: 'Lote de feedback já submetido e aguardando processamento.',
+      };
+    }
+
+    // 3. Fetch book reference contents
+    const chapterTexts: Record<number, string> = {};
+    const chapterIds = targetRecord.chapter_ids || [];
+    if (Array.isArray(chapterIds) && chapterIds.length > 0) {
+      const { data: contents } = await supabase
+        .from('chapter_contents')
+        .select('chapter_id, content')
+        .in('chapter_id', chapterIds);
+
+      if (contents) {
+        contents.forEach((c: any) => {
+          chapterTexts[c.chapter_id] = c.content;
+        });
+      }
+    }
+
+    let bookContext = '';
+    if (Object.keys(chapterTexts).length > 0) {
+      bookContext =
+        '\n\nTEXTO COMPLETO DOS CAPÍTULOS DE REFERÊNCIA DO LIVRO (FONTE PRIMÁRIA OBRIGATÓRIA PARA AVALIAÇÃO):\n' +
+        Object.entries(chapterTexts)
+          .map(([id, text]) => `--- TEXTO DO CAPÍTULO ${id} ---\n${fixMojibake(text || '')}`)
+          .join('\n\n');
+    }
+
+    // 4. Prepare evaluations and summary
+    const currentEvaluations = evaluations || targetRecord.results || {};
+    const questions = (targetRecord.questions as any[]) || [];
+
+    let summaryText = '';
+    if (Array.isArray(evaluationsSummary)) {
+      summaryText = evaluationsSummary
+        .map(
+          (item: any, idx: number) => `
+--- QUESTÃO / LEITO ${idx + 1}: ${item.questionTitle || `Item ${idx + 1}`} ---
+- Pontuação / Veredito: ${item.score}/10 ${item.verdict ? `(${item.verdict})` : ''}
+- Caso Clínico Completo: ${item.vignette || ''}
+- Resposta do Médico: "${item.userAnswer || ''}"
+${item.idealAnswer ? `- Gabarito Esperado: "${item.idealAnswer}"` : ''}
+${item.strengths && item.strengths.length > 0 ? `- Pontos Fortes Notados: ${item.strengths.join('; ')}` : ''}
+`
+        )
+        .join('\n');
+    } else if (typeof evaluationsSummary === 'string') {
+      summaryText = evaluationsSummary;
+    } else {
+      summaryText = questions
+        .map((q: any, idx: number) => {
+          const res = currentEvaluations[q.id];
+          return `
+--- QUESTÃO ${idx + 1} (${q.type}): ${q.chapterTitle || ''} ---
+- Pontuação: ${res?.score ?? 'N/A'}/10
+- Caso Clínico: ${q.vignette || ''}
+- Resposta: ${typeof res?.userPrescription === 'string' ? res.userPrescription : JSON.stringify(targetRecord.answers?.[q.id] || '')}
+- Feedback: ${res?.evaluation?.detailedFeedback || ''}
+`;
+        })
+        .join('\n');
+    }
+
+    // 5. Calculate effectiveScore
+    let effectiveScore = typeof overallScore === 'number' ? overallScore : 0;
+    if (typeof overallScore !== 'number') {
+      if (typeof targetRecord.score === 'number' && targetRecord.score > 0) {
+        effectiveScore = targetRecord.score;
+      } else if (questions.length > 0) {
+        let totalPoints = 0;
+        questions.forEach((q: any) => {
+          totalPoints += currentEvaluations[q.id]?.score || 0;
+        });
+        const maxPoints = questions.length * 10;
+        effectiveScore = Math.round((totalPoints / maxPoints) * 100) / 10;
+      }
+    }
+
+    // 6. User Prompt for Preceptorship Feedback
+    const userPrompt = `AVALIAÇÃO DE PLANTÃO NOTURNO NA SALA VERMELHA DE UPA:
+Nota Final do Aluno: ${effectiveScore.toFixed(1)} / 10.0
+Total de Questões/Leitos: ${targetRecord.total_questions || (Array.isArray(evaluationsSummary) ? evaluationsSummary.length : questions.length)}
+
+DESEMPENHO DETALHADO POR QUESTÃO / LEITO (ATENÇÃO: LEIA O CASO CLÍNICO COMPLETO DE CADA QUESTÃO, POIS VÁRIAS QUESTÕES DESCREVEM A EVOLUÇÃO DO PACIENTE APÓS TRATAMENTO INICIAL):
+${summaryText}
+${bookContext}
+
+REGRAS OBRIGATÓRIAS PARA O FEEDBACK GERAL:
+1. Mantenha coerência com as avaliações individuais dos leitos. Se uma questão foi avaliada como "Adequada" ou obteve boa nota, priorize a seção de pontos críticos para os erros reais cometidos nas questões com nota mais baixa.
+2. Preste atenção estrita aos dados de EVOLUÇÃO da vinheta (ex: desfechos de choque, PCR revertida, estabilização alcançada).
+3. Baseie as explicações nos protocolos e no texto dos capítulos do livro fornecidos acima.
+
+Gere o Feedback de Passagem de Plantão Noturno em Markdown.
+Responda diretamente em Markdown sem blocos de código JSON.`;
+
+    // 7. Request item
+    const batchRequests: BatchRequestItem[] = [
+      createFeedbackBatchItem({
+        testId,
+        overallScore: effectiveScore,
+        systemPrompt: SYSTEM_PROMPT_PLANTAO_FEEDBACK,
+        userPrompt,
+      }),
+    ];
+
+    // 8. Resolve API key & Mock status
+    let resolvedApiKey = apiKey;
+    if (!resolvedApiKey && effectiveUserId) {
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('openrouter_api_key')
+        .eq('user_id', effectiveUserId)
+        .maybeSingle();
+      resolvedApiKey = settings?.openrouter_api_key;
+    }
+    if (!resolvedApiKey) {
+      resolvedApiKey = process.env.OPENROUTER_API_KEY;
+    }
+
+    const isMock =
+      explicitIsMock !== undefined
+        ? explicitIsMock
+        : !resolvedApiKey ||
+          resolvedApiKey.startsWith('mock') ||
+          process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+    // 9. Submit batch
+    const submission = await submitOpenRouterBatch(batchRequests, resolvedApiKey, isMock);
+
+    // 10. Accounting & Ledger
+    const { dailyAccumulated, monthlyAccumulated } = await fetchAccumulatedBudget(supabase, 'plantao_correction');
+    const estPromptTokens = 3000;
+    const estCompletionTokens = 2000;
+    const estimatedCost = calculateBatchCost(estPromptTokens, estCompletionTokens);
+    const nowIso = new Date().toISOString();
+
+    await insertBatchLedgerRecord(
+      {
+        batch_id: submission.id,
+        batch_kind: 'plantao_correction',
+        submission_timestamp: nowIso,
+        model: BATCH_MODEL,
+        prompt_tokens: estPromptTokens,
+        completion_tokens: estCompletionTokens,
+        cost_usd: estimatedCost,
+        daily_accumulated_usd: Number((dailyAccumulated + estimatedCost).toFixed(6)),
+        monthly_accumulated_usd: Number((monthlyAccumulated + estimatedCost).toFixed(6)),
+        hard_cap_interrupted: false,
+        items_requested: 1,
+        items_ingested: 0,
+        items_failed: 0,
+        status: 'submitted',
+      },
+      supabase
+    );
+
+    // 11. Update tests table
+    const updatedPlantaoData = {
+      ...plantaoData,
+      feedbackBatchId: submission.id,
+      feedback_batch_submitted_at: nowIso,
+      feedbackEvaluationMode: 'batch',
+      status: 'awaiting_batch_feedback',
+    };
+
+    const { error: updateErr } = await supabase
+      .from('tests')
+      .update({
+        status: 'awaiting_batch_feedback',
+        score: effectiveScore,
+        results: currentEvaluations,
+        plantao_data: updatedPlantaoData,
+      })
+      .eq('id', testId);
+
+    if (updateErr) {
+      console.error('[dispatchPlantaoFeedbackBatch] Error updating test record:', updateErr);
+      return {
+        success: false,
+        status: 'awaiting_batch_feedback',
+        error: 'Erro ao atualizar status de feedback do plantão no banco de dados.',
+      };
+    }
+
+    return {
+      success: true,
+      batchId: submission.id,
+      status: 'awaiting_batch_feedback',
+      submittedAt: nowIso,
+      isMock,
+    };
+  } catch (err: any) {
+    console.error('[dispatchPlantaoFeedbackBatch] Unexpected error:', err);
+    return {
+      success: false,
+      status: 'awaiting_batch_feedback',
+      error: err.message || 'Erro inesperado ao despachar lote de feedback.',
+    };
+  }
 }

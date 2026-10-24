@@ -1,0 +1,44 @@
+name: Plantao Batch Background Poller
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' # Executa a cada 15 minutos como rede de segurança em background
+  workflow_dispatch:
+    inputs:
+      test_id:
+        description: 'ID de um plantão específico para verificar (opcional)'
+        required: false
+        type: string
+
+jobs:
+  poll-plantao:
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Plantão Batch Polling & Auto-Chaining
+        run: |
+          set -euo pipefail
+          TEST_ARG=""
+          if [ -n "${{ github.event.inputs.test_id || '' }}" ]; then
+            TEST_ARG="--test-id ${{ github.event.inputs.test_id }}"
+          fi
+
+          npx tsx scripts/poll-plantao-batches.ts $TEST_ARG
